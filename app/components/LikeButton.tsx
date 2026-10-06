@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Heart } from './icons'
 
 export default function LikeButton({ postId }: { postId: string }) {
   const [count, setCount] = useState(0)
@@ -39,6 +40,31 @@ export default function LikeButton({ postId }: { postId: string }) {
       return
     }
 
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_banned')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.is_banned) {
+      alert('Ваш аккаунт заблокирован')
+      return
+    }
+
+    // Rate limit — только для постановки, не для снятия
+    if (!liked) {
+      const { data: limitCheck } = await supabase.rpc('check_and_log_action', {
+        action_input: 'like',
+        max_per_hour: 200,
+        max_per_minute: 20,
+      })
+
+      if (limitCheck && !limitCheck.ok) {
+        alert('Слишком много лайков. Подождите немного.')
+        return
+      }
+    }
+
     if (liked) {
       await supabase
         .from('likes')
@@ -59,11 +85,15 @@ export default function LikeButton({ postId }: { postId: string }) {
   return (
     <button
       onClick={toggleLike}
-      className={`flex items-center gap-1.5 text-sm transition-colors ${
-        liked ? 'text-wine' : 'text-brown/60 hover:text-wine'
+      className={`flex items-center gap-1 transition-colors ${
+        liked ? 'text-wine' : 'text-brown/55 hover:text-wine'
       }`}
     >
-      <span className="text-base">{liked ? '❤️' : '🤍'}</span>
+      <Heart
+        size={13}
+        strokeWidth={1.8}
+        fill={liked ? 'currentColor' : 'none'}
+      />
       <span>{count}</span>
     </button>
   )

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
 
 export default function SignupPage() {
@@ -13,51 +14,47 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
-  async function handleSignup(e) {
+  async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    // 1. Регистрируем
     const { error: signUpError } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { username },
-      },
+      options: { data: { username } },
     })
 
     if (signUpError) {
-      setError(signUpError.message)
+      setError(humanizeError(signUpError.message))
       setLoading(false)
       return
     }
 
-    // 2. Сразу входим
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
     if (signInError) {
-      setError(
-        'Регистрация прошла, но войти не удалось: ' + signInError.message
-      )
+      setError('Регистрация прошла, но войти не удалось. ' + humanizeError(signInError.message))
       setLoading(false)
     } else {
-      router.push('/')
+      router.push('/welcome')
       router.refresh()
     }
   }
 
   return (
-    <main className="min-h-screen p-8 flex justify-center">
+    <main className="p-4 md:p-8 flex justify-center">
       <div className="w-full max-w-md">
-        <h1 className="text-3xl font-bold mb-6">📝 Регистрация</h1>
+        <h1 className="text-3xl font-bold mb-6 text-emerald-dark">
+          📝 Регистрация
+        </h1>
 
         <form onSubmit={handleSignup} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">
+            <label className="block text-sm font-medium mb-1 text-brown-dark">
               Имя пользователя
             </label>
             <input
@@ -68,53 +65,57 @@ export default function SignupPage() {
               minLength={3}
               maxLength={30}
               pattern="[a-zA-Z0-9_]+"
-              className="w-full border border-gray-300 rounded px-3 py-2"
+              className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
               placeholder="ivan_reader"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-brown/60 mt-1">
               Только латинские буквы, цифры и подчёркивание
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
+            <label className="block text-sm font-medium mb-1 text-brown-dark">
+              Email
+            </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full border border-gray-300 rounded px-3 py-2"
+              className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Пароль</label>
+            <label className="block text-sm font-medium mb-1 text-brown-dark">
+              Пароль
+            </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full border border-gray-300 rounded px-3 py-2"
+              className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
               placeholder="Минимум 6 символов"
             />
           </div>
 
-          {error && <p className="text-red-600 text-sm">Ошибка: {error}</p>}
+          {error && <p className="text-wine text-sm">Ошибка: {error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+            className="w-full bg-emerald-mid text-cream py-2 rounded hover:bg-emerald-dark disabled:opacity-50 transition-colors"
           >
             {loading ? 'Регистрируем…' : 'Зарегистрироваться'}
           </button>
         </form>
 
-        <p className="mt-4 text-sm text-gray-600">
+        <p className="mt-4 text-sm text-brown/70">
           Уже есть аккаунт?{' '}
-          <Link href="/login" className="text-blue-600 hover:underline">
+          <Link href="/login" className="text-wine hover:underline">
             Войти
           </Link>
         </p>

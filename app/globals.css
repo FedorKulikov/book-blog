@@ -4,6 +4,7 @@
   --color-emerald-dark:  #0E2931;
   --color-emerald-mid:   #12484C;
   --color-emerald-light: #2B7574;
+  --color-emerald-deep:  #0A3B2E;
   --color-wine:          #861211;
   --color-wine-dark:     #4D0E12;
   --color-cream:         #E2E2E0;
@@ -21,4 +22,176 @@ body {
 h1, h2, h3 {
   font-family: var(--font-playfair), Georgia, serif;
   font-weight: 700;
+}
+
+/* ==========================================
+   Мобильный лейаут: сайдбар + контент
+   ========================================== */
+
+.layout-wrapper {
+  min-height: 100vh;
+}
+.main-content {
+  min-width: 0;
+  width: 100%;
+}
+@media (min-width: 1024px) {
+  .layout-wrapper {
+    display: grid;
+    grid-template-columns: 16rem 1fr;
+  }
+}
+
+/* Верхняя полоса — только на мобильных */
+.mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+@media (min-width: 1024px) {
+  .mobile-header {
+    display: none;
+  }
+}
+
+/* Затемнение */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+}
+@media (min-width: 1024px) {
+  .sidebar-backdrop {
+    display: none;
+  }
+}
+
+/* Сайдбар */
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 16rem;
+  z-index: 50;
+  transition: transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.sidebar.closed {
+  transform: translateX(-100%);
+}
+.sidebar.open {
+  transform: translateX(0);
+}
+
+/* На десктопе сайдбар встраивается в layout */
+@media (min-width: 1024px) {
+  .sidebar,
+  .sidebar.closed,
+  .sidebar.open {
+    position: sticky;
+    transform: none;
+    height: 100vh;
+  }
+}
+
+/* Кнопка × — только на мобильных */
+.sidebar-close-btn {
+  display: block;
+}
+@media (min-width: 1024px) {
+  .sidebar-close-btn {
+    display: none;
+  }
+}
+
+/* ==========================================
+   Шрифт Playfair для заголовков
+   ========================================== */
+.font-playfair {
+  font-family: var(--font-playfair), Georgia, serif;
+}
+.font-inter {
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Тонкие линии в тёмных блоках */
+.border-cream\/8 {
+  border-color: rgba(245, 239, 198, 0.08);
+}
+
+/* ==========================================
+   Типографика постов — читаемое чтение
+   ========================================== */
+
+.post-content {
+  max-width: 68ch;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--color-brown-dark);
+  word-wrap: break-word;
+}
+
+.post-content p {
+  margin-bottom: 1.25em;
+}
+
+.post-content p:last-child {
+  margin-bottom: 0;
+}
+
+.post-content blockquote {
+  border-left: 3px solid var(--color-wine);
+  padding-left: 1.25rem;
+  margin: 1.75rem 0;
+  font-style: italic;
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: 1.125rem;
+  line-height: 1.65;
+  color: var(--color-brown);
+}
+
+.post-content a {
+  color: var(--color-wine);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: opacity 0.15s;
+}
+
+.post-content a:hover {
+  opacity: 0.75;
+}
+
+.post-content h2 {
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 2rem 0 1rem;
+  color: var(--color-emerald-dark);
+  line-height: 1.3;
+}
+
+.post-content h3 {
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+  color: var(--color-emerald-dark);
+  line-height: 1.3;
+}
+
+.post-content ul,
+.post-content ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1.25em;
+}
+
+.post-content li {
+  margin-bottom: 0.5em;
 }

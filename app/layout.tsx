@@ -1,5 +1,7 @@
 import { Playfair_Display, Inter } from 'next/font/google'
+import { Metadata } from 'next'
 import Sidebar from './components/Header'
+import MobileNav from './components/MobileNav'
 import './globals.css'
 
 const playfair = Playfair_Display({
@@ -14,9 +16,38 @@ const inter = Inter({
   display: 'swap',
 })
 
-export const metadata = {
-  title: 'Хлеба и букв',
-  description: 'Книги. Люди. Идеи. Творчество.',
+export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+  ),
+  title: {
+    default: 'Хлеба и букв',
+    template: '%s · Хлеба и букв',
+  },
+  description:
+    'Книжное сообщество: свежие новинки, обсуждения прочитанного и авторское творчество.',
+  openGraph: {
+    type: 'website',
+    locale: 'ru_RU',
+    siteName: 'Хлеба и букв',
+    title: 'Хлеба и букв',
+    description:
+      'Книжное сообщество: свежие новинки, обсуждения прочитанного и авторское творчество.',
+    images: [
+      {
+        url: '/og-default.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Хлеба и букв',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Хлеба и букв',
+    description:
+      'Книжное сообщество: свежие новинки, обсуждения прочитанного и авторское творчество.',
+  },
 }
 
 export default function RootLayout({
@@ -27,9 +58,10 @@ export default function RootLayout({
   return (
     <html lang="ru" className={`${playfair.variable} ${inter.variable}`}>
       <body className="bg-cream text-brown-dark">
-        <div className="flex min-h-screen">
+        <div className="layout-wrapper">
           <Sidebar />
-          <main className="flex-1 min-w-0">{children}</main>
+          <main className="main-content pb-16 lg:pb-0">{children}</main>
+          <MobileNav />
         </div>
       </body>
     </html>

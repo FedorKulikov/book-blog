@@ -1,23 +1,34 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import Comments from '../components/Comments'
-import LikeButton from '../components/LikeButton'
+import PostCard from '../components/PostCard'
 import Hero from '../components/Hero'
+import TopAuthors from '../components/TopAuthors'
+import PopularPosts from '../components/PopularPosts'
+import TopTags from '../components/TopTags'
+import SortTabs, { SortKey } from '../components/SortTabs'
+import EmptyState from '../components/EmptyState'
+import SectionStats from '../components/SectionStats'
+import { PostGridSkeleton } from '../components/Skeleton'
+import { Library, BookOpen } from '../components/icons'
 
 export default function NewsPage() {
   const [posts, setPosts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [sort, setSort] = useState<SortKey>('new')
 
   useEffect(() => {
     async function loadPosts() {
+      const { data: { user } } = await supabase.auth.getUser()
+      const userId = user?.id || '00000000-0000-0000-0000-000000000000'
+
       const { data, error } = await supabase
         .from('posts')
-        .select('*, profiles!posts_user_id_fkey(username), post_images(url)')
+        .select('*, profiles!posts_user_id_fkey(username, avatar_url), post_images(url), comments(count), likes(count), post_tags(tags(name, slug)), books(id, title, author, year)')
         .eq('type', 'news')
+        .or(`status.eq.approved,user_id.eq.${userId}`)
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -30,128 +41,80 @@ export default function NewsPage() {
     loadPosts()
   }, [])
 
+  const sortedPosts = [...posts].sort((a, b) => {
+    if (sort === 'popular') {
+      const la = a.likes?.[0]?.count ?? 0
+      const lb = b.likes?.[0]?.count ?? 0
+      return lb - la
+    }
+    if (sort === 'discussed') {
+      const ca = a.comments?.[0]?.count ?? 0
+      const cb = b.comments?.[0]?.count ?? 0
+      return cb - ca
+    }
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+
   return (
-    <main className="p-8 max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-8">
-      <div>
-        <Hero
-          title="Книжные новинки"
-          subtitle="Свежие книги, которые уже вышли или выйдут совсем скоро"
-          image="https://images.unsplash.com/photo-1512820790803-83ca734da794?w=1200&q=80"
-        />
+    <main className="p-4 md:p-8 max-w-7xl mx-auto">
+      <Hero
+        title="Книжные новинки"
+        subtitle="Свежие книги, которые уже вышли или выйдут совсем скоро"
+        image="/hero-news.jpg"
+      />
 
-        <div className="flex justify-end mb-6">
-          <Link
-            href="/news/new"
-            className="bg-wine text-white px-4 py-2 rounded hover:bg-wine-dark text-sm transition-colors"
-          >
-            + Написать пост
-          </Link>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+        <div>
+          <div className="space-y-5 mb-6">
+            <SortTabs value={sort} onChange={setSort} />
+            <SectionStats type="news" />
+          </div>
+
+          {loading && <PostGridSkeleton count={4} />}
+          {error && <p className="text-wine">Ошибка: {error}</p>}
+
+          {!loading && !error && sortedPosts.length === 0 && (
+            <EmptyState
+              icon={<BookOpen size={48} strokeWidth={1.2} />}
+              title="Пока здесь тихо"
+              description="Станьте первым, кто расскажет о книге, которую сейчас читает."
+              action={{ label: 'Написать пост', href: '/news/new' }}
+            />
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {sortedPosts.map(post => (
+              <PostCard key={post.id} post={post} />
+            ))}
+          </div>
         </div>
 
-        {loading && <p className="text-brown">Загрузка…</p>}
-        {error && <p className="text-wine">Ошибка: {error}</p>}
+        <aside className="space-y-8 hidden lg:block bg-emerald-deep rounded-2xl p-6 text-cream">
+          <TopAuthors />
+          <PopularPosts />
+          <TopTags />
 
-        {!loading && !error && posts.length === 0 && (
-          <p className="text-brown/70">Пока нет постов. Скоро появятся!</p>
-        )}
-
-        {posts.map(post => (
-          <article
-            key={post.id}
-            className="border border-emerald-dark/10 rounded-lg p-6 mb-4 bg-cream-warm/40"
-          >
+          <div className="pt-6 border-t border-cream/15">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-xs uppercase tracking-wide bg-wine/10 text-wine px-2 py-0.5 rounded">
-                Новинка
-              </span>
+              <Library size={15} strokeWidth={1.7} className="text-cream-warm" />
+              <h3 className="font-playfair text-base font-bold text-cream">
+                О проекте
+              </h3>
             </div>
-
-            <h2 className="text-2xl font-bold text-emerald-dark mb-2">
-              {post.title}
-            </h2>
-
-            <p className="text-brown-dark whitespace-pre-wrap mb-4">
-              {post.content}
+            <p className="text-xs text-cream/65 leading-relaxed">
+              «Хлеба и букв» — место, где читатели и авторы делятся книжными
+              новинками, обсуждают прочитанное и публикуют своё творчество.
             </p>
+          </div>
 
-            {post.post_images && post.post_images.length > 0 && (
-              <div className="flex flex-wrap gap-3 mb-4">
-                {post.post_images.map((img: any, i: number) => (
-                  <a
-                    key={i}
-                    href={img.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block"
-                  >
-                    <img
-                      src={img.url}
-                      alt=""
-                      className="rounded-lg border border-emerald-dark/10 max-h-96 w-auto object-contain hover:opacity-90 transition-opacity"
-                    />
-                  </a>
-                ))}
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 text-sm text-brown/60 border-t border-emerald-dark/5 pt-3">
-              <div className="w-7 h-7 rounded-full bg-emerald-mid text-cream flex items-center justify-center text-xs font-bold">
-                {(post.profiles?.username || '?')[0].toUpperCase()}
-              </div>
-              <span className="font-medium text-brown-dark">
-                {post.profiles?.username || 'Аноним'}
-              </span>
-              <span>·</span>
-              <span>
-                {new Date(post.created_at).toLocaleString('ru-RU', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
-              </span>
-              <span className="ml-auto">
-                <LikeButton postId={post.id} />
-              </span>
-            </div>
-
-            <Comments postId={post.id} />
-          </article>
-        ))}
+          <div className="pt-6 border-t border-cream/15">
+            <p className="font-playfair text-xs italic text-cream/55 leading-relaxed">
+              «Хорошие книги — это не просто страницы, это часть жизни,
+              которая вдохновляет.»
+            </p>
+          </div>
+        </aside>
       </div>
-
-      <aside className="space-y-6 hidden lg:block">
-        <div className="bg-cream-warm/50 rounded-lg p-5 border border-emerald-dark/10">
-          <h3 className="text-lg font-bold text-emerald-dark mb-3">
-            📖 О проекте
-          </h3>
-          <p className="text-sm text-brown-dark/80 leading-relaxed">
-            «Хлеба и букв» — место, где читатели и авторы делятся книжными
-            новинками, обсуждают прочитанное и публикуют своё творчество.
-          </p>
-        </div>
-
-        <div className="bg-emerald-dark text-cream rounded-lg p-5">
-          <p className="text-sm italic leading-relaxed">
-            «Хорошие книги — это не просто страницы, это часть жизни,
-            которая вдохновляет.»
-          </p>
-        </div>
-
-        <div className="bg-cream-warm/50 rounded-lg p-5 border border-emerald-dark/10">
-          <h3 className="text-lg font-bold text-emerald-dark mb-3">
-            ✍️ Хотите поделиться?
-          </h3>
-          <p className="text-sm text-brown-dark/80 mb-4">
-            Расскажите о прочитанном, опубликуйте рассказ или мысль.
-          </p>
-          <Link
-            href="/news/new"
-            className="block text-center bg-wine hover:bg-wine-dark text-white rounded py-2 text-sm transition-colors"
-          >
-            Создать пост
-          </Link>
-        </div>
-      </aside>
     </main>
   )
 }
