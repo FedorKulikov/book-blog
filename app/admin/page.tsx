@@ -4,13 +4,15 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { humanizeError } from '@/lib/errors'
 
 export default function AdminPage() {
   const router = useRouter()
-  const [tab, setTab] = useState<'reports' | 'pending' | 'words'>('reports')
+  const [tab, setTab] = useState<'reports' | 'pending' | 'words' | 'users'>('reports')
   const [reports, setReports] = useState<any[]>([])
   const [pending, setPending] = useState<any[]>([])
   const [words, setWords] = useState<any[]>([])
+  const [users, setUsers] = useState<any[]>([])
   const [newWord, setNewWord] = useState('')
   const [loading, setLoading] = useState(true)
   const [me, setMe] = useState<any>(null)
@@ -61,6 +63,42 @@ export default function AdminPage() {
       .select('*')
       .order('word')
     setWords(w || [])
+
+    const { data: u } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url, role, is_banned, created_at')
+      .order('created_at', { ascending: false })
+    setUsers(u || [])
+  }
+
+  async function setRole(userId: string, newRole: 'user' | 'moderator' | 'admin') {
+    if (me && userId === me.id && newRole !== 'admin') {
+      alert('Нельзя снять админа с себя')
+      return
+    }
+    if (!confirm(`Изменить роль на "${newRole}"?`)) return
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', userId)
+    if (error) {
+      alert(humanizeError(error.message))
+      return
+    }
+    await loadAll()
+  }
+
+  async function toggleBan(userId: string, banned: boolean) {
+    if (!confirm(banned ? 'Разблокировать пользователя?' : 'Заблокировать пользователя?')) return
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_banned: banned })
+      .eq('id', userId)
+    if (error) {
+      alert(humanizeError(error.message))
+      return
+    }
+    await loadAll()
   }
 
   async function approvePost(id: string) {
@@ -184,6 +222,16 @@ export default function AdminPage() {
           }`}
         >
           🚫 Стоп-слова ({words.length})
+        </button>
+        <button
+          onClick={() => setTab('users')}
+          className={`px-4 py-2 rounded text-sm whitespace-nowrap transition-colors ${
+            tab === 'users'
+              ? 'bg-wine text-white'
+              : 'text-brown/70 hover:text-wine'
+          }`}
+        >
+          👥 Пользователи ({users.length})
         </button>
       </div>
 
@@ -325,6 +373,115 @@ export default function AdminPage() {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {tab === 'users' && (
+        <div className="space-y-2">
+          {users.length === 0 && (
+            <p className="text-brown/60">Пользователей нет.</p>
+          )}
+          {users.map(p => (
+            <div
+              key={p.id}
+              className="bg-cream-warm/40 border border-emerald-dark/10 rounded-lg p-3 flex items-center gap-3 flex-wrap"
+            >
+              <div className="w-10 h-10 rounded-full bg-emerald-mid text-cream flex items-center justify-center font-bold flex-shrink-0 overflow-hidden">
+                {p.avatar_url ? (
+                  <img
+                    src={p.avatar_url}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  (p.username?.[0] || '?').toUpperCase()
+                )}
+              </div>
+
+              <div className="flex-1 min-w-[160px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-emerald-dark">
+                    {p.username || 'аноним'}
+                  </span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full ${
+                      p.role === 'admin'
+                        ? 'bg-wine text-white'
+                        : p.role === 'moderator'
+                        ? 'bg-emerald-mid text-cream'
+                        : 'bg-cream-warm text-brown-dark border border-emerald-dark/15'
+                    }`}
+                  >
+                    {p.role === 'admin'
+                      ? 'Админ'
+                      : p.role === 'moderator'
+                      ? 'Модератор'
+                      : 'Пользователь'}
+                  </span>
+                  {p.is_banned && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-wine text-white">
+                      Забанен
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-brown/50">
+                  Регистрация:{' '}
+                  {p.created_at
+                    ? new Date(p.created_at).toLocaleDateString('ru-RU')
+                    : '—'}
+                </div>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                {p.role !== 'admin' ? (
+                  <button
+                    onClick={() => setRole(p.id, 'admin')}
+                    className="text-xs bg-emerald-mid text-cream px-3 py-1 rounded hover:bg-emerald-dark"
+                  >
+                    Назначить админом
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setRole(p.id, 'user')}
+                    disabled={!!me && p.id === me.id}
+                    className="text-xs bg-cream border border-emerald-dark/20 px-3 py-1 rounded hover:bg-cream-warm disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={
+                      me && p.id === me.id ? 'Нельзя снять админа с себя' : ''
+                    }
+                  >
+                    Снять админа
+                  </button>
+                )}
+
+                {p.role !== 'moderator' ? (
+                  <button
+                    onClick={() => setRole(p.id, 'moderator')}
+                    className="text-xs bg-emerald-mid text-cream px-3 py-1 rounded hover:bg-emerald-dark"
+                  >
+                    Назначить модератором
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setRole(p.id, 'user')}
+                    className="text-xs bg-cream border border-emerald-dark/20 px-3 py-1 rounded hover:bg-cream-warm"
+                  >
+                    Снять модератора
+                  </button>
+                )}
+
+                <button
+                  onClick={() => toggleBan(p.id, !p.is_banned)}
+                  className={`text-xs px-3 py-1 rounded ${
+                    p.is_banned
+                      ? 'bg-cream border border-emerald-dark/20 hover:bg-cream-warm'
+                      : 'bg-cream border border-wine/40 text-wine hover:bg-wine/10'
+                  }`}
+                >
+                  {p.is_banned ? 'Разбанить' : 'Забанить'}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </main>

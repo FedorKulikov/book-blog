@@ -1,6 +1,7 @@
 'use client'
 
 import VoiceMessage from './VoiceMessage'
+import { Trash2 } from './icons'
 
 export type ChatMessage = {
   id: string
@@ -17,10 +18,14 @@ export default function MessageBubble({
   message,
   isOwn,
   onImageClick,
+  isStaff,
+  onDelete,
 }: {
   message: ChatMessage
   isOwn: boolean
   onImageClick?: (src: string) => void
+  isStaff?: boolean
+  onDelete?: (messageId: string) => void
 }) {
   const time = new Date(message.created_at).toLocaleTimeString('ru-RU', {
     hour: '2-digit',
@@ -105,6 +110,19 @@ export default function MessageBubble({
         >
           <span>{time}</span>
           {isOwn && <span>{message.read_at ? '✓✓' : '✓'}</span>}
+          {isStaff && onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(message.id)}
+              className={`transition-colors p-0.5 ${
+                isOwn ? 'text-white/50 hover:text-white' : 'text-brown/40 hover:text-wine'
+              }`}
+              aria-label="Удалить сообщение"
+              title="Удалить сообщение"
+            >
+              <Trash2 size={12} strokeWidth={1.8} />
+            </button>
+          )}
         </div>
       </div>
     </div>

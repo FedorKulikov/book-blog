@@ -19,12 +19,22 @@ export default function PostPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [isStaff, setIsStaff] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       setCurrentUser(user)
+
+      if (user) {
+        const { data: myProfile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle()
+        setIsStaff(myProfile?.role === 'admin' || myProfile?.role === 'moderator')
+      }
 
       const { data, error } = await supabase
         .from('posts')
@@ -109,15 +119,17 @@ export default function PostPage() {
         )}
 
         <div className="p-6 md:p-8">
-          {isAuthor && (
+          {(isAuthor || isStaff) && (
             <div className="flex gap-3 justify-end mb-3">
-              <Link
-                href={`/post/${post.id}/edit`}
-                className="flex items-center gap-1.5 text-sm text-brown/70 hover:text-emerald-mid transition-colors"
-              >
-                <Pencil size={14} strokeWidth={1.8} />
-                <span>Редактировать</span>
-              </Link>
+              {isAuthor && (
+                <Link
+                  href={`/post/${post.id}/edit`}
+                  className="flex items-center gap-1.5 text-sm text-brown/70 hover:text-emerald-mid transition-colors"
+                >
+                  <Pencil size={14} strokeWidth={1.8} />
+                  <span>Редактировать</span>
+                </Link>
+              )}
               <button
                 onClick={handleDelete}
                 disabled={deleting}

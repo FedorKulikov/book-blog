@@ -106,6 +106,7 @@ export default function ConversationPage() {
   const [seconds, setSeconds] = useState(0)
 
   const [menuOpen, setMenuOpen] = useState(false)
+  const [isStaff, setIsStaff] = useState(false)
   const [iBlock, setIBlock] = useState(false)
   const [blockedByOther, setBlockedByOther] = useState(false)
   const [blockBusy, setBlockBusy] = useState(false)
@@ -156,6 +157,23 @@ export default function ConversationPage() {
     return (data as ChatMessage[] | null) ?? []
   }, [id])
 
+  const handleDeleteMessage = useCallback(
+    async (msgId: string) => {
+      if (!confirm('Удалить это сообщение?')) return
+      const { error: delError } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', msgId)
+      if (delError) {
+        setError(humanizeError(delError.message))
+        return
+      }
+      const list = await fetchMessages()
+      setMessages(list ?? [])
+    },
+    [fetchMessages]
+  )
+
   const markRead = useCallback(
     async (userId: string) => {
       const { data, error: markError } = await supabase
@@ -186,6 +204,15 @@ export default function ConversationPage() {
         return
       }
       setUid(user.id)
+
+      const { data: myProfile } = await supabase
+        .from('profiles')
+        .select('id, role')
+        .eq('id', user.id)
+        .maybeSingle()
+      setIsStaff(
+        myProfile?.role === 'admin' || myProfile?.role === 'moderator'
+      )
 
       const { data: conv } = await supabase
         .from('conversations')
@@ -668,6 +695,8 @@ export default function ConversationPage() {
                   message={m}
                   isOwn={m.sender_id === uid}
                   onImageClick={setLightboxSrc}
+                  isStaff={isStaff}
+                  onDelete={handleDeleteMessage}
                 />
               </div>
             </div>
