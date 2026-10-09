@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import PostCard from '../components/PostCard'
+import ShareProfileButton from '../components/ShareProfileButton'
 import { Pencil, Shield, UserCircle, ChevronRight } from '../components/icons'
 
 export default function ProfilePage() {
@@ -130,6 +131,9 @@ export default function ProfilePage() {
           <span>Публичный профиль</span>
           <ChevronRight size={14} strokeWidth={2} />
         </Link>
+        {profile?.username && (
+          <ShareProfileButton username={profile.username} />
+        )}
         <Link
           href="/profile/edit"
           className="flex items-center justify-center gap-2 bg-emerald-mid text-cream px-4 py-2 rounded-full text-sm hover:bg-emerald-dark transition-colors"

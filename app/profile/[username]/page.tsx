@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import PostCard from '@/app/components/PostCard'
 import FollowButton from '@/app/components/FollowButton'
+import ShareProfileButton from '@/app/components/ShareProfileButton'
 import { Mail, UserX, UserCheck } from '@/app/components/icons'
 
 export default function PublicProfilePage() {
@@ -233,6 +234,7 @@ export default function PublicProfilePage() {
                 </span>
               </button>
             )}
+            <ShareProfileButton username={profile.username} />
           </div>
         </div>
       </div>

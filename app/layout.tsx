@@ -58,6 +58,41 @@ export default function RootLayout({
   return (
     <html lang="ru" className={`${playfair.variable} ${inter.variable}`}>
       <body className="bg-cream text-brown-dark">
+        {/* Тема применяется ДО первой отрисовки — против вспышки светлого.
+            Второй блок — только для next dev: индикатор Next.js живёт в shadow
+            DOM (div.nextjs-toast) и документным CSS его не сдвинуть, поэтому
+            сдвигаем его вправо скриптом, чтобы не перекрывал тумблер темы.
+            В проде элемент nextjs-portal отсутствует — блок молча истекает. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var t = localStorage.getItem('theme');
+                if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                  document.documentElement.classList.add('dark');
+                }
+              } catch (e) {}
+              try {
+                var tries = 0;
+                var iv = setInterval(function () {
+                  tries += 1;
+                  var host = document.querySelector('nextjs-portal');
+                  var sr = host && host.shadowRoot;
+                  if (sr) {
+                    var toast = sr.querySelector('.nextjs-toast');
+                    if (toast) {
+                      toast.style.setProperty('left', 'auto', 'important');
+                      toast.style.setProperty('right', '20px', 'important');
+                      clearInterval(iv);
+                      return;
+                    }
+                  }
+                  if (tries > 60) clearInterval(iv);
+                }, 250);
+              } catch (e) {}
+            `,
+          }}
+        />
         <div className="layout-wrapper">
           <Sidebar />
           <main className="main-content pb-16 lg:pb-0">{children}</main>

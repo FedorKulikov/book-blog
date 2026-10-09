@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { findBadWord } from '@/lib/moderation'
+import { humanizeError } from '@/lib/errors'
 import ReportButton from './ReportButton'
-import { MessageCircle, Send } from './icons'
+import { MessageCircle, Send, Trash2 } from './icons'
 
 type Comment = {
   id: string
@@ -23,9 +24,23 @@ export default function Comments({ postId }: { postId: string }) {
   const [replyText, setReplyText] = useState('')
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [isStaff, setIsStaff] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    supabase.auth.getUser().then(async ({ data }) => {
+      setUser(data.user)
+      if (data.user) {
+        const { data: myProfile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .maybeSingle()
+        setIsStaff(
+          myProfile?.role === 'admin' || myProfile?.role === 'moderator'
+        )
+      }
+    })
     loadComments()
   }, [postId])
 
@@ -39,58 +54,79 @@ export default function Comments({ postId }: { postId: string }) {
     setLoading(false)
   }
 
+  async function handleDeleteComment(commentId: string) {
+    if (!confirm('Удалить комментарий?')) return
+
+    const { error } = await supabase
+      .from('comments')
+      .delete()
+      .eq('id', commentId)
+
+    if (error) {
+      alert(humanizeError(error.message))
+      return
+    }
+    loadComments()
+  }
+
   async function submitComment(text: string, parentId: string | null = null) {
     if (!user) {
       alert('Войдите, чтобы оставить комментарий')
       return
     }
     if (!text.trim()) return
+    if (submitting) return // защита от двойной отправки
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_banned')
-      .eq('id', user.id)
-      .single()
+    setSubmitting(true)
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_banned')
+        .eq('id', user.id)
+        .single()
 
-    if (profile?.is_banned) {
-      alert('Ваш аккаунт заблокирован')
-      return
-    }
-
-    const found = await findBadWord(text)
-    if (found) {
-      alert('В комментарии есть недопустимые слова')
-      return
-    }
-
-    // Rate limit
-    const { data: limitCheck } = await supabase.rpc('check_and_log_action', {
-      action_input: 'comment',
-      max_per_hour: 30,
-      max_per_minute: 5,
-    })
-
-    if (limitCheck && !limitCheck.ok) {
-      if (limitCheck.reason === 'minute_limit') {
-        alert('Слишком быстро. Подождите минуту.')
-      } else if (limitCheck.reason === 'hour_limit') {
-        alert('Достигнут лимит комментариев на час (30).')
+      if (profile?.is_banned) {
+        alert('Ваш аккаунт заблокирован')
+        return
       }
-      return
-    }
 
-    const { error } = await supabase.from('comments').insert({
-      post_id: postId,
-      user_id: user.id,
-      parent_id: parentId,
-      text: text.trim(),
-    })
+      const found = await findBadWord(text)
+      if (found) {
+        alert('В комментарии есть недопустимые слова')
+        return
+      }
 
-    if (!error) {
-      setNewText('')
-      setReplyText('')
-      setReplyTo(null)
-      loadComments()
+      // Rate limit
+      const { data: limitCheck } = await supabase.rpc('check_and_log_action', {
+        action_input: 'comment',
+        max_per_hour: 30,
+        max_per_minute: 5,
+      })
+
+      if (limitCheck && !limitCheck.ok) {
+        if (limitCheck.reason === 'minute_limit') {
+          alert('Слишком быстро. Подождите минуту.')
+        } else if (limitCheck.reason === 'hour_limit') {
+          alert('Достигнут лимит комментариев на час (30).')
+        }
+        return
+      }
+
+      const { error } = await supabase.from('comments').insert({
+        post_id: postId,
+        user_id: user.id,
+        parent_id: parentId,
+        text: text.trim(),
+      })
+
+      if (!error) {
+        setNewText('')
+        setReplyText('')
+        setReplyTo(null)
+        loadComments()
+      }
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -159,10 +195,25 @@ export default function Comments({ postId }: { postId: string }) {
             <div className="flex items-center gap-3 mt-1">
               {user && (
                 <button
-                  onClick={() => setReplyTo(replyTo === c.id ? null : c.id)}
-                  className="text-xs text-brown/50 hover:text-wine transition-colors"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setReplyTo(replyTo === c.id ? null : c.id)
+                  }}
+                  className="text-xs text-brown/60 hover:text-wine transition-colors"
                 >
                   {replyTo === c.id ? 'Отмена' : 'Ответить'}
+                </button>
+              )}
+              {(user?.id === c.user_id || isStaff) && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteComment(c.id)}
+                  className="flex items-center gap-1 text-xs text-brown/40 hover:text-wine transition-colors"
+                  title="Удалить комментарий"
+                >
+                  <Trash2 size={11} strokeWidth={1.8} />
                 </button>
               )}
               {user && user.id !== c.user_id && (
@@ -179,14 +230,18 @@ export default function Comments({ postId }: { postId: string }) {
                   placeholder="Ваш ответ…"
                   className="flex-1 border border-emerald-dark/15 rounded-full px-4 py-1.5 text-sm bg-cream-warm/40 focus:outline-none focus:border-emerald-mid"
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitComment(replyText, c.id)
+                    if (e.key === 'Enter' && !submitting) {
+                      submitComment(replyText, c.id)
+                    }
                   }}
                 />
                 <button
+                  type="button"
                   onClick={() => submitComment(replyText, c.id)}
-                  className="bg-wine text-white px-3 py-1.5 rounded-full text-sm hover:bg-wine-dark transition-colors flex items-center"
+                  disabled={submitting || !replyText.trim()}
+                  className="bg-wine text-white px-3 py-1.5 rounded-full text-sm hover:bg-wine-dark transition-colors flex items-center disabled:opacity-50"
                 >
-                  <Send size={14} strokeWidth={1.8} />
+                  {submitting ? '…' : <Send size={14} strokeWidth={1.8} />}
                 </button>
               </div>
             )}
@@ -216,14 +271,16 @@ export default function Comments({ postId }: { postId: string }) {
             placeholder="Оставьте комментарий…"
             className="flex-1 border border-emerald-dark/15 rounded-full px-4 py-2 text-sm bg-cream-warm/40 focus:outline-none focus:border-emerald-mid"
             onKeyDown={(e) => {
-              if (e.key === 'Enter') submitComment(newText)
+              if (e.key === 'Enter' && !submitting) submitComment(newText)
             }}
           />
           <button
+            type="button"
             onClick={() => submitComment(newText)}
-            className="bg-emerald-mid text-cream px-4 py-2 rounded-full text-sm hover:bg-emerald-dark transition-colors flex items-center"
+            disabled={submitting || !newText.trim()}
+            className="bg-emerald-mid text-cream px-4 py-2 rounded-full text-sm hover:bg-emerald-dark transition-colors flex items-center disabled:opacity-50"
           >
-            <Send size={15} strokeWidth={1.8} />
+            {submitting ? '…' : <Send size={15} strokeWidth={1.8} />}
           </button>
         </div>
       ) : (

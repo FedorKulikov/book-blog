@@ -8,6 +8,7 @@ import { formatPostContent } from '@/lib/format'
 import Comments from '@/app/components/Comments'
 import LikeButton from '@/app/components/LikeButton'
 import ReportButton from '@/app/components/ReportButton'
+import ViewCounter from '@/app/components/ViewCounter'
 import { ChevronLeft, Pencil, Trash2, Eye, BookOpen } from '@/app/components/icons'
 
 export default function PostPage() {
@@ -108,6 +109,9 @@ export default function PostPage() {
         <ChevronLeft size={15} strokeWidth={2} />
         <span>Назад</span>
       </Link>
+
+      {/* Учёт просмотра: один раз за сессию (см. sessionStorage внутри) */}
+      <ViewCounter postId={post.id} />
 
       <article className="bg-cream-warm/30 border border-emerald-dark/10 rounded-2xl overflow-hidden">
         {post.post_images && post.post_images.length > 0 && (

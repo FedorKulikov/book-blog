@@ -1,13 +1,16 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-emerald-dark:  #0E2931;
   --color-emerald-mid:   #12484C;
   --color-emerald-light: #2B7574;
-  --color-emerald-deep:  #0A3B2E;
+  --color-emerald-deep:  #014b32;
   --color-wine:          #681F2D;
   --color-wine-dark:     #4A1520;
   --color-plum:          #493344;
+  --color-card-hover:    #EFE9DE;
   --color-cream:         #E2E2E0;
   --color-cream-warm:    #F5EFE4;
   --color-brown:         #4A2E27;
@@ -195,4 +198,83 @@ h1, h2, h3 {
 
 .post-content li {
   margin-bottom: 0.5em;
+}
+
+/* ==========================================
+   Тёмная тема (класс .dark на <html>)
+   ========================================== */
+
+.dark {
+  --color-cream:         #151515;
+  --color-cream-warm:    #1e1e1e;
+  --color-brown:         #b0a89e;
+  --color-brown-dark:    #e8e4df;
+
+  /* emerald-dark/deep НЕ переопределяем: им залиты сайдбар, шапка чата,
+     градиент Hero и правая колонка — там тёмный фон остаётся тёмным */
+  --color-emerald-mid:   #16545b;
+  --color-emerald-light: #3a908f;
+  --color-emerald-deep:  #0a2b20;
+
+  --color-wine:          #8a2a3b;
+  --color-wine-dark:     #6a1f2d;
+  --color-plum:          #59404f;
+  --color-card-hover:    #262626;
+}
+
+/* --- Правила ниже вне @layer, поэтому всегда побеждают утилиты --- */
+
+/* text-emerald-dark — всегда тёмный текст на светлом фоне (заголовки,
+   навигация, карточки); на кремовых фонах тёмной темы он стал бы
+   невидимым. Светлый тёмно-бирюзовый вместо него. */
+.dark .text-emerald-dark {
+  color: #7fc8c4;
+}
+
+/* Иконки/акценты text-emerald-mid (заголовки списков, пункты меню панелей) */
+.dark .text-emerald-mid {
+  color: #3a908f;
+}
+
+/* text-cream и его прозрачности (text-cream/70 …) всегда используются
+   как СВЕТЛЫЙ текст на тёмных поверхностях: сайдбар, шапки, Hero по фото,
+   правая колонка. В тёмной теме --color-cream становится тёмным —
+   возвращаем светлое значение для текстовой стороны. */
+.dark [class*="text-cream"] {
+  color: #e2e2e0;
+}
+
+/* Рамки border-emerald-dark/* на тёмном фоне иначе сольются с ним */
+.dark [class*="border-emerald-dark"] {
+  border-color: rgba(232, 228, 223, 0.18);
+}
+
+/* Волосяные линии border-cream/10,15 на тёмных панелях */
+.dark [class*="border-cream/"] {
+  border-color: rgba(226, 226, 224, 0.18);
+}
+
+/* text-wine на #151515 слишком тёмный — поднимаем контраст */
+.dark .text-wine {
+  color: #c9707f;
+}
+
+/* Ссылки внутри тела поста (--color-wine тоже инвертируется) */
+.dark .post-content a {
+  color: #c9707f;
+}
+
+/* Заголовки h2/h3 в теле поста берут var(--color-emerald-dark) напрямую
+   (см. блок типографики выше) — в тёмной теме они должны стать светлыми */
+.dark .post-content h2,
+.dark .post-content h3 {
+  color: #e8e4df;
+}
+
+/* Dev-индикатор Next.js (круглая «N») в next dev перекрывает тумблер темы
+   под цитатой в сайдбаре — сдвигаем его вправо. В проде элемента нет,
+   селектор просто не матчится. */
+nextjs-portal {
+  left: auto !important;
+  right: 20px !important;
 }

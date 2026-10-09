@@ -21,6 +21,7 @@ import {
   Library,
 } from './icons'
 import UnreadMessagesBadge from './UnreadMessagesBadge'
+import ThemeToggle from './ThemeToggle'
 
 export default function Sidebar() {
   const [user, setUser] = useState<any>(null)
@@ -132,6 +133,7 @@ export default function Sidebar() {
               <UnreadMessagesBadge />
             </span>
           </Link>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -262,11 +264,12 @@ export default function Sidebar() {
 
         {/* Цитата */}
         <div className="px-6 pb-6 pt-4 border-t border-cream/10">
-          <p className="font-playfair text-xs italic text-cream/40 leading-relaxed">
+          <p className="font-playfair text-xs italic text-cream/40 leading-relaxed mb-3">
             «Хорошие книги —<br />
             это часть жизни,<br />
             которая вдохновляет.»
           </p>
+          <ThemeToggle className="p-0 text-cream/50 hover:text-cream" />
         </div>
       </aside>
     </>
