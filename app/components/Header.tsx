@@ -202,7 +202,7 @@ export default function Sidebar() {
         <div className="px-4 pb-3">
           <Link
             href="/news/new"
-            className="flex items-center justify-center gap-2 bg-emerald-mid hover:bg-emerald-light text-cream rounded py-2.5 text-sm transition-colors"
+            className="flex items-center justify-center gap-2 bg-wine hover:bg-wine-dark text-white rounded py-2.5 text-sm transition-colors"
           >
             <PenLine size={16} strokeWidth={1.8} />
             <span>Создать пост</span>

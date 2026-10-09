@@ -111,11 +111,13 @@ export default function PostPage() {
 
       <article className="bg-cream-warm/30 border border-emerald-dark/10 rounded-2xl overflow-hidden">
         {post.post_images && post.post_images.length > 0 && (
-          <img
-            src={post.post_images[0].url}
-            alt={post.title}
-            className="w-full max-h-96 object-cover"
-          />
+          <div className="relative w-full h-64 md:h-96 overflow-hidden">
+            <img
+              src={post.post_images[0].url}
+              alt={post.title}
+              className="absolute inset-0 w-full h-full object-cover object-center"
+            />
+          </div>
         )}
 
         <div className="p-6 md:p-8">

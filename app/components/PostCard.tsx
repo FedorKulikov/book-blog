@@ -44,7 +44,7 @@ export default function PostCard({ post }: { post: Post }) {
           <img
             src={cover}
             alt={post.title}
-            className="absolute inset-0 w-full h-full object-cover group-hover:opacity-95 transition-opacity"
+            className="absolute inset-0 w-full h-full object-cover object-center group-hover:opacity-95 transition-opacity"
           />
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-mid/6 to-cream-warm/50 flex items-center justify-center">

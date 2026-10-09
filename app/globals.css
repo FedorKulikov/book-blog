@@ -5,12 +5,13 @@
   --color-emerald-mid:   #12484C;
   --color-emerald-light: #2B7574;
   --color-emerald-deep:  #0A3B2E;
-  --color-wine:          #861211;
-  --color-wine-dark:     #4D0E12;
+  --color-wine:          #681F2D;
+  --color-wine-dark:     #4A1520;
+  --color-plum:          #493344;
   --color-cream:         #E2E2E0;
-  --color-cream-warm:    #F5EFC6;
+  --color-cream-warm:    #F5EFE4;
   --color-brown:         #4A2E27;
-  --color-brown-dark:    #231815;
+  --color-brown-dark:    #292322;
 }
 
 body {
