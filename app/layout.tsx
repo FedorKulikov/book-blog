@@ -2,6 +2,7 @@ import { Playfair_Display, Inter } from 'next/font/google'
 import { Metadata } from 'next'
 import Sidebar from './components/Header'
 import MobileNav from './components/MobileNav'
+import YandexMetrika from './components/YandexMetrika'
 import './globals.css'
 
 const playfair = Playfair_Display({
@@ -48,6 +49,11 @@ export const metadata: Metadata = {
     description:
       'Книжное сообщество: свежие новинки, обсуждения прочитанного и авторское творчество.',
   },
+  // Подтверждение прав на сайт в Google Search Console.
+  // Если переменная задана — Next.js выведет <meta name="google-site-verification" content="..." />.
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
 }
 
 export default function RootLayout({
@@ -98,6 +104,8 @@ export default function RootLayout({
           <main className="main-content pb-16 lg:pb-0">{children}</main>
           <MobileNav />
         </div>
+        {/* Яндекс.Метрика: скрипт грузится после интерактива, ID из NEXT_PUBLIC_YANDEX_METRIKA_ID */}
+        <YandexMetrika />
       </body>
     </html>
   )
