@@ -1,0 +1,48 @@
+name: Daily Supabase backup
+
+on:
+  schedule:
+    # Каждый день в 03:00 ночи по UTC
+    - cron: '0 3 * * *'
+  # Ручной запуск из вкладки Actions
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: pg_dump
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump database with pg_dump
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error::Secret SUPABASE_DB_URL is not set"
+            exit 1
+          fi
+          pg_dump "$SUPABASE_DB_URL" \
+            --no-owner \
+            --no-privileges \
+            --schema=public \
+            --file=db_backup.sql
+          # Страховка: пустой дамп = провал шага, а не «успешный» бэкап
+          if [ ! -s db_backup.sql ]; then
+            echo "::error::db_backup.sql is empty"
+            exit 1
+          fi
+          ls -lh db_backup.sql
+          echo "Backup size: $(wc -c < db_backup.sql) bytes"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db_backup-${{ github.run_id }}
+          path: db_backup.sql
+          retention-days: 30
+          if-no-files-found: error
