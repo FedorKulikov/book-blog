@@ -12,21 +12,29 @@ jobs:
     name: pg_dump
     runs-on: ubuntu-latest
     steps:
-      - name: Install PostgreSQL client 17
+      - name: Install and set up PostgreSQL client 17
         run: |
+          # 1. Добавляем официальный репозиторий PGDG
           sudo apt-get update
           sudo apt-get install -y curl ca-certificates
-          # Добавляем официальный репозиторий PostgreSQL (PGDG)
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
             -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          
+          # 2. Устанавливаем клиент 17-й версии
           sudo apt-get update
-          # Устанавливаем клиент 17-й версии
           sudo apt-get install -y --no-install-recommends postgresql-client-17
-          # Проверяем версию
-          pg_dump --version
+          
+          # 3. КРИТИЧЕСКИ ВАЖНО: Явно задаем путь к бинарным файлам PostgreSQL 17
+          # и перезаписываем PATH для всех последующих шагов
+          PG_BIN="/usr/lib/postgresql/17/bin"
+          test -x "${PG_BIN}/pg_dump" || { echo "::error::postgresql-client-17 did not install ${PG_BIN}/pg_dump"; exit 1; }
+          echo "${PG_BIN}" >> "$GITHUB_PATH"
+          
+          # 4. Проверяем, что теперь используется правильная версия
+          "${PG_BIN}/pg_dump" --version
 
       - name: Dump database with pg_dump
         env:
