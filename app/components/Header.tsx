@@ -22,6 +22,7 @@ import {
 } from './icons'
 import UnreadMessagesBadge from './UnreadMessagesBadge'
 import ThemeToggle from './ThemeToggle'
+import NotificationBell from './NotificationBell'
 
 export default function Sidebar() {
   const [user, setUser] = useState<any>(null)
@@ -133,6 +134,7 @@ export default function Sidebar() {
               <UnreadMessagesBadge />
             </span>
           </Link>
+          <NotificationBell />
           <ThemeToggle />
         </div>
       </header>
@@ -228,15 +230,19 @@ export default function Sidebar() {
         <div className="px-4 pb-4 border-t border-cream/10 pt-4">
           {user ? (
             <div className="flex flex-col gap-2">
-              <Link
-                href="/profile"
-                className="flex items-center gap-2 text-sm truncate hover:text-cream-warm transition-colors"
-              >
-                <User size={14} strokeWidth={1.8} />
-                <span className="truncate">
-                  {profile?.username || user.email}
-                </span>
-              </Link>
+              <div className="flex items-center justify-between gap-2">
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-2 text-sm truncate hover:text-cream-warm transition-colors"
+                >
+                  <User size={14} strokeWidth={1.8} />
+                  <span className="truncate">
+                    {profile?.username || user.email}
+                  </span>
+                </Link>
+                {/* Колокольчик уведомлений — только для авторизованных */}
+                <NotificationBell />
+              </div>
               <Link
                 href="/profile/edit"
                 className="text-[11px] text-cream/40 hover:text-cream-warm transition-colors pl-5"
