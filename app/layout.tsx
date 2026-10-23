@@ -62,7 +62,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="ru" className={`${playfair.variable} ${inter.variable}`}>
+    <html
+      lang="ru"
+      className={`${playfair.variable} ${inter.variable}`}
+      suppressHydrationWarning
+    >
       <body className="bg-cream text-brown-dark">
         {/* Тема применяется ДО первой отрисовки — против вспышки светлого.
             Второй блок — только для next dev: индикатор Next.js живёт в shadow
