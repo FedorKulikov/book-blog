@@ -158,16 +158,24 @@ export default function Sidebar() {
           <XIcon size={20} strokeWidth={1.8} />
         </button>
 
-        {/* Логотип */}
-        <Link href="/" className="px-6 py-6 border-b border-cream/10">
-          <div className="text-xl font-playfair font-bold flex items-center gap-2">
-            <Library size={22} strokeWidth={1.6} />
-            <span>Хлеба и букв</span>
-          </div>
-          <div className="text-[11px] tracking-[0.2em] uppercase text-cream/45 mt-2">
-            Книги · Люди · Идеи
-          </div>
-        </Link>
+        {/* Логотип и Колокольчик */}
+        <div className="px-6 py-6 border-b border-cream/10 flex items-start justify-between">
+          <Link href="/">
+            <div className="text-xl font-playfair font-bold flex items-center gap-2">
+              <Library size={22} strokeWidth={1.6} />
+              <span>Хлеба и букв</span>
+            </div>
+            <div className="text-[11px] tracking-[0.2em] uppercase text-cream/45 mt-2">
+              Книги · Люди · Идеи
+            </div>
+          </Link>
+          {/* Показываем колокольчик только авторизованным */}
+          {user && (
+            <div className="pt-1">
+              <NotificationBell />
+            </div>
+          )}
+        </div>
 
         {/* Навигация */}
         <nav className="flex-1 py-4 overflow-y-auto">
@@ -240,8 +248,6 @@ export default function Sidebar() {
                     {profile?.username || user.email}
                   </span>
                 </Link>
-                {/* Колокольчик уведомлений — только для авторизованных */}
-                <NotificationBell />
               </div>
               <Link
                 href="/profile/edit"

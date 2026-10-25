@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "lifetime": {
+    "total_sessions": 4
+  },
+  "sessions": [
+    {
+      "session_id": "session-08a3d0f4-b1d8-48ed-9490-6759811ca3ff",
+      "agent": "mimo-v2.6-flash-free",
+      "measured_tokens": 99321,
+      "at": "2026-10-23T21:54:30.000Z"
+    },
+    {
+      "session_id": "session-229a7084-af67-479a-a449-03d8a884913c",
+      "agent": "opencode/mimo-v2.6-flash-free",
+      "measured_tokens": 14651,
+      "at": "2026-10-23T20:04:12.686Z"
+    },
+    {
+      "session_id": "session-5e110202-dd12-4805-8173-7a589e0b29bd",
+      "agent": "mimo-v2.6-flash-free",
+      "measured_tokens": 16628,
+      "at": "2026-10-23T22:45:26.442Z"
+    },
+    {
+      "session_id": "session-1bd2da1c-7296-46ee-aa5e-88087eec1f99",
+      "agent": "deepseek-flash",
+      "measured_tokens": 20761,
+      "at": "2026-10-25T18:28:26.700Z"
+    }
+  ]
+}
