@@ -5,6 +5,7 @@ import LikeButton from './LikeButton'
 import BookmarkButton from './BookmarkButton'
 import { MessageCircle, Hash, BookOpen, Eye } from './icons'
 import { toPlainText } from '@/lib/text'
+import { coverGradient, coverInitial } from '@/lib/design'
 
 export type PostCardData = {
   id: string
@@ -50,12 +51,17 @@ export default function PostCard({ post }: { post: PostCardData }) {
             className="absolute inset-0 w-full h-full object-cover object-center group-hover:opacity-95 transition-opacity"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-mid/6 to-cream-warm/50 flex items-center justify-center">
+          <div
+            className={`absolute inset-0 bg-gradient-to-br ${coverGradient(post.id)} flex items-center justify-center overflow-hidden`}
+          >
             <BookOpen
-              size={44}
-              strokeWidth={1.2}
-              className="text-emerald-mid/25"
+              size={150}
+              strokeWidth={0.7}
+              className="absolute -right-6 -bottom-6 text-white/10"
             />
+            <span className="font-playfair text-6xl font-bold text-white/85 select-none">
+              {coverInitial(post.title)}
+            </span>
           </div>
         )}
         <span

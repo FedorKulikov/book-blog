@@ -23,6 +23,7 @@ import {
   Share2,
   Check,
 } from '@/app/components/icons'
+import { coverGradient, coverInitial } from '@/lib/design'
 import type { PostDetail } from './getPost'
 
 export default function PostView({ post }: { post: PostDetail }) {
@@ -117,13 +118,26 @@ export default function PostView({ post }: { post: PostDetail }) {
       <ViewCounter postId={post.id} />
 
       <article className="bg-cream-warm/30 border border-emerald-dark/10 rounded-2xl overflow-hidden">
-        {cover && (
+        {cover ? (
           <div className="relative w-full aspect-[16/10] overflow-hidden">
             <img
               src={cover.url}
               alt={post.title}
               className="absolute inset-0 w-full h-full object-cover object-top"
             />
+          </div>
+        ) : (
+          <div
+            className={`relative w-full aspect-[16/10] overflow-hidden bg-gradient-to-br ${coverGradient(post.id)} flex items-center justify-center`}
+          >
+            <BookOpen
+              size={170}
+              strokeWidth={0.7}
+              className="absolute -right-8 -bottom-8 text-white/10"
+            />
+            <span className="font-playfair text-7xl md:text-8xl font-bold text-white/85 select-none">
+              {coverInitial(post.title)}
+            </span>
           </div>
         )}
 

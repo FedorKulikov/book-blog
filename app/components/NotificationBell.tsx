@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Bell } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
@@ -81,6 +82,69 @@ export default function NotificationBell() {
   const openRef = useRef(false)
   // Актуальный uid — чтобы после await не записать state после logout/sмены юзера.
   const userIdRef = useRef<string | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  // Меню рендерится в портал на document.body.
+  // Причина: .sidebar имеет overflow-y: auto (а по спецификации это делает
+  // overflow-x тоже auto), поэтому любое absolute-меню внутри сайдбара
+  // обрезается его краем — с right-0 оно уходило влево за экран.
+  // Координаты считаем от кнопки, позиционируем через position: fixed.
+  const [menuPos, setMenuPos] = useState<{
+    top: number
+    left: number
+    maxHeight: number
+  } | null>(null)
+
+  const MENU_WIDTH = 320 // = w-80
+  const MENU_GAP = 8 // отступ от кнопки
+  const MENU_MARGIN = 12 // минимальный отступ от края экрана
+
+  const computeMenuPosition = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    const viewportH = window.innerHeight
+    const viewportW = window.innerWidth
+    const maxHeight = Math.min(384, viewportH - MENU_MARGIN * 2)
+
+    // По умолчанию открываем вниз; если снизу не помещается, а сверху места
+    // больше — открываем вверх (актуально на мобильных).
+    const spaceBelow = viewportH - rect.bottom - MENU_GAP - MENU_MARGIN
+    const spaceAbove = rect.top - MENU_GAP - MENU_MARGIN
+    const openUp =
+      spaceBelow < Math.min(maxHeight, 240) && spaceAbove > spaceBelow
+
+    const top = openUp
+      ? Math.max(MENU_MARGIN, rect.top - MENU_GAP - maxHeight)
+      : Math.min(rect.bottom + MENU_GAP, viewportH - MENU_MARGIN - maxHeight)
+
+    // Вправо от кнопки, но не за правый край экрана.
+    const left = Math.min(
+      Math.max(rect.left, MENU_MARGIN),
+      Math.max(MENU_MARGIN, viewportW - MENU_WIDTH - MENU_MARGIN),
+    )
+
+    setMenuPos({ top, left, maxHeight })
+  }, [])
+
+  // Пока меню открыто — держим его привязанным к кнопке (ресайз/скролл).
+  useEffect(() => {
+    if (!open) return
+
+    function reposition() {
+      computeMenuPosition()
+    }
+
+    window.addEventListener('resize', reposition)
+    // capture: true — ловим скролл и внутри сайдбара, и на странице
+    window.addEventListener('scroll', reposition, true)
+
+    return () => {
+      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', reposition, true)
+    }
+  }, [open, computeMenuPosition])
   const pathname = usePathname()
 
   // Точный счётчик непрочитанных — независимо от лимита 10 в списке.
@@ -308,7 +372,13 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!open) return
     function onDocClick(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      // Меню живёт в портале на document.body, поэтому проверяем его отдельно:
+      // без этого клик внутри меню сразу закрывал бы его.
+      const insideTrigger = wrapRef.current?.contains(target) ?? false
+      const insideMenu = menuRef.current?.contains(target) ?? false
+
+      if (!insideTrigger && !insideMenu) {
         setOpen(false)
         openRef.current = false
       }
@@ -342,6 +412,8 @@ export default function NotificationBell() {
 
   async function handleOpen() {
     const next = !open
+    // Координаты считаем ДО открытия, чтобы портал сразу отрисовался в нужном месте
+    if (next) computeMenuPosition()
     setOpen(next)
     openRef.current = next // синхронно, не ждём эффект
     if (next) {
@@ -364,6 +436,7 @@ export default function NotificationBell() {
   return (
     <div ref={wrapRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         onClick={handleOpen}
         aria-label={
@@ -381,8 +454,18 @@ export default function NotificationBell() {
         )}
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto bg-cream text-brown-dark rounded-xl shadow-xl border border-emerald-dark/10 z-50">
+      {open && menuPos && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: MENU_WIDTH,
+            maxHeight: menuPos.maxHeight,
+          }}
+          className="overflow-y-auto bg-cream text-brown-dark rounded-xl shadow-xl border border-emerald-dark/10 z-[60]"
+        >
           <div className="px-4 py-3 border-b border-emerald-dark/10 flex items-center justify-between">
             <span className="font-playfair font-bold text-sm">Уведомления</span>
             {unreadCount > 0 && (
@@ -454,7 +537,8 @@ export default function NotificationBell() {
               })}
             </ul>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
