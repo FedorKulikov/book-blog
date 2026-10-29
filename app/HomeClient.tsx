@@ -205,7 +205,7 @@ export default function HomeClient({ initialPosts }: { initialPosts: any[] }) {
           )}
 
           {!loading && posts.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
               {posts.map(post => (
                 <PostCard key={post.id} post={post} />
               ))}

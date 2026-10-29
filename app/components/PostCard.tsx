@@ -103,10 +103,16 @@ export default function PostCard({ post }: { post: PostCardData }) {
           </Link>
         )}
 
-        {/* Превью: ровно 3 строки (line-clamp-3) + явный вход в пост.
-            Markdown вычищаем через toPlainText из lib/text.ts. */}
-        <div className="flex-1">
-          <p className="text-brown-dark/65 text-sm line-clamp-3 mb-2 leading-relaxed">
+        {/* Превью + явный вход в пост. Markdown вычищаем через toPlainText (lib/text.ts).
+            С обложкой обрезаем до 3 строк: карточки в сетке выровнены по фото.
+            Без обложки не обрезаем — текст занимает свободную высоту
+            и прижимает футер к низу карточки. */}
+        <div>
+          <p
+            className={`text-brown-dark/65 text-sm mb-2 leading-relaxed ${
+              cover ? 'line-clamp-3' : ''
+            }`}
+          >
             {toPlainText(post.content ?? '')}
           </p>
           <Link
@@ -134,7 +140,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
           </div>
         )}
 
-        <div className="flex items-center gap-2 text-xs text-brown/50 border-t border-emerald-dark/6 pt-3 mt-auto">
+        <div className="flex items-center gap-2 text-xs text-brown/50 border-t border-emerald-dark/6 pt-3">
           <Link
             href={
               post.profiles?.username
