@@ -80,11 +80,6 @@ export default function DiscussionsClient({ initialPosts }: { initialPosts: any[
             </p>
           </div>
 
-          <div className="pt-6 border-t border-cream/15">
-            <p className="font-playfair text-xs italic text-cream/55 leading-relaxed">
-              «Хорошие книги объединяют людей.»
-            </p>
-          </div>
         </aside>
       </div>
     </main>

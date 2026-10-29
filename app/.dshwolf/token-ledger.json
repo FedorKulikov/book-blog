@@ -1,7 +1,7 @@
 {
   "version": 1,
   "lifetime": {
-    "total_sessions": 4
+    "total_sessions": 6
   },
   "sessions": [
     {
@@ -27,6 +27,18 @@
       "agent": "deepseek-flash",
       "measured_tokens": 20761,
       "at": "2026-10-25T18:28:26.700Z"
+    },
+    {
+      "session_id": "session-2b34d8e3-454c-4d8a-a25c-e6b2b5e398ea",
+      "agent": "deepseek-flash",
+      "measured_tokens": 16609,
+      "at": "2026-10-25T21:59:56.210Z"
+    },
+    {
+      "session_id": "session-21b69786-e8b5-482f-96b3-61364477a306",
+      "agent": "deepseek/deepseek-v4.1-flash-1017",
+      "measured_tokens": 262903,
+      "at": "2026-10-29T15:25:32.729Z"
     }
   ]
 }

@@ -1,10 +1,18 @@
-import { Metadata } from 'next'
-import { createClient } from '@supabase/supabase-js'
+// app/post/[id]/layout.tsx
+// Мета-теги страницы поста. Данные берём из getPost() — того же модуля,
+// что и page.tsx: благодаря cache() запрос к Supabase выполняется один раз.
+import type { Metadata } from 'next'
+import { getPost } from './getPost'
+import { toPlainText, truncate } from '@/lib/text'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+const FALLBACK_OG_IMAGE = '/og-default.jpg' // public/og-default.jpg, 1200×630
+const DESCRIPTION_LIMIT = 200
+const DEFAULT_DESCRIPTION =
+  'Новости, обсуждения и авторские тексты книжного сообщества «Хлеба и букв».'
+
+/* ------------------------------------------------------------------ */
+/* Метаданные                                                          */
+/* ------------------------------------------------------------------ */
 
 export async function generateMetadata({
   params,
@@ -12,52 +20,64 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const { id } = await params
+  const post = await getPost(id)
 
-  const { data, error } = await supabase
-    .from('posts')
-    .select('title, content, post_images(url), books(title, author, year)')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (error) {
-    console.error('[generateMetadata] post fetch error:', error)
+  if (!post) {
+    return {
+      title: 'Пост не найден',
+      robots: { index: false, follow: false },
+    }
   }
 
-  if (!data) {
-    return { title: 'Пост не найден' }
-  }
+  const book = post.books
+  const image = post.post_images[0]?.url ?? book?.cover_url ?? null
 
-  const image = (data.post_images as any[])?.[0]?.url
-  const description = (data.content || '')
-    .replace(/\s+/g, ' ')
-    .slice(0, 160)
-    .trim()
+  const title = post.title.trim() || 'Пост'
 
-  // Постгресст возвращает to-one связь объектом, а типы клиента выводят её массивом
-  const book = Array.isArray(data.books) ? data.books[0] : data.books
+  const bookPrefix =
+    book?.title
+      ? `Книга «${book.title}»${book.author ? ` — ${book.author}` : ''}${
+          book.year ? `, ${book.year}` : ''
+        }. `
+      : ''
 
-  const bookLine = book
-    ? `📖 ${book.title}${book.author ? ' — ' + book.author : ''}${book.year ? ', ' + book.year : ''}. `
-    : ''
+  // Сначала префикс с книгой, потом очистка markdown и обрезка по границе слова.
+  const description = truncate(
+    bookPrefix + (toPlainText(post.content ?? '') || DEFAULT_DESCRIPTION),
+    DESCRIPTION_LIMIT,
+  )
+
+  const images: { url: string; alt: string; width?: number; height?: number }[] = image
+    ? [{ url: image, alt: title }]
+    : [{ url: FALLBACK_OG_IMAGE, width: 1200, height: 630, alt: 'Хлеба и букв' }]
+
+  const isPublic = post.status === 'approved'
 
   return {
-    title: data.title,
-    description: bookLine + description,
+    title,
+    description,
+    alternates: { canonical: `/post/${post.id}` },
+    robots: isPublic ? undefined : { index: false, follow: false },
     openGraph: {
-      title: data.title,
-      description: bookLine + description,
       type: 'article',
-      images: image ? [{ url: image }] : [],
+      locale: 'ru_RU',
+      siteName: 'Хлеба и букв',
+      url: `/post/${post.id}`,
+      title,
+      description,
+      // Next ждёт ISO-строку (а не Date); created_at из Postgres уже ISO.
+      publishedTime: post.created_at || undefined,
+      images,
     },
     twitter: {
       card: 'summary_large_image',
-      title: data.title,
-      description: bookLine + description,
-      images: image ? [image] : [],
+      title,
+      description,
+      images: images.map((img) => img.url),
     },
   }
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function PostLayout({ children }: { children: React.ReactNode }) {
   return children
 }

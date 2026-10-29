@@ -2,16 +2,18 @@
 
 import Link from 'next/link'
 import LikeButton from './LikeButton'
+import BookmarkButton from './BookmarkButton'
 import { MessageCircle, Hash, BookOpen, Eye } from './icons'
+import { toPlainText } from '@/lib/text'
 
-type Post = {
+export type PostCardData = {
   id: string
   title: string
   content: string
   type: string
   status?: string
   created_at: string
-  views_count?: number
+  views_count?: number | null
   profiles?: { username: string; avatar_url?: string | null } | null
   post_images?: { url: string }[] | null
   comments?: { count: number }[] | null
@@ -25,10 +27,11 @@ const TYPE_LABEL: Record<string, { text: string; color: string }> = {
   discussion: { text: 'Обсуждение', color: 'bg-brown/8 text-brown' },
 }
 
-export default function PostCard({ post }: { post: Post }) {
+export default function PostCard({ post }: { post: PostCardData }) {
   const cover = post.post_images?.[0]?.url
   const type = TYPE_LABEL[post.type] || TYPE_LABEL.news
   const commentsCount = post.comments?.[0]?.count ?? 0
+  const viewsCount = post.views_count ?? 0
   const tags = (post.post_tags || [])
     .map(pt => pt.tags)
     .filter((t): t is { name: string; slug: string } => !!t)
@@ -91,9 +94,20 @@ export default function PostCard({ post }: { post: Post }) {
           </Link>
         )}
 
-        <p className="text-brown-dark/65 text-sm line-clamp-3 mb-3 flex-1 leading-relaxed">
-          {post.content}
-        </p>
+        {/* Превью: ровно 3 строки (line-clamp-3) + явный вход в пост.
+            Markdown вычищаем через toPlainText из lib/text.ts. */}
+        <div className="flex-1">
+          <p className="text-brown-dark/65 text-sm line-clamp-3 mb-2 leading-relaxed">
+            {toPlainText(post.content ?? '')}
+          </p>
+          <Link
+            href={`/post/${post.id}`}
+            className="inline-flex items-center gap-1 text-xs font-medium text-wine hover:gap-1.5 transition-all mb-3"
+          >
+            <span>Читать далее</span>
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
 
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4">
@@ -145,14 +159,20 @@ export default function PostCard({ post }: { post: Post }) {
           </span>
 
           <span className="ml-auto flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <Eye size={12} strokeWidth={1.8} />
-              <span>{post.views_count ?? 0}</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <MessageCircle size={12} strokeWidth={1.8} />
-              <span>{commentsCount}</span>
-            </span>
+            {/* Нулевые счётчики не показываем: «0 0» рядом выглядит как «00» */}
+            {viewsCount > 0 && (
+              <span className="flex items-center gap-1" title="Просмотров">
+                <Eye size={12} strokeWidth={1.8} />
+                <span>{viewsCount}</span>
+              </span>
+            )}
+            {commentsCount > 0 && (
+              <span className="flex items-center gap-1" title="Комментариев">
+                <MessageCircle size={12} strokeWidth={1.8} />
+                <span>{commentsCount}</span>
+              </span>
+            )}
+            <BookmarkButton postId={post.id} size={12} />
             <LikeButton postId={post.id} />
           </span>
         </div>

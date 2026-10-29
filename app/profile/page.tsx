@@ -4,16 +4,42 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import PostCard from '../components/PostCard'
+import PostCard, { type PostCardData } from '../components/PostCard'
 import ShareProfileButton from '../components/ShareProfileButton'
-import { Pencil, Shield, UserCircle, ChevronRight } from '../components/icons'
+import {
+  Pencil,
+  Shield,
+  UserCircle,
+  ChevronRight,
+  Bookmark,
+} from '../components/icons'
+
+type Profile = {
+  id: string
+  username: string | null
+  avatar_url: string | null
+  bio: string | null
+  role: string | null
+  created_at: string
+}
+
+type Tab = 'posts' | 'saved'
+
+// Закладка → вложенный пост (to-one, поэтому объект, а не массив)
+type BookmarkRow = { created_at: string; posts: PostCardData | null }
 
 export default function ProfilePage() {
   const router = useRouter()
-  const [profile, setProfile] = useState<any>(null)
-  const [posts, setPosts] = useState<any[]>([])
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [posts, setPosts] = useState<PostCardData[]>([])
   const [stats, setStats] = useState({ posts: 0, likes: 0, comments: 0 })
   const [loading, setLoading] = useState(true)
+
+  const [userId, setUserId] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('posts')
+  const [savedPosts, setSavedPosts] = useState<PostCardData[]>([])
+  const [savedLoading, setSavedLoading] = useState(false)
+  const [savedError, setSavedError] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -22,13 +48,14 @@ export default function ProfilePage() {
         router.push('/login')
         return
       }
+      setUserId(user.id)
 
       const { data: p } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single()
-      setProfile(p)
+      setProfile(p as unknown as Profile | null)
 
       const { data: postsData } = await supabase
         .from('posts')
@@ -36,9 +63,10 @@ export default function ProfilePage() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      setPosts(postsData || [])
+      const myPosts = (postsData ?? []) as unknown as PostCardData[]
+      setPosts(myPosts)
 
-      const postIds = (postsData || []).map(x => x.id)
+      const postIds = myPosts.map(x => x.id)
       let likesCount = 0
       let commentsCount = 0
 
@@ -57,7 +85,7 @@ export default function ProfilePage() {
       }
 
       setStats({
-        posts: postsData?.length || 0,
+        posts: myPosts.length,
         likes: likesCount,
         comments: commentsCount,
       })
@@ -66,6 +94,53 @@ export default function ProfilePage() {
     }
     load()
   }, [router])
+
+  // «Сохранённое» грузим при открытии вкладки (и при каждом возврате на неё,
+  // чтобы свежие закладки появлялись без перезагрузки страницы).
+  useEffect(() => {
+    if (tab !== 'saved' || !userId) return
+
+    let alive = true
+
+    async function loadSaved() {
+      setSavedLoading(true)
+      setSavedError(null)
+
+      try {
+        const { data, error } = await supabase
+          .from('bookmarks')
+          .select('created_at, posts(*, profiles!posts_user_id_fkey(username, avatar_url), post_images(url), comments(count), post_tags(tags(name, slug)), books(id, title, author, year))')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+
+        if (!alive) return
+
+        if (error) {
+          console.error('[profile] bookmarks select failed:', error.message)
+          setSavedError('Не удалось загрузить сохранённое.')
+          setSavedPosts([])
+          return
+        }
+
+        const rows = (data ?? []) as unknown as BookmarkRow[]
+        // Пост мог стать недоступен по RLS (например, ушёл на модерацию) — отбрасываем null.
+        setSavedPosts(
+          rows.map(r => r.posts).filter((p): p is PostCardData => p !== null),
+        )
+      } catch (error) {
+        console.error('[profile] bookmarks failed:', error)
+        if (alive) setSavedError('Не удалось загрузить сохранённое.')
+      } finally {
+        if (alive) setSavedLoading(false)
+      }
+    }
+
+    loadSaved()
+
+    return () => {
+      alive = false
+    }
+  }, [tab, userId])
 
   if (loading) {
     return <main className="p-4 md:p-8 max-w-7xl mx-auto">Загрузка…</main>
@@ -79,6 +154,13 @@ export default function ProfilePage() {
         year: 'numeric',
       })
     : ''
+
+  const tabClass = (active: boolean) =>
+    `flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-colors ${
+      active
+        ? 'bg-wine text-white'
+        : 'bg-cream-warm/40 text-brown-dark border border-emerald-dark/10 hover:bg-cream-warm/70'
+    }`
 
   return (
     <main className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -178,26 +260,82 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Посты */}
-      <h2 className="font-playfair text-2xl font-bold text-emerald-dark mb-4">
-        Мои публикации
-      </h2>
+      {/* Вкладки: свои посты / сохранённое */}
+      <div className="flex items-center gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setTab('posts')}
+          className={tabClass(tab === 'posts')}
+          aria-pressed={tab === 'posts'}
+        >
+          Мои публикации
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('saved')}
+          className={tabClass(tab === 'saved')}
+          aria-pressed={tab === 'saved'}
+        >
+          <Bookmark
+            size={14}
+            strokeWidth={1.8}
+            fill={tab === 'saved' ? 'currentColor' : 'none'}
+          />
+          Сохранённое
+        </button>
+      </div>
 
-      {posts.length === 0 && (
-        <p className="text-brown/70">
-          У вас пока нет публикаций.{' '}
-          <Link href="/news/new" className="text-wine hover:underline">
-            Создать первый пост
-          </Link>
-          ?
-        </p>
+      {tab === 'posts' && (
+        <>
+          {posts.length === 0 && (
+            <p className="text-brown/70">
+              У вас пока нет публикаций.{' '}
+              <Link href="/news/new" className="text-wine hover:underline">
+                Создать первый пост
+              </Link>
+              ?
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {posts.map(post => (
+              <PostCard key={post.id} post={post} />
+            ))}
+          </div>
+        </>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {posts.map(post => (
-          <PostCard key={post.id} post={post} />
-        ))}
-      </div>
+      {tab === 'saved' && (
+        <>
+          {savedLoading && (
+            <p className="text-sm text-brown/60">Загружаем сохранённое…</p>
+          )}
+
+          {!savedLoading && savedError && (
+            <p className="text-sm text-wine">{savedError}</p>
+          )}
+
+          {!savedLoading && !savedError && savedPosts.length === 0 && (
+            <p className="text-brown/70">
+              Вы пока ничего не сохранили. Нажмите{' '}
+              <Bookmark
+                size={13}
+                strokeWidth={1.8}
+                className="inline align-[-2px] text-wine"
+              />{' '}
+              на карточке поста, чтобы вернуться к нему позже.
+            </p>
+          )}
+
+          {!savedLoading && !savedError && savedPosts.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {savedPosts.map(post => (
+                <PostCard key={post.id} post={post} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </main>
   )
 }

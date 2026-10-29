@@ -179,7 +179,7 @@ export default function HomeClient({ initialPosts }: { initialPosts: any[] }) {
               {FEED_HEADINGS[filter]}
             </h2>
             <Link
-              href="/news"
+              href="/posts"
               className="text-sm text-wine hover:underline flex items-center gap-1"
             >
               Все посты

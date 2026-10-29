@@ -76,11 +76,6 @@ export default function CreativeClient({ initialPosts }: { initialPosts: any[] }
             </p>
           </div>
 
-          <div className="pt-6 border-t border-cream/15">
-            <p className="font-playfair text-xs italic text-cream/55 leading-relaxed">
-              «Вдохновение рядом. Нужно только открыть книгу.»
-            </p>
-          </div>
         </aside>
       </div>
     </main>

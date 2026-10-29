@@ -77,12 +77,6 @@ export default function NewsClient({ initialPosts }: { initialPosts: any[] }) {
             </p>
           </div>
 
-          <div className="pt-6 border-t border-cream/15">
-            <p className="font-playfair text-xs italic text-cream/55 leading-relaxed">
-              «Хорошие книги — это не просто страницы, это часть жизни,
-              которая вдохновляет.»
-            </p>
-          </div>
         </aside>
       </div>
     </main>

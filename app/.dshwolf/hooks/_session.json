@@ -1,0 +1,227 @@
+{
+  "session_id": "",
+  "started": "",
+  "files_read": {
+    "C:/Users/Fedor/projects/book-blog/app/profile/page.tsx": {
+      "count": 2,
+      "tokens": 0,
+      "first_read": "2026-10-29T15:23:05.067Z"
+    }
+  },
+  "files_written": [
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/getPost.ts",
+      "at": "2026-10-25T22:07:52.598Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/page.tsx",
+      "at": "2026-10-25T22:07:52.660Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/PostView.tsx",
+      "at": "2026-10-25T22:08:09.386Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/layout.tsx",
+      "at": "2026-10-25T22:08:09.422Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/getPost.ts",
+      "at": "2026-10-25T22:08:31.669Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/getPost.ts",
+      "at": "2026-10-25T22:08:31.706Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/layout.tsx",
+      "at": "2026-10-25T22:08:31.735Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/.tmp-netdiag.mjs",
+      "at": "2026-10-25T22:12:57.270Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/getPost.ts",
+      "at": "2026-10-25T22:14:47.690Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/getPost.ts",
+      "at": "2026-10-25T22:15:26.513Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/lib/supabase/client.ts",
+      "at": "2026-10-25T22:24:20.614Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/lib/supabase/server.ts",
+      "at": "2026-10-25T22:24:20.642Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/lib/supabase.js",
+      "at": "2026-10-25T22:24:28.367Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/proxy.ts",
+      "at": "2026-10-25T22:24:28.388Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/getPost.ts",
+      "at": "2026-10-25T22:24:37.460Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/PostView.tsx",
+      "at": "2026-10-25T22:24:37.504Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/proxy.ts",
+      "at": "2026-10-25T22:26:23.446Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-10-25T22:45:19.118Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx",
+      "at": "2026-10-25T22:45:19.184Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/news/NewsClient.tsx",
+      "at": "2026-10-25T22:45:19.245Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/discussions/DiscussionsClient.tsx",
+      "at": "2026-10-25T22:45:19.281Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/creative/CreativeClient.tsx",
+      "at": "2026-10-25T22:45:19.323Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-10-25T22:45:38.214Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/sitemap.ts",
+      "at": "2026-10-25T22:45:38.250Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/books/BooksClient.tsx",
+      "at": "2026-10-25T22:45:38.289Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/posts/page.tsx",
+      "at": "2026-10-25T22:45:38.307Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-10-25T22:45:53.388Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/lib/text.ts",
+      "at": "2026-10-25T22:49:47.389Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/posts/postsQuery.ts",
+      "at": "2026-10-25T22:49:47.409Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/posts/PostList.tsx",
+      "at": "2026-10-25T22:49:47.425Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/posts/page.tsx",
+      "at": "2026-10-25T22:49:47.474Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-10-25T22:49:59.351Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/layout.tsx",
+      "at": "2026-10-25T22:49:59.396Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-10-25T22:50:06.180Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-10-25T22:50:08.277Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-10-25T22:50:10.486Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-10-25T22:50:13.098Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-10-25T22:50:15.721Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/posts/postsQuery.ts",
+      "at": "2026-10-25T22:51:19.426Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/posts/postsQuery.ts",
+      "at": "2026-10-25T22:51:40.487Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/icons.ts",
+      "at": "2026-10-25T22:57:04.392Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/BookmarkButton.tsx",
+      "at": "2026-10-25T22:57:04.416Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-10-25T22:57:12.207Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/PostView.tsx",
+      "at": "2026-10-25T22:57:15.073Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/post/[id]/PostView.tsx",
+      "at": "2026-10-25T22:57:17.357Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/profile/page.tsx",
+      "at": "2026-10-25T22:57:30.254Z"
+    }
+  ],
+  "edit_counts": {
+    "C:/Users/Fedor/projects/book-blog/app/post/[id]/getPost.ts": 6,
+    "C:/Users/Fedor/projects/book-blog/app/post/[id]/page.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/post/[id]/PostView.tsx": 4,
+    "C:/Users/Fedor/projects/book-blog/app/post/[id]/layout.tsx": 3,
+    "C:/Users/Fedor/projects/book-blog/.tmp-netdiag.mjs": 1,
+    "C:/Users/Fedor/projects/book-blog/lib/supabase/client.ts": 1,
+    "C:/Users/Fedor/projects/book-blog/lib/supabase/server.ts": 1,
+    "C:/Users/Fedor/projects/book-blog/lib/supabase.js": 1,
+    "C:/Users/Fedor/projects/book-blog/proxy.ts": 2,
+    "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": 7,
+    "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/news/NewsClient.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/discussions/DiscussionsClient.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/creative/CreativeClient.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/sitemap.ts": 1,
+    "C:/Users/Fedor/projects/book-blog/app/books/BooksClient.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/posts/page.tsx": 2,
+    "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx": 3,
+    "C:/Users/Fedor/projects/book-blog/lib/text.ts": 1,
+    "C:/Users/Fedor/projects/book-blog/app/posts/postsQuery.ts": 3,
+    "C:/Users/Fedor/projects/book-blog/app/posts/PostList.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/components/icons.ts": 1,
+    "C:/Users/Fedor/projects/book-blog/app/components/BookmarkButton.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/profile/page.tsx": 1
+  },
+  "anatomy_hits": 0,
+  "anatomy_misses": 25,
+  "repeated_reads_warned": 8,
+  "cerebrum_warnings": 0
+}

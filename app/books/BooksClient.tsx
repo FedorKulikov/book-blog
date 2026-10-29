@@ -7,16 +7,26 @@ import EmptyState from '../components/EmptyState'
 import SortTabs, { SortKey } from '../components/SortTabs'
 import { BookOpen, Search, MessageCircle, Eye } from '../components/icons'
 
+/** Строка книги, которую отдаёт PostgREST (без any). */
+export type BookRow = {
+  id: string
+  title: string | null
+  author: string | null
+  cover_url: string | null
+  views_count?: number | null
+  created_at: string
+}
+
 export default function BooksClient({
   initialBooks,
   initialPostsCountByBook,
   initialQuery = '',
 }: {
-  initialBooks: any[]
+  initialBooks: BookRow[]
   initialPostsCountByBook: Record<string, number>
   initialQuery?: string
 }) {
-  const [books] = useState<any[]>(initialBooks)
+  const [books] = useState<BookRow[]>(initialBooks)
   const [postsCountByBook] = useState<Record<string, number>>(
     initialPostsCountByBook
   )
@@ -88,48 +98,65 @@ export default function BooksClient({
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-        {filteredBooks.map(book => (
-          <Link key={book.id} href={`/book/${book.id}`} className="group">
-            {/* Обложка */}
-            <div className="aspect-[2/3] rounded-xl overflow-hidden bg-emerald-mid/10 mb-3 group-hover:opacity-90 transition-opacity relative">
-              {book.cover_url ? (
-                <img
-                  src={book.cover_url}
-                  alt={book.title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <BookOpen
-                    size={40}
-                    strokeWidth={1.2}
-                    className="text-emerald-mid/30"
+        {filteredBooks.map(book => {
+          const postsCount = postsCountByBook[book.id] ?? 0
+          const viewsCount = book.views_count ?? 0
+
+          return (
+            <Link key={book.id} href={`/book/${book.id}`} className="group">
+              {/* Обложка */}
+              <div className="aspect-[2/3] rounded-xl overflow-hidden bg-emerald-mid/10 mb-3 group-hover:opacity-90 transition-opacity relative">
+                {book.cover_url ? (
+                  <img
+                    src={book.cover_url}
+                    alt={book.title ?? ''}
+                    className="w-full h-full object-cover"
                   />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <BookOpen
+                      size={40}
+                      strokeWidth={1.2}
+                      className="text-emerald-mid/30"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Инфо */}
+              <div className="text-sm font-medium text-emerald-dark group-hover:text-wine line-clamp-2 leading-snug">
+                {book.title}
+              </div>
+              {book.author && (
+                <div className="text-xs text-brown/60 mt-1 line-clamp-1">
+                  {book.author}
                 </div>
               )}
-            </div>
 
-            {/* Инфо */}
-            <div className="text-sm font-medium text-emerald-dark group-hover:text-wine line-clamp-2 leading-snug">
-              {book.title}
-            </div>
-            {book.author && (
-              <div className="text-xs text-brown/60 mt-1 line-clamp-1">
-                {book.author}
-              </div>
-            )}
-            <div className="text-[11px] text-brown/45 mt-1 flex items-center gap-2">
-              <span className="flex items-center gap-0.5">
-                <MessageCircle size={10} strokeWidth={2} />
-                {postsCountByBook[book.id] ?? 0}
-              </span>
-              <span className="flex items-center gap-0.5">
-                <Eye size={10} strokeWidth={2} />
-                {book.views_count ?? 0}
-              </span>
-            </div>
-          </Link>
-        ))}
+              {/* Статистика: нулевые значения не показываем — иначе в каталоге
+                  получается визуальный шум «00» / «03» из двух нулей подряд. */}
+              {(postsCount > 0 || viewsCount > 0) && (
+                <div className="text-[11px] text-brown/45 mt-1 flex items-center gap-2.5">
+                  {postsCount > 0 && (
+                    <span
+                      className="flex items-center gap-1"
+                      title="Обсуждений"
+                    >
+                      <MessageCircle size={10} strokeWidth={2} />
+                      {postsCount}
+                    </span>
+                  )}
+                  {viewsCount > 0 && (
+                    <span className="flex items-center gap-1" title="Просмотров">
+                      <Eye size={10} strokeWidth={2} />
+                      {viewsCount}
+                    </span>
+                  )}
+                </div>
+              )}
+            </Link>
+          )
+        })}
       </div>
     </main>
   )

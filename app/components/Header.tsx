@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+// Псевдоним AuthUser: имя User уже занято иконкой из ./icons
+import type { User as AuthUser } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import {
   Home,
   BookOpen,
   Feather,
+  FileText,
   MessageCircle,
   User,
   Search,
@@ -16,6 +19,7 @@ import {
   PenLine,
   LogOut,
   LogIn,
+  UserPlus,
   Menu,
   X as XIcon,
   Library,
@@ -24,9 +28,17 @@ import UnreadMessagesBadge from './UnreadMessagesBadge'
 import ThemeToggle from './ThemeToggle'
 import NotificationBell from './NotificationBell'
 
+type Profile = {
+  username: string | null
+  role: string | null
+}
+
 export default function Sidebar() {
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
+  // Раздел «Новости» показываем только когда в нём есть хотя бы один пост:
+  // пустой раздел в навигации сбивает с толку.
+  const [hasNews, setHasNews] = useState(false)
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
@@ -65,6 +77,27 @@ export default function Sidebar() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Есть ли одобренные посты в разделе «Новости» — от этого зависит пункт меню.
+  // Проверяем на клиенте осознанно: запрос в root layout сделал бы ВСЕ страницы
+  // динамическими, а сейчас /login, /welcome, /search и другие отдаются статикой.
+  // Плюс `head: true` — нам нужен только факт наличия, а не строки.
+  useEffect(() => {
+    let alive = true
+
+    supabase
+      .from('posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('type', 'news')
+      .eq('status', 'approved')
+      .then(({ count }) => {
+        if (alive) setHasNews((count ?? 0) > 0)
+      })
+
+    return () => {
+      alive = false
+    }
+  }, [])
+
   useEffect(() => {
     setOpen(false)
   }, [pathname])
@@ -95,6 +128,8 @@ export default function Sidebar() {
   }[] = [
     { href: '/', label: 'Главная', Icon: Home },
     { href: '/books', label: 'Книги', Icon: BookOpen },
+    // Пункт появляется, только если раздел не пуст (hasNews выше)
+    ...(hasNews ? [{ href: '/news', label: 'Новости', Icon: FileText }] : []),
     { href: '/creative', label: 'Творчество', Icon: Feather },
     { href: '/discussions', label: 'Обсуждения', Icon: MessageCircle },
     { href: '/messages', label: 'Сообщения', Icon: Mail, badge: true },
@@ -264,13 +299,22 @@ export default function Sidebar() {
               </button>
             </div>
           ) : (
-            <Link
-              href="/login"
-              className="flex items-center justify-center gap-2 bg-wine hover:bg-wine-dark text-white rounded py-2 text-sm transition-colors"
-            >
-              <LogIn size={15} strokeWidth={1.8} />
-              <span>Войти</span>
-            </Link>
+            <div className="flex flex-col gap-2">
+              <Link
+                href="/login"
+                className="flex items-center justify-center gap-2 border border-cream/25 text-cream hover:bg-cream/10 rounded py-2 text-sm transition-colors"
+              >
+                <LogIn size={15} strokeWidth={1.8} />
+                <span>Войти</span>
+              </Link>
+              <Link
+                href="/signup"
+                className="flex items-center justify-center gap-2 bg-wine hover:bg-wine-dark text-white rounded py-2 text-sm transition-colors"
+              >
+                <UserPlus size={15} strokeWidth={1.8} />
+                <span>Зарегистрироваться</span>
+              </Link>
+            </div>
           )}
         </div>
 
