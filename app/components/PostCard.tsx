@@ -5,7 +5,6 @@ import LikeButton from './LikeButton'
 import BookmarkButton from './BookmarkButton'
 import { MessageCircle, Hash, BookOpen, Eye } from './icons'
 import { toPlainText } from '@/lib/text'
-import { coverGradient, coverInitial } from '@/lib/design'
 
 export type PostCardData = {
   id: string
@@ -40,43 +39,47 @@ export default function PostCard({ post }: { post: PostCardData }) {
 
   return (
     <article className="bg-cream-warm/25 border border-emerald-dark/8 rounded-2xl overflow-hidden hover:border-emerald-dark/20 transition-colors group flex flex-col">
-      <Link
-        href={`/post/${post.id}`}
-        className="block relative aspect-[16/10]"
-      >
-        {cover ? (
+      {cover && (
+        <Link
+          href={`/post/${post.id}`}
+          className="block relative aspect-[16/10]"
+        >
           <img
             src={cover}
             alt={post.title}
             className="absolute inset-0 w-full h-full object-cover object-center group-hover:opacity-95 transition-opacity"
           />
-        ) : (
-          <div
-            className={`absolute inset-0 bg-gradient-to-br ${coverGradient(post.id)} flex items-center justify-center overflow-hidden`}
+          <span
+            className={`absolute top-3 left-3 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full backdrop-blur-sm ${type.color} bg-cream/85`}
           >
-            <BookOpen
-              size={150}
-              strokeWidth={0.7}
-              className="absolute -right-6 -bottom-6 text-white/10"
-            />
-            <span className="font-playfair text-6xl font-bold text-white/85 select-none">
-              {coverInitial(post.title)}
-            </span>
-          </div>
-        )}
-        <span
-          className={`absolute top-3 left-3 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full backdrop-blur-sm ${type.color} bg-cream/85`}
-        >
-          {type.text}
-        </span>
-        {post.status === 'pending' && (
-          <span className="absolute top-3 right-3 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full bg-yellow-100/95 text-yellow-800">
-            На проверке
+            {type.text}
           </span>
-        )}
-      </Link>
+          {post.status === 'pending' && (
+            <span className="absolute top-3 right-3 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full bg-yellow-100/95 text-yellow-800">
+              На проверке
+            </span>
+          )}
+        </Link>
+      )}
 
       <div className="p-5 flex flex-col flex-1">
+        {/* Пост без фото: тип и статус раньше жили на обложке — переносим сюда,
+            чтобы информация не потерялась. */}
+        {!cover && (
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span
+              className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full ${type.color}`}
+            >
+              {type.text}
+            </span>
+            {post.status === 'pending' && (
+              <span className="text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-800">
+                На проверке
+              </span>
+            )}
+          </div>
+        )}
+
         <Link href={`/post/${post.id}`}>
           <h3 className="font-playfair text-lg md:text-xl font-bold text-emerald-dark mb-2 leading-snug hover:text-wine transition-colors line-clamp-2">
             {post.title}
