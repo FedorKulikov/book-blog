@@ -1,10 +1,11 @@
 name: Daily Supabase backup
 
 on:
-  schedule:
-    # Каждый день в 03:00 ночи по UTC
-    - cron: '0 3 * * *'
-  # Ручной запуск из вкладки Actions
+  # Временно отключено, пока не настроено приватное хранилище (S3)
+  # schedule:
+  #   - cron: '0 3 * * *'
+  
+  # Ручной запуск из вкладки Actions (для проверки, что дамп создается)
   workflow_dispatch:
 
 jobs:
@@ -12,9 +13,8 @@ jobs:
     name: pg_dump
     runs-on: ubuntu-latest
     steps:
-      - name: Install and set up PostgreSQL client 17
+      - name: Install PostgreSQL client 17
         run: |
-          # 1. Добавляем официальный репозиторий PGDG
           sudo apt-get update
           sudo apt-get install -y curl ca-certificates
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -22,19 +22,9 @@ jobs:
             -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
-          
-          # 2. Устанавливаем клиент 17-й версии
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends postgresql-client-17
-          
-          # 3. КРИТИЧЕСКИ ВАЖНО: Явно задаем путь к бинарным файлам PostgreSQL 17
-          # и перезаписываем PATH для всех последующих шагов
-          PG_BIN="/usr/lib/postgresql/17/bin"
-          test -x "${PG_BIN}/pg_dump" || { echo "::error::postgresql-client-17 did not install ${PG_BIN}/pg_dump"; exit 1; }
-          echo "${PG_BIN}" >> "$GITHUB_PATH"
-          
-          # 4. Проверяем, что теперь используется правильная версия
-          "${PG_BIN}/pg_dump" --version
+          pg_dump --version
 
       - name: Dump database with pg_dump
         env:
@@ -45,23 +35,20 @@ jobs:
             echo "::error::Secret SUPABASE_DB_URL is not set"
             exit 1
           fi
+          
           pg_dump "$SUPABASE_DB_URL" \
             --no-owner \
             --no-privileges \
             --schema=public \
             --file=db_backup.sql
-          # Страховка: пустой дамп = провал шага, а не «успешный» бэкап
+            
           if [ ! -s db_backup.sql ]; then
             echo "::error::db_backup.sql is empty"
             exit 1
           fi
+          
           ls -lh db_backup.sql
           echo "Backup size: $(wc -c < db_backup.sql) bytes"
-
-      - name: Upload backup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: db_backup-${{ github.run_id }}
-          path: db_backup.sql
-          retention-days: 30
-          if-no-files-found: error
+          
+          # ВНИМАНИЕ: Файл удалится после завершения job.
+          # Здесь будет шаг загрузки в S3, когда мы его настроим.
