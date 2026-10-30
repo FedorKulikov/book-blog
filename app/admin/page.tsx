@@ -5,10 +5,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
+import AdminTickets from './AdminTickets'
 
 export default function AdminPage() {
   const router = useRouter()
-  const [tab, setTab] = useState<'reports' | 'pending' | 'words' | 'users'>('reports')
+  const [tab, setTab] = useState<
+    'reports' | 'pending' | 'words' | 'users' | 'tickets'
+  >('reports')
   const [reports, setReports] = useState<any[]>([])
   const [pending, setPending] = useState<any[]>([])
   const [words, setWords] = useState<any[]>([])
@@ -232,6 +235,16 @@ export default function AdminPage() {
           }`}
         >
           👥 Пользователи ({users.length})
+        </button>
+        <button
+          onClick={() => setTab('tickets')}
+          className={`px-4 py-2 rounded text-sm whitespace-nowrap transition-colors ${
+            tab === 'tickets'
+              ? 'bg-wine text-white'
+              : 'text-brown/70 hover:text-wine'
+          }`}
+        >
+          🎧 Обращения
         </button>
       </div>
 
@@ -484,6 +497,8 @@ export default function AdminPage() {
           ))}
         </div>
       )}
+
+      {tab === 'tickets' && <AdminTickets />}
     </main>
   )
 }

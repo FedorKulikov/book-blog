@@ -20,6 +20,7 @@ import {
   LogOut,
   LogIn,
   UserPlus,
+  LifeBuoy,
   Menu,
   X as XIcon,
   Library,
@@ -133,6 +134,7 @@ export default function Sidebar() {
     { href: '/creative', label: 'Творчество', Icon: Feather },
     { href: '/discussions', label: 'Обсуждения', Icon: MessageCircle },
     { href: '/messages', label: 'Сообщения', Icon: Mail, badge: true },
+    { href: '/support', label: 'Поддержка', Icon: LifeBuoy },
   ]
 
   const isStaff = profile?.role === 'admin' || profile?.role === 'moderator'
