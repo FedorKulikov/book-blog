@@ -99,3 +99,7 @@ Chronological action log.
 | 2026-10-30 20:31 | edit | `C:/Users/Fedor/projects/book-blog/app/components/LikeButton.tsx` | ok | 0 |
 | 2026-10-30 20:40 | write | `C:/Users/Fedor/projects/book-blog/app/components/TopTags.tsx` | ok | 0 |
 | 2026-10-30 20:41 | edit | `C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx` | ok | 0 |
+| 2026-10-30 20:48 | write | `C:/Users/Fedor/projects/book-blog/app/book/[id]/getBook.ts` | ok | 0 |
+| 2026-10-30 20:48 | write | `C:/Users/Fedor/projects/book-blog/app/book/[id]/BookView.tsx` | ok | 0 |
+| 2026-10-30 20:48 | write | `C:/Users/Fedor/projects/book-blog/app/book/[id]/page.tsx` | ok | 0 |
+| 2026-10-30 20:48 | write | `C:/Users/Fedor/projects/book-blog/app/profile/[username]/getProfile.ts` | ok | 0 |
