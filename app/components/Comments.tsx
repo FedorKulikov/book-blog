@@ -2,10 +2,27 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { findBadWord } from '@/lib/moderation'
 import { humanizeError } from '@/lib/errors'
 import ReportButton from './ReportButton'
 import { MessageCircle, Send, Trash2 } from './icons'
+
+/**
+ * Ошибки приходят из триггера БД (public.comments_before_insert).
+ * Тексты RAISE EXCEPTION уже человекочитаемые, но подстрахуемся ключевыми словами.
+ */
+function explainCommentError(message: string): string {
+  const lower = message.toLowerCase()
+
+  if (lower.includes('заблокирован') || lower.includes('забанен')) {
+    return 'Ваш аккаунт заблокирован — комментирование недоступно.'
+  }
+
+  if (lower.includes('стоп-слов')) {
+    return message
+  }
+
+  return humanizeError(message)
+}
 
 type Comment = {
   id: string
@@ -74,29 +91,15 @@ export default function Comments({ postId }: { postId: string }) {
       alert('Войдите, чтобы оставить комментарий')
       return
     }
-    if (!text.trim()) return
+
+    // Из проверок на клиенте — только пустой текст.
+    const clean = text.trim()
+    if (!clean) return
     if (submitting) return // защита от двойной отправки
 
     setSubmitting(true)
     try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_banned')
-        .eq('id', user.id)
-        .single()
-
-      if (profile?.is_banned) {
-        alert('Ваш аккаунт заблокирован')
-        return
-      }
-
-      const found = await findBadWord(text)
-      if (found) {
-        alert('В комментарии есть недопустимые слова')
-        return
-      }
-
-      // Rate limit
+      // Rate limit — RPC в БД, из консоли не обойти
       const { data: limitCheck } = await supabase.rpc('check_and_log_action', {
         action_input: 'comment',
         max_per_hour: 30,
@@ -112,19 +115,27 @@ export default function Comments({ postId }: { postId: string }) {
         return
       }
 
+      // Бан и стоп-слова проверяет триггер comments_before_insert:
+      // клиентская проверка обходилась из консоли и удалена.
       const { error } = await supabase.from('comments').insert({
         post_id: postId,
         user_id: user.id,
         parent_id: parentId,
-        text: text.trim(),
+        text: clean,
       })
 
-      if (!error) {
-        setNewText('')
-        setReplyText('')
-        setReplyTo(null)
-        loadComments()
+      if (error) {
+        console.error('[comments] insert failed:', error.message)
+        // Список не трогаем: комментарий не появится на экране,
+        // пока база не подтвердит вставку (loadComments ниже).
+        alert(explainCommentError(error.message))
+        return
       }
+
+      setNewText('')
+      setReplyText('')
+      setReplyTo(null)
+      loadComments()
     } finally {
       setSubmitting(false)
     }

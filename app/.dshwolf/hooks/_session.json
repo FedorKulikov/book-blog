@@ -26,6 +26,11 @@
       "count": 2,
       "tokens": 0,
       "first_read": "2026-10-30T17:12:26.481Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx": {
+      "count": 2,
+      "tokens": 0,
+      "first_read": "2026-10-30T17:20:27.180Z"
     }
   },
   "files_written": [
@@ -384,6 +389,14 @@
     {
       "file": "C:/Users/Fedor/projects/book-blog/app/news/new/page.tsx",
       "at": "2026-10-30T17:13:18.361Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx",
+      "at": "2026-10-30T17:20:50.748Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx",
+      "at": "2026-10-30T17:21:12.394Z"
     }
   ],
   "edit_counts": {
@@ -421,10 +434,11 @@
     "C:/Users/Fedor/projects/book-blog/app/admin/AdminTickets.tsx": 3,
     "C:/Users/Fedor/projects/book-blog/app/admin/support/[id]/page.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/admin/page.tsx": 4,
-    "C:/Users/Fedor/projects/book-blog/app/news/new/page.tsx": 1
+    "C:/Users/Fedor/projects/book-blog/app/news/new/page.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx": 2
   },
   "anatomy_hits": 0,
-  "anatomy_misses": 34,
-  "repeated_reads_warned": 23,
+  "anatomy_misses": 35,
+  "repeated_reads_warned": 24,
   "cerebrum_warnings": 0
 }
