@@ -2,13 +2,32 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import ImageUploader from '../../components/ImageUploader'
 import BookSelect from '../../components/BookSelect'
-import { findBadWord } from '@/lib/moderation'
 import { humanizeError } from '@/lib/errors'
 import { ChevronLeft } from '../../components/icons'
+
+/**
+ * Ошибки приходят из триггера БД (public.posts_before_insert).
+ * Тексты RAISE EXCEPTION уже человекочитаемые, но на всякий случай
+ * ловим ключевые слова — вдруг PostgREST добавит префикс.
+ */
+function explainInsertError(message: string): string {
+  const lower = message.toLowerCase()
+
+  if (lower.includes('заблокирован') || lower.includes('забанен')) {
+    return 'Ваш аккаунт заблокирован — публикация постов недоступна.'
+  }
+
+  if (lower.includes('стоп-слов')) {
+    return message
+  }
+
+  return humanizeError(message)
+}
 
 function NewPostContent() {
   const searchParams = useSearchParams()
@@ -22,28 +41,18 @@ function NewPostContent() {
   const [images, setImages] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
+  // Профиль больше не грузим: бан, стоп-слова и статус проверяет БД (триггер).
+  // Здесь нужен только факт авторизации.
+  const [user, setUser] = useState<User | null>(null)
   const router = useRouter()
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
         router.push('/login')
         return
       }
       setUser(data.user)
-
-      const { data: p } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single()
-      setProfile(p)
-
-      if (p?.is_banned) {
-        setError('Ваш аккаунт заблокирован. Вы не можете публиковать посты.')
-      }
     })
   }, [router])
 
@@ -87,12 +96,20 @@ function NewPostContent() {
     e.preventDefault()
     if (!user) return
 
-    if (profile?.is_banned) {
-      setError('Ваш аккаунт заблокирован.')
+    // Единственное, что остаётся на клиенте, — валидация полей.
+    const cleanTitle = title.trim()
+    const cleanContent = content.trim()
+
+    if (cleanTitle.length < 3) {
+      setError('Заголовок — минимум 3 символа.')
+      return
+    }
+    if (cleanContent.length < 10) {
+      setError('Текст поста — минимум 10 символов.')
       return
     }
 
-    // Rate limit
+    // Rate limit: это RPC в БД, из консоли его не обойти
     const { data: limitCheck } = await supabase.rpc('check_and_log_action', {
       action_input: 'post',
       max_per_hour: 10,
@@ -113,34 +130,28 @@ function NewPostContent() {
     setLoading(true)
     setError(null)
 
-    const badWordTitle = await findBadWord(title)
-    const badWordContent = await findBadWord(content)
-
-    if (badWordTitle || badWordContent) {
-      setError('В тексте есть недопустимые слова. Пожалуйста, переформулируйте.')
-      setLoading(false)
-      return
-    }
-
-    const { count } = await supabase
+    // status НЕ передаём: его выставляет триггер posts_before_insert
+    // (бан → отказ, стоп-слово → отказ, staff/доверенный автор → approved).
+    const { data: created, error: insertError } = await supabase
       .from('posts')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-
-    const isNewbie = (count || 0) < 3
-    const status = isNewbie && profile?.role !== 'admin' ? 'pending' : 'approved'
-
-    const { data: post, error: insertError } = await supabase
-      .from('posts')
-      .insert({ user_id: user.id, title, content, type, status, book_id: bookId })
-      .select()
+      .insert({
+        user_id: user.id,
+        title: cleanTitle,
+        content: cleanContent,
+        type,
+        book_id: bookId,
+      })
+      .select('id, status')
       .single()
 
     if (insertError) {
-      setError(humanizeError(insertError.message))
+      console.error('[new-post] insert failed:', insertError.message)
+      setError(explainInsertError(insertError.message))
       setLoading(false)
       return
     }
+
+    const post = created as unknown as { id: string; status: string }
 
     const tagNames = tagsInput
       .split(',')
@@ -166,7 +177,8 @@ function NewPostContent() {
       }
     }
 
-    if (status === 'pending') {
+    // Статус вернула база — показываем честный результат
+    if (post.status === 'pending') {
       alert('Пост отправлен на проверку модератору.')
     }
 
@@ -266,7 +278,7 @@ function NewPostContent() {
 
         <button
           type="submit"
-          disabled={loading || !user || !!profile?.is_banned}
+          disabled={loading || !user}
           className="w-full bg-wine text-white py-2.5 rounded-full hover:bg-wine-dark disabled:opacity-50 transition-colors"
         >
           {loading ? 'Публикуем…' : 'Опубликовать'}
