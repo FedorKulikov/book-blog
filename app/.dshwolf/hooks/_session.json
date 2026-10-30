@@ -16,6 +16,11 @@
       "count": 1,
       "tokens": 0,
       "first_read": "2026-10-30T16:28:58.518Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/proxy.ts": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-10-30T16:45:52.910Z"
     }
   },
   "files_written": [
@@ -366,6 +371,10 @@
     {
       "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
       "at": "2026-10-30T16:29:09.089Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/proxy.ts",
+      "at": "2026-10-30T16:46:08.404Z"
     }
   ],
   "edit_counts": {
@@ -377,7 +386,7 @@
     "C:/Users/Fedor/projects/book-blog/lib/supabase/client.ts": 1,
     "C:/Users/Fedor/projects/book-blog/lib/supabase/server.ts": 1,
     "C:/Users/Fedor/projects/book-blog/lib/supabase.js": 1,
-    "C:/Users/Fedor/projects/book-blog/proxy.ts": 2,
+    "C:/Users/Fedor/projects/book-blog/proxy.ts": 3,
     "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": 9,
     "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/news/NewsClient.tsx": 1,
@@ -405,7 +414,7 @@
     "C:/Users/Fedor/projects/book-blog/app/admin/page.tsx": 4
   },
   "anatomy_hits": 0,
-  "anatomy_misses": 32,
+  "anatomy_misses": 33,
   "repeated_reads_warned": 22,
   "cerebrum_warnings": 0
 }
