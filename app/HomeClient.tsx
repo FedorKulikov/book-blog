@@ -213,10 +213,14 @@ export default function HomeClient({ initialPosts }: { initialPosts: any[] }) {
           )}
         </div>
 
-        <aside className="space-y-8 hidden lg:block bg-emerald-deep rounded-2xl p-6 text-cream">
+        <aside className="space-y-8 bg-emerald-deep rounded-2xl p-6 text-cream">
           <TopAuthors />
-          <PopularPosts />
-          <TopTags />
+          {/* На мобильных порядок: лента → авторы → теги → CTA.
+              Популярные посты дублируют ленту, поэтому только с lg. */}
+          <div className="hidden lg:block">
+            <PopularPosts />
+          </div>
+          <TopTags mobileLimit={6} />
 
           <div className="pt-6 border-t border-cream/15">
             <div className="flex items-center gap-2 mb-3">

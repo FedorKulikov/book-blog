@@ -13,7 +13,14 @@ type TagCount = {
 
 export type PostType = 'news' | 'creative' | 'discussion'
 
-export default function TopTags({ type }: { type?: PostType }) {
+export default function TopTags({
+  type,
+  mobileLimit,
+}: {
+  type?: PostType
+  /** Сколько тегов показывать на мобильных (< 1024px). На десктопе — все. */
+  mobileLimit?: number
+}) {
   const [tags, setTags] = useState<TagCount[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -67,17 +74,26 @@ export default function TopTags({ type }: { type?: PostType }) {
         </h3>
       </div>
       <div className="flex flex-wrap gap-2">
-        {tags.map(t => (
-          <Link
-            key={t.slug}
-            href={`/tag/${t.slug}`}
-            className="flex items-center gap-1 text-[11px] text-cream/60 hover:text-cream-warm transition-colors"
-          >
-            <Hash size={10} strokeWidth={2.2} />
-            <span>{t.name}</span>
-            <span className="text-cream/30 ml-0.5">{t.count}</span>
-          </Link>
-        ))}
+        {tags.map((t, index) => {
+          // На мобильных показываем только первые mobileLimit тегов:
+          // скрываем CSS-ом, чтобы не грузить данные дважды.
+          const hiddenOnMobile =
+            typeof mobileLimit === 'number' && index >= mobileLimit
+
+          return (
+            <Link
+              key={t.slug}
+              href={`/tag/${t.slug}`}
+              className={`flex items-center gap-1 text-[11px] text-cream/60 hover:text-cream-warm transition-colors ${
+                hiddenOnMobile ? 'max-lg:hidden' : ''
+              }`}
+            >
+              <Hash size={10} strokeWidth={2.2} />
+              <span>{t.name}</span>
+              <span className="text-cream/30 ml-0.5">{t.count}</span>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )

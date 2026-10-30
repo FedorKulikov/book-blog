@@ -31,6 +31,26 @@
       "count": 2,
       "tokens": 0,
       "first_read": "2026-10-30T17:20:27.180Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/LikeButton.tsx": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-10-30T17:30:26.737Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx": {
+      "count": 6,
+      "tokens": 0,
+      "first_read": "2026-10-30T17:38:03.113Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/TopTags.tsx": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-10-30T17:38:03.126Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/TopAuthors.tsx": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-10-30T17:38:25.180Z"
     }
   },
   "files_written": [
@@ -397,6 +417,22 @@
     {
       "file": "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx",
       "at": "2026-10-30T17:21:12.394Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/LikeButton.tsx",
+      "at": "2026-10-30T17:31:03.833Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/LikeButton.tsx",
+      "at": "2026-10-30T17:31:30.115Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/TopTags.tsx",
+      "at": "2026-10-30T17:40:44.157Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx",
+      "at": "2026-10-30T17:41:00.642Z"
     }
   ],
   "edit_counts": {
@@ -410,7 +446,7 @@
     "C:/Users/Fedor/projects/book-blog/lib/supabase.js": 1,
     "C:/Users/Fedor/projects/book-blog/proxy.ts": 3,
     "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": 9,
-    "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx": 1,
+    "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx": 2,
     "C:/Users/Fedor/projects/book-blog/app/news/NewsClient.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/discussions/DiscussionsClient.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/creative/CreativeClient.tsx": 1,
@@ -435,10 +471,12 @@
     "C:/Users/Fedor/projects/book-blog/app/admin/support/[id]/page.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/admin/page.tsx": 4,
     "C:/Users/Fedor/projects/book-blog/app/news/new/page.tsx": 1,
-    "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx": 2
+    "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx": 2,
+    "C:/Users/Fedor/projects/book-blog/app/components/LikeButton.tsx": 2,
+    "C:/Users/Fedor/projects/book-blog/app/components/TopTags.tsx": 1
   },
   "anatomy_hits": 0,
-  "anatomy_misses": 35,
-  "repeated_reads_warned": 24,
+  "anatomy_misses": 39,
+  "repeated_reads_warned": 29,
   "cerebrum_warnings": 0
 }
