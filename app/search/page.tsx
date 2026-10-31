@@ -174,7 +174,7 @@ function SearchContent() {
           <p className="text-sm text-brown/60 mb-4">
             Найдено постов: {posts.length}
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+          <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
             {posts.map(post => (
               <PostCard key={post.id} post={post} />
             ))}

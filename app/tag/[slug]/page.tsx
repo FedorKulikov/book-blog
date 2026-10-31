@@ -100,7 +100,7 @@ export default function TagPage() {
         <p className="text-brown/70">Пока нет постов с этим тегом.</p>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+      <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
         {posts.map(post => (
           <PostCard key={post.id} post={post} />
         ))}

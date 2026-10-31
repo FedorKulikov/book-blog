@@ -104,15 +104,10 @@ export default function PostCard({ post }: { post: PostCardData }) {
         )}
 
         {/* Превью + явный вход в пост. Markdown вычищаем через toPlainText (lib/text.ts).
-            С обложкой обрезаем до 3 строк: карточки в сетке выровнены по фото.
-            Без обложки не обрезаем — текст занимает свободную высоту
-            и прижимает футер к низу карточки. */}
+            Лента одноколоночная и широкая: 5 строк читаются нормально и не превращают
+            карточку без фото в «простыню». На странице поста текст не обрезается. */}
         <div>
-          <p
-            className={`text-brown-dark/65 text-sm mb-2 leading-relaxed ${
-              cover ? 'line-clamp-3' : ''
-            }`}
-          >
+          <p className="text-brown-dark/65 text-sm line-clamp-5 mb-2 leading-relaxed">
             {toPlainText(post.content ?? '')}
           </p>
           <Link

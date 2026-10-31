@@ -52,7 +52,7 @@ export default function CreativeClient({ initialPosts }: { initialPosts: any[] }
             />
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+          <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
             {sortedPosts.map(post => (
               <PostCard key={post.id} post={post} />
             ))}

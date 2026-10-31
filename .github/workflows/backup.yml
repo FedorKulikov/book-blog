@@ -1,17 +1,28 @@
 name: Daily Supabase backup
 
 on:
-  # Временно отключено, пока не настроено приватное хранилище (S3)
-  # schedule:
-  #   - cron: '0 3 * * *'
-  
-  # Ручной запуск из вкладки Actions (для проверки, что дамп создается)
+  schedule:
+    # 03:00 UTC = 06:00 по Москве
+    - cron: '0 3 * * *'
   workflow_dispatch:
+
+# Два бэкапа одновременно не нужны; не отменяем уже начавшийся
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   backup:
-    name: pg_dump
+    name: dump → age → S3
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - name: Install PostgreSQL client 17
         run: |
@@ -26,29 +37,99 @@ jobs:
           sudo apt-get install -y --no-install-recommends postgresql-client-17
           pg_dump --version
 
-      - name: Dump database with pg_dump
+      - name: Install age and awscli
+        run: |
+          sudo apt-get install -y --no-install-recommends age awscli
+          age --version
+          aws --version
+
+      # Проверяем конфигурацию ДО обращения к базе: дешевле, чем падение на середине
+      - name: Validate configuration
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+          S3_BUCKET: ${{ vars.S3_BUCKET }}
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+          S3_REGION: ${{ vars.S3_REGION }}
+        run: |
+          set -euo pipefail
+          fail=0
+          for v in SUPABASE_DB_URL B2_KEY_ID B2_APPLICATION_KEY AGE_RECIPIENT S3_BUCKET S3_ENDPOINT S3_REGION; do
+            if [ -z "${!v:-}" ]; then
+              echo "::error::$v is empty (secret or variable not configured)"
+              fail=1
+            fi
+          done
+          if ! printf '%s' "${AGE_RECIPIENT:-}" | grep -qE '^age1[0-9a-z]{20,}$'; then
+            echo "::error::AGE_RECIPIENT does not look like an age public key (age1...)"
+            fail=1
+          fi
+          exit $fail
+
+      - name: Dump database
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${SUPABASE_DB_URL:-}" ]; then
-            echo "::error::Secret SUPABASE_DB_URL is not set"
-            exit 1
-          fi
-          
+          STAMP="$(date -u +%Y-%m-%d)"
+          FILE="db-${STAMP}.dump"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+
+          # public — данные приложения, auth — пользователи (без них на свежей базе
+          # не восстановить profiles.id → auth.users). Файлы Storage в БД не входят.
           pg_dump "$SUPABASE_DB_URL" \
             --no-owner \
             --no-privileges \
             --schema=public \
-            --file=db_backup.sql
-            
-          if [ ! -s db_backup.sql ]; then
-            echo "::error::db_backup.sql is empty"
+            --schema=auth \
+            --format=custom \
+            --file="$FILE"
+
+          if [ ! -s "$FILE" ]; then
+            echo "::error::$FILE is empty"
             exit 1
           fi
-          
-          ls -lh db_backup.sql
-          echo "Backup size: $(wc -c < db_backup.sql) bytes"
-          
-          # ВНИМАНИЕ: Файл удалится после завершения job.
-          # Здесь будет шаг загрузки в S3, когда мы его настроим.
+
+          # Проверяем, что архив читается pg_restore (ловит обрезанный дамп сразу)
+          pg_restore --list "$FILE" > /dev/null
+          ls -lh "$FILE"
+          echo "Backup size: $(wc -c < "$FILE") bytes"
+
+      - name: Encrypt with age
+        env:
+          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          age -r "$AGE_RECIPIENT" -o "${FILE}.age" "$FILE"
+          rm -f "$FILE"   # незашифрованный дамп живёт только до этой строки
+
+          if [ ! -s "${FILE}.age" ]; then
+            echo "::error::encrypted file is empty"
+            exit 1
+          fi
+
+          sha256sum "${FILE}.age" | awk '{print $1}' > "${FILE}.age.sha256"
+          ls -lh "${FILE}.age"
+
+      - name: Upload to S3 (Backblaze B2 / Cloudflare R2 / Yandex)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.S3_REGION }}
+          AWS_EC2_METADATA_DISABLED: 'true'
+          S3_BUCKET: ${{ vars.S3_BUCKET }}
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          aws s3 cp "${FILE}.age" "s3://${S3_BUCKET}/db/${FILE}.age" \
+            --endpoint-url "$S3_ENDPOINT" --only-show-errors
+          aws s3 cp "${FILE}.age.sha256" "s3://${S3_BUCKET}/db/${FILE}.age.sha256" \
+            --endpoint-url "$S3_ENDPOINT" --only-show-errors
+          echo "Uploaded: s3://${S3_BUCKET}/db/${FILE}.age"
+
+      # Уборка при любом исходе: на раннере не должно остаться ни дампа, ни ключей
+      - name: Cleanup local files
+        if: always()
+        run: rm -f db-*.dump db-*.age db-*.age.sha256
