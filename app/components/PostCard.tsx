@@ -27,6 +27,17 @@ const TYPE_LABEL: Record<string, { text: string; color: string }> = {
   discussion: { text: 'Обсуждение', color: 'bg-brown/8 text-brown' },
 }
 
+/**
+ * Фиксированная таймзона обязательна: PostCard рендерится и на сервере (SSR),
+ * и в браузере. Без timeZone сервер (UTC) и клиент (Москва) дают разные строки —
+ * именно из-за этого React ругался «Hydration failed» (minified error #418).
+ */
+const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'Europe/Moscow',
+})
+
 export default function PostCard({ post }: { post: PostCardData }) {
   const cover = post.post_images?.[0]?.url
   const type = TYPE_LABEL[post.type] || TYPE_LABEL.news
@@ -42,11 +53,11 @@ export default function PostCard({ post }: { post: PostCardData }) {
       {cover && (
         <Link
           href={`/post/${post.id}`}
-          // Карточка горизонтальная на всех экранах.
-          // Ширина растёт ступенями (112 → 160 → 256 px), высота — минимальная:
-          // self-stretch тянет картинку на всю высоту карточки, поэтому
-          // не бывает пустых полос под изображением.
-          className="relative block w-28 shrink-0 self-stretch min-h-32 overflow-hidden bg-emerald-mid/10 sm:w-40 sm:min-h-40 md:w-64 md:min-h-56"
+          // Горизонтальная карточка на всех экранах.
+          // Картинка уже (96 → 128 → 256 px), чтобы текстовой колонке хватало места
+          // на мобильных. self-stretch + min-h-* = картинка тянется по высоте
+          // карточки, пустых полос под ней не бывает.
+          className="relative block w-24 shrink-0 self-stretch min-h-32 overflow-hidden bg-emerald-mid/10 sm:w-32 sm:min-h-40 md:w-64 md:min-h-56"
         >
           <img
             src={cover}
@@ -54,19 +65,19 @@ export default function PostCard({ post }: { post: PostCardData }) {
             className="absolute inset-0 w-full h-full object-cover object-center group-hover:opacity-95 transition-opacity"
           />
           <span
-            className={`absolute top-2 left-2 text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full backdrop-blur-sm sm:text-[10px] sm:tracking-widest sm:px-2.5 sm:py-1 ${type.color} bg-cream/85`}
+            className={`absolute top-2 left-2 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full backdrop-blur-sm sm:text-[10px] sm:tracking-widest sm:px-2.5 sm:py-1 ${type.color} bg-cream/85`}
           >
             {type.text}
           </span>
         </Link>
       )}
 
-      <div className="p-4 md:p-5 flex flex-col flex-1 min-w-0">
+      <div className="p-3 sm:p-4 md:p-6 flex flex-col flex-1 min-w-0">
         {/* Без обложки тип поста показываем в тексте (с обложкой он на картинке).
             «На проверке» всегда живёт здесь: на узкой мобильной обложке
-            (112 px) два бейджа не помещаются и наезжают друг на друга. */}
+            два бейджа не помещаются и наезжают друг на друга. */}
         {(!cover || post.status === 'pending') && (
-          <div className="flex flex-wrap items-center gap-2 mb-2">
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
             {!cover && (
               <span
                 className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full ${type.color}`}
@@ -83,7 +94,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
         )}
 
         <Link href={`/post/${post.id}`}>
-          <h3 className="font-playfair text-base sm:text-lg md:text-xl font-bold text-emerald-dark mb-1.5 leading-snug hover:text-wine transition-colors line-clamp-2">
+          <h3 className="font-playfair text-[15px] sm:text-base md:text-lg font-bold text-emerald-dark mb-1 leading-snug hover:text-wine transition-colors line-clamp-2">
             {post.title}
           </h3>
         </Link>
@@ -91,7 +102,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
         {post.books && (
           <Link
             href={`/book/${post.books.id}`}
-            className="inline-flex items-center gap-1.5 text-[11px] text-emerald-mid hover:text-wine transition-colors mb-1.5"
+            className="inline-flex items-center gap-1.5 text-[11px] text-emerald-mid hover:text-wine transition-colors mb-1"
             onClick={(e) => e.stopPropagation()}
           >
             <BookOpen size={11} strokeWidth={1.8} />
@@ -108,12 +119,11 @@ export default function PostCard({ post }: { post: PostCardData }) {
         )}
 
         {/* Превью + явный вход в пост. Markdown вычищаем через toPlainText (lib/text.ts).
-            В горизонтальной карточке текстовая колонка узкая: на мобильных 3 строки,
-            от sm — 4. Без обложки карточка на всю ширину — 5 строк.
-            На странице поста текст не обрезается вообще. */}
-        <div>
+            На мобильной колонке 3 строки, от sm — 4; без обложки карточка
+            на всю ширину — 5 строк. На странице поста текст не обрезается. */}
+        <div className="min-w-0">
           <p
-            className={`text-brown-dark/65 text-[13px] sm:text-sm mb-1.5 leading-relaxed ${
+            className={`text-brown-dark/65 text-[13px] sm:text-sm mb-1 leading-snug sm:leading-relaxed ${
               cover ? 'line-clamp-3 sm:line-clamp-4' : 'line-clamp-5'
             }`}
           >
@@ -131,7 +141,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
         {/* Теги на мобильных скрыты: в узкой колонке они добавляют строк
             и растягивают карточку по высоте. */}
         {tags.length > 0 && (
-          <div className="hidden sm:flex flex-wrap gap-2 mb-3">
+          <div className="hidden sm:flex flex-wrap gap-2 mb-2">
             {tags.map(t => (
               <Link
                 key={t.slug}
@@ -146,16 +156,16 @@ export default function PostCard({ post }: { post: PostCardData }) {
           </div>
         )}
 
-        {/* flex-wrap: в узкой мобильной колонке статистика переносится,
-            а не выдавливает ник и дату за границу карточки */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brown/50 border-t border-emerald-dark/6 pt-2.5 mt-auto">
+        {/* mt-auto прижимает футер к низу карточки; flex-wrap не даёт
+            статистике выдавить ник и дату за границу на мобильных */}
+        <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brown/50 border-t border-emerald-dark/6 pt-2">
           <Link
             href={
               post.profiles?.username
                 ? `/profile/${post.profiles.username}`
                 : '#'
             }
-            className="flex items-center gap-2 hover:text-wine transition-colors"
+            className="flex items-center gap-2 min-w-0 hover:text-wine transition-colors"
             onClick={(e) => e.stopPropagation()}
           >
             {post.profiles?.avatar_url ? (
@@ -169,19 +179,16 @@ export default function PostCard({ post }: { post: PostCardData }) {
                 {(post.profiles?.username || '?')[0].toUpperCase()}
               </div>
             )}
-            <span className="font-medium text-brown-dark text-[11px]">
+            <span className="font-medium text-brown-dark text-[11px] truncate">
               {post.profiles?.username || 'Аноним'}
             </span>
           </Link>
           <span className="text-brown/20">·</span>
-          <span className="text-[11px]">
-            {new Date(post.created_at).toLocaleString('ru-RU', {
-              day: 'numeric',
-              month: 'short',
-            })}
+          <span className="text-[11px] whitespace-nowrap">
+            {dateFormatter.format(new Date(post.created_at))}
           </span>
 
-          <span className="ml-auto flex items-center gap-3">
+          <span className="ml-auto flex items-center gap-2.5">
             {/* Нулевые счётчики не показываем: «0 0» рядом выглядит как «00» */}
             {viewsCount > 0 && (
               <span className="flex items-center gap-1" title="Просмотров">

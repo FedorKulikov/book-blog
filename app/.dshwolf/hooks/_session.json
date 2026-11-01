@@ -28,7 +28,7 @@
       "first_read": "2026-11-01T18:36:35.402Z"
     },
     "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": {
-      "count": 1,
+      "count": 3,
       "tokens": 0,
       "first_read": "2026-11-01T18:36:38.754Z"
     },
@@ -46,6 +46,11 @@
       "count": 2,
       "tokens": 0,
       "first_read": "2026-11-01T18:41:29.337Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/ThemeToggle.tsx": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-11-01T18:50:23.320Z"
     }
   },
   "files_written": [
@@ -552,6 +557,18 @@
     {
       "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
       "at": "2026-11-01T18:41:48.875Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-11-01T18:51:54.305Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-11-01T18:51:54.349Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-11-01T18:51:58.566Z"
     }
   ],
   "edit_counts": {
@@ -564,7 +581,7 @@
     "C:/Users/Fedor/projects/book-blog/lib/supabase/server.ts": 1,
     "C:/Users/Fedor/projects/book-blog/lib/supabase.js": 1,
     "C:/Users/Fedor/projects/book-blog/proxy.ts": 3,
-    "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": 10,
+    "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": 12,
     "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx": 2,
     "C:/Users/Fedor/projects/book-blog/app/news/NewsClient.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/discussions/DiscussionsClient.tsx": 1,
@@ -572,7 +589,7 @@
     "C:/Users/Fedor/projects/book-blog/app/sitemap.ts": 2,
     "C:/Users/Fedor/projects/book-blog/app/books/BooksClient.tsx": 3,
     "C:/Users/Fedor/projects/book-blog/app/posts/page.tsx": 2,
-    "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx": 14,
+    "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx": 15,
     "C:/Users/Fedor/projects/book-blog/lib/text.ts": 1,
     "C:/Users/Fedor/projects/book-blog/app/posts/postsQuery.ts": 3,
     "C:/Users/Fedor/projects/book-blog/app/posts/PostList.tsx": 1,
@@ -613,7 +630,7 @@
     "C:/Users/Fedor/projects/book-blog/app/components/ShareProfileButton.tsx": 1
   },
   "anatomy_hits": 0,
-  "anatomy_misses": 55,
-  "repeated_reads_warned": 36,
+  "anatomy_misses": 56,
+  "repeated_reads_warned": 38,
   "cerebrum_warnings": 0
 }

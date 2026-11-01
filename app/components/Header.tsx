@@ -193,14 +193,16 @@ export default function Sidebar() {
       >
         <button
           onClick={() => setOpen(false)}
-          className="sidebar-close-btn absolute top-3 right-3 text-cream/70 hover:text-cream transition-colors"
+          className="sidebar-close-btn absolute top-4 right-4 flex items-center justify-center text-cream/70 hover:text-cream transition-colors"
           aria-label="Закрыть меню"
         >
           <XIcon size={20} strokeWidth={1.8} />
         </button>
 
-        {/* Логотип и Колокольчик */}
-        <div className="px-6 py-6 border-b border-cream/10 flex items-start justify-between">
+        {/* Логотип. Колокольчика здесь нет: он уже в верхней мобильной панели,
+            дублировать уведомления в сайдбаре не нужно. pr-14 — запас
+            под крестик, чтобы заголовок не уезжал под него. */}
+        <div className="pl-6 pr-14 py-6 border-b border-cream/10">
           <Link href="/">
             <div className="text-xl font-playfair font-bold flex items-center gap-2">
               <Library size={22} strokeWidth={1.6} />
@@ -210,12 +212,6 @@ export default function Sidebar() {
               Книги · Люди · Идеи
             </div>
           </Link>
-          {/* Показываем колокольчик только авторизованным */}
-          {user && (
-            <div className="pt-1">
-              <NotificationBell />
-            </div>
-          )}
         </div>
 
         {/* Навигация */}
@@ -331,7 +327,10 @@ export default function Sidebar() {
             это часть жизни,<br />
             которая вдохновляет.»
           </p>
-          <ThemeToggle className="p-0 text-cream/50 hover:text-cream" />
+          {/* Переключатель темы по центру под цитатой */}
+          <div className="flex w-full items-center justify-center">
+            <ThemeToggle className="text-cream/50 hover:text-cream" />
+          </div>
         </div>
       </aside>
     </>

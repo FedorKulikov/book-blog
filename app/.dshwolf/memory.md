@@ -130,3 +130,6 @@ Chronological action log.
 | 2026-11-01 21:37 | edit | `C:/Users/Fedor/projects/book-blog/app/components/NotificationBell.tsx` | ok | 0 |
 | 2026-11-01 21:37 | edit | `C:/Users/Fedor/projects/book-blog/app/components/ShareProfileButton.tsx` | ok | 0 |
 | 2026-11-01 21:41 | write | `C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx` | ok | 0 |
+| 2026-11-01 21:51 | write | `C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx` | ok | 0 |
+| 2026-11-01 21:51 | edit | `C:/Users/Fedor/projects/book-blog/app/components/Header.tsx` | ok | 0 |
+| 2026-11-01 21:51 | edit | `C:/Users/Fedor/projects/book-blog/app/components/Header.tsx` | ok | 0 |
