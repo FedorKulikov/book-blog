@@ -37,21 +37,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends postgresql-client-17
 
-          # КРИТИЧЕСКИ ВАЖНО: Явно задаем путь к 17-й версии для всех следующих шагов
           PG_BIN="/usr/lib/postgresql/17/bin"
           test -x "${PG_BIN}/pg_dump" || { echo "::error::postgresql-client-17 did not install ${PG_BIN}/pg_dump"; exit 1; }
           echo "${PG_BIN}" >> "$GITHUB_PATH"
-          
-          # Проверка, что теперь используется правильная версия
           "${PG_BIN}/pg_dump" --version
 
-      - name: Install age and awscli
+      - name: Install age
         run: |
           set -euo pipefail
           sudo apt-get install -y --no-install-recommends age
-          pip install awscli
           age --version
+
+      - name: Verify AWS CLI
+        run: |
+          set -euo pipefail
+          # На ubuntu-24.04 AWS CLI v2 уже предустановлен. Убедимся, что он есть и работает.
           aws --version
+          if ! command -v aws &> /dev/null; then
+            echo "::error::AWS CLI not found in the runner image"
+            exit 1
+          fi
 
       - name: Validate configuration
         env:
@@ -86,7 +91,6 @@ jobs:
           FILE="db-${STAMP}.dump"
           echo "FILE=$FILE" >> "$GITHUB_ENV"
 
-          # Используется pg_dump 17-й версии из PATH, который мы настроили выше
           pg_dump "$SUPABASE_DB_URL" \
             --no-owner \
             --no-privileges \
@@ -101,9 +105,7 @@ jobs:
           fi
 
           pg_restore --list "$FILE" > /dev/null
-
           ls -lh "$FILE"
-          echo "Backup size: $(wc -c < "$FILE") bytes"
 
       - name: Encrypt with age
         env:
@@ -122,7 +124,6 @@ jobs:
             || { echo "::error::not an age file"; exit 1; }
 
           sha256sum "${FILE}.age" | awk '{print $1}' > "${FILE}.age.sha256"
-
           ls -lh "${FILE}.age" "${FILE}.age.sha256"
 
       - name: Upload to S3 (Backblaze B2)
@@ -135,6 +136,11 @@ jobs:
           S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
         run: |
           set -euo pipefail
+          
+          # Очищаем ключи от возможных \r\n, которые часто попадают при копировании
+          export AWS_ACCESS_KEY_ID=$(echo -n "$AWS_ACCESS_KEY_ID" | tr -d '\r\n')
+          export AWS_SECRET_ACCESS_KEY=$(echo -n "$AWS_SECRET_ACCESS_KEY" | tr -d '\r\n')
+
           aws s3 cp "${FILE}.age" "s3://${S3_BUCKET}/db/${FILE}.age" \
             --endpoint-url "$S3_ENDPOINT" --only-show-errors
           aws s3 cp "${FILE}.age.sha256" "s3://${S3_BUCKET}/db/${FILE}.age.sha256" \
