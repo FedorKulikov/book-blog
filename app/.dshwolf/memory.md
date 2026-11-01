@@ -121,3 +121,8 @@ Chronological action log.
 | 2026-11-01 20:49 | write | `C:/Users/Fedor/projects/book-blog/app/books/BooksClient.tsx` | ok | 0 |
 | 2026-11-01 20:50 | write | `C:/Users/Fedor/restore-test/fn-test.sql` | ok | 0 |
 | 2026-11-01 20:51 | write | `C:/Users/Fedor/restore-test/verify-books-fn.sql` | ok | 0 |
+| 2026-11-01 21:02 | write | `C:/Users/Fedor/projects/book-blog/app/components/comments/CommentNode.tsx` | ok | 0 |
+| 2026-11-01 21:02 | write | `C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx` | ok | 0 |
+| 2026-11-01 21:03 | write | `C:/Users/Fedor/restore-test/fn-comments.sql` | ok | 0 |
+| 2026-11-01 21:03 | write | `C:/Users/Fedor/restore-test/test-comments-fn.sql` | ok | 0 |
+| 2026-11-01 21:04 | write | `C:/Users/Fedor/restore-test/perf-comments-fn.sql` | ok | 0 |

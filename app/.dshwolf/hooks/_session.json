@@ -16,6 +16,11 @@
       "count": 1,
       "tokens": 0,
       "first_read": "2026-11-01T17:47:25.470Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-11-01T18:01:26.760Z"
     }
   },
   "files_written": [
@@ -486,6 +491,26 @@
     {
       "file": "C:/Users/Fedor/restore-test/verify-books-fn.sql",
       "at": "2026-11-01T17:51:00.822Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/comments/CommentNode.tsx",
+      "at": "2026-11-01T18:02:10.183Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx",
+      "at": "2026-11-01T18:02:44.951Z"
+    },
+    {
+      "file": "C:/Users/Fedor/restore-test/fn-comments.sql",
+      "at": "2026-11-01T18:03:06.850Z"
+    },
+    {
+      "file": "C:/Users/Fedor/restore-test/test-comments-fn.sql",
+      "at": "2026-11-01T18:03:39.549Z"
+    },
+    {
+      "file": "C:/Users/Fedor/restore-test/perf-comments-fn.sql",
+      "at": "2026-11-01T18:04:01.503Z"
     }
   ],
   "edit_counts": {
@@ -524,7 +549,7 @@
     "C:/Users/Fedor/projects/book-blog/app/admin/support/[id]/page.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/admin/page.tsx": 4,
     "C:/Users/Fedor/projects/book-blog/app/news/new/page.tsx": 1,
-    "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx": 2,
+    "C:/Users/Fedor/projects/book-blog/app/components/Comments.tsx": 3,
     "C:/Users/Fedor/projects/book-blog/app/components/LikeButton.tsx": 2,
     "C:/Users/Fedor/projects/book-blog/app/components/TopTags.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/book/[id]/getBook.ts": 1,
@@ -539,10 +564,14 @@
     "C:/Users/Fedor/projects/book-blog/app/books/booksQuery.ts": 1,
     "C:/Users/Fedor/projects/book-blog/app/books/page.tsx": 4,
     "C:/Users/Fedor/restore-test/fn-test.sql": 1,
-    "C:/Users/Fedor/restore-test/verify-books-fn.sql": 1
+    "C:/Users/Fedor/restore-test/verify-books-fn.sql": 1,
+    "C:/Users/Fedor/projects/book-blog/app/components/comments/CommentNode.tsx": 1,
+    "C:/Users/Fedor/restore-test/fn-comments.sql": 1,
+    "C:/Users/Fedor/restore-test/test-comments-fn.sql": 1,
+    "C:/Users/Fedor/restore-test/perf-comments-fn.sql": 1
   },
   "anatomy_hits": 0,
-  "anatomy_misses": 49,
+  "anatomy_misses": 50,
   "repeated_reads_warned": 34,
   "cerebrum_warnings": 0
 }
