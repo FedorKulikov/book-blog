@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      # Добавлен обязательный шаг checkout для нормальной работы раннера
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -37,7 +36,14 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends postgresql-client-17
-          pg_dump --version
+
+          # КРИТИЧЕСКИ ВАЖНО: Явно задаем путь к 17-й версии для всех следующих шагов
+          PG_BIN="/usr/lib/postgresql/17/bin"
+          test -x "${PG_BIN}/pg_dump" || { echo "::error::postgresql-client-17 did not install ${PG_BIN}/pg_dump"; exit 1; }
+          echo "${PG_BIN}" >> "$GITHUB_PATH"
+          
+          # Проверка, что теперь используется правильная версия
+          "${PG_BIN}/pg_dump" --version
 
       - name: Install age and awscli
         run: |
@@ -80,6 +86,7 @@ jobs:
           FILE="db-${STAMP}.dump"
           echo "FILE=$FILE" >> "$GITHUB_ENV"
 
+          # Используется pg_dump 17-й версии из PATH, который мы настроили выше
           pg_dump "$SUPABASE_DB_URL" \
             --no-owner \
             --no-privileges \
