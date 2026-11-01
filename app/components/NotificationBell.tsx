@@ -434,7 +434,7 @@ export default function NotificationBell() {
   if (!user) return null
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative flex items-center">
       <button
         ref={buttonRef}
         type="button"
@@ -444,7 +444,7 @@ export default function NotificationBell() {
             ? `Уведомления (${unreadCount} непрочитанных)`
             : 'Уведомления'
         }
-        className="relative text-cream hover:text-cream-warm transition-colors"
+        className="relative inline-flex items-center justify-center leading-none text-cream hover:text-cream-warm transition-colors"
       >
         <Bell size={20} strokeWidth={1.8} />
         {unreadCount > 0 && (

@@ -21,6 +21,31 @@
       "count": 1,
       "tokens": 0,
       "first_read": "2026-11-01T18:01:26.760Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/ShareProfileButton.tsx": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-11-01T18:36:35.402Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-11-01T18:36:38.754Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/NotificationBell.tsx": {
+      "count": 2,
+      "tokens": 0,
+      "first_read": "2026-11-01T18:36:44.649Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/profile/page.tsx": {
+      "count": 1,
+      "tokens": 0,
+      "first_read": "2026-11-01T18:36:44.662Z"
+    },
+    "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx": {
+      "count": 2,
+      "tokens": 0,
+      "first_read": "2026-11-01T18:41:29.337Z"
     }
   },
   "files_written": [
@@ -511,6 +536,22 @@
     {
       "file": "C:/Users/Fedor/restore-test/perf-comments-fn.sql",
       "at": "2026-11-01T18:04:01.503Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
+      "at": "2026-11-01T18:37:06.266Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/NotificationBell.tsx",
+      "at": "2026-11-01T18:37:06.323Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/ShareProfileButton.tsx",
+      "at": "2026-11-01T18:37:06.362Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-11-01T18:41:48.875Z"
     }
   ],
   "edit_counts": {
@@ -523,7 +564,7 @@
     "C:/Users/Fedor/projects/book-blog/lib/supabase/server.ts": 1,
     "C:/Users/Fedor/projects/book-blog/lib/supabase.js": 1,
     "C:/Users/Fedor/projects/book-blog/proxy.ts": 3,
-    "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": 9,
+    "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx": 10,
     "C:/Users/Fedor/projects/book-blog/app/HomeClient.tsx": 2,
     "C:/Users/Fedor/projects/book-blog/app/news/NewsClient.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/discussions/DiscussionsClient.tsx": 1,
@@ -531,14 +572,14 @@
     "C:/Users/Fedor/projects/book-blog/app/sitemap.ts": 2,
     "C:/Users/Fedor/projects/book-blog/app/books/BooksClient.tsx": 3,
     "C:/Users/Fedor/projects/book-blog/app/posts/page.tsx": 2,
-    "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx": 13,
+    "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx": 14,
     "C:/Users/Fedor/projects/book-blog/lib/text.ts": 1,
     "C:/Users/Fedor/projects/book-blog/app/posts/postsQuery.ts": 3,
     "C:/Users/Fedor/projects/book-blog/app/posts/PostList.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/components/icons.ts": 5,
     "C:/Users/Fedor/projects/book-blog/app/components/BookmarkButton.tsx": 1,
     "C:/Users/Fedor/projects/book-blog/app/profile/page.tsx": 1,
-    "C:/Users/Fedor/projects/book-blog/app/components/NotificationBell.tsx": 9,
+    "C:/Users/Fedor/projects/book-blog/app/components/NotificationBell.tsx": 10,
     "C:/Users/Fedor/projects/book-blog/lib/design.ts": 1,
     "C:/Users/Fedor/projects/book-blog/lib/support.ts": 1,
     "C:/Users/Fedor/projects/book-blog/app/support/NewTicketForm.tsx": 1,
@@ -568,10 +609,11 @@
     "C:/Users/Fedor/projects/book-blog/app/components/comments/CommentNode.tsx": 1,
     "C:/Users/Fedor/restore-test/fn-comments.sql": 1,
     "C:/Users/Fedor/restore-test/test-comments-fn.sql": 1,
-    "C:/Users/Fedor/restore-test/perf-comments-fn.sql": 1
+    "C:/Users/Fedor/restore-test/perf-comments-fn.sql": 1,
+    "C:/Users/Fedor/projects/book-blog/app/components/ShareProfileButton.tsx": 1
   },
   "anatomy_hits": 0,
-  "anatomy_misses": 50,
-  "repeated_reads_warned": 34,
+  "anatomy_misses": 55,
+  "repeated_reads_warned": 36,
   "cerebrum_warnings": 0
 }

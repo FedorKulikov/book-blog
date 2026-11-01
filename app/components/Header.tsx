@@ -157,13 +157,17 @@ export default function Sidebar() {
           <Library size={20} strokeWidth={1.8} />
           <span>Хлеба и букв</span>
         </Link>
-        <div className="flex items-center gap-3">
-          <Link href="/search" className="text-cream" aria-label="Поиск">
+        <div className="flex items-center justify-end gap-3 shrink-0">
+          <Link
+            href="/search"
+            className="inline-flex items-center justify-center text-cream"
+            aria-label="Поиск"
+          >
             <Search size={20} strokeWidth={1.8} />
           </Link>
           <Link
             href="/messages"
-            className="relative text-cream"
+            className="relative inline-flex items-center justify-center text-cream"
             aria-label="Сообщения"
           >
             <Mail size={20} strokeWidth={1.8} />

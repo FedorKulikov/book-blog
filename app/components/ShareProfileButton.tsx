@@ -73,7 +73,7 @@ export default function ShareProfileButton({
     <button
       type="button"
       onClick={handleShare}
-      className={`flex items-center gap-2 bg-cream-warm border border-emerald-dark/15 text-brown-dark px-4 py-2 rounded-full text-sm hover:bg-cream transition-colors ${className}`}
+      className={`flex items-center justify-center gap-2 w-full md:w-auto bg-cream-warm border border-emerald-dark/15 text-brown-dark px-4 py-2 rounded-full text-sm hover:bg-cream transition-colors ${className}`}
       aria-label="Поделиться профилем"
     >
       {copied ? (
