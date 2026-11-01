@@ -6,10 +6,18 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
 jobs:
   backup:
     name: dump → age → S3
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Install PostgreSQL client 17
         run: |
@@ -27,12 +35,22 @@ jobs:
         run: |
           sudo apt-get install -y --no-install-recommends age awscli
 
+      - name: Validate configuration
+        env:
+          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          [ -n "${SUPABASE_DB_URL:-}" ] || { echo "::error::SUPABASE_DB_URL empty"; exit 1; }
+          printf '%s' "${AGE_RECIPIENT:-}" | grep -qE '^age1[0-9a-z]{20,}$' \
+            || { echo "::error::AGE_RECIPIENT invalid"; exit 1; }
+
       - name: Dump database
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          STAMP="$(date -u +%Y-%m-%d)"
+          STAMP="$(date -u +%Y-%m-%dT%H%M)"
           FILE="db-${STAMP}.dump"
           echo "FILE=$FILE" >> "$GITHUB_ENV"
 
@@ -49,6 +67,9 @@ jobs:
             exit 1
           fi
 
+          # Проверка целостности архива до шифрования
+          pg_restore --list "$FILE" > /dev/null
+
           ls -lh "$FILE"
 
       - name: Encrypt with age
@@ -58,12 +79,19 @@ jobs:
           set -euo pipefail
           age -r "$AGE_RECIPIENT" -o "${FILE}.age" "$FILE"
           rm -f "$FILE"
-          
+
           if [ ! -s "${FILE}.age" ]; then
             echo "::error::encrypted file is empty"
             exit 1
           fi
-          
+
+          # Проверка магического заголовка age
+          head -c 22 "${FILE}.age" | grep -q 'age-encryption.org' \
+            || { echo "::error::not an age file"; exit 1; }
+
+          # Контрольная сумма
+          sha256sum "${FILE}.age" | awk '{print $1}' > "${FILE}.age.sha256"
+
           ls -lh "${FILE}.age"
 
       - name: Upload to S3 (Backblaze B2)
@@ -78,8 +106,10 @@ jobs:
           set -euo pipefail
           aws s3 cp "${FILE}.age" "s3://${S3_BUCKET}/db/${FILE}.age" \
             --endpoint-url "$S3_ENDPOINT" --only-show-errors
+          aws s3 cp "${FILE}.age.sha256" "s3://${S3_BUCKET}/db/${FILE}.age.sha256" \
+            --endpoint-url "$S3_ENDPOINT" --only-show-errors
           echo "Uploaded: s3://${S3_BUCKET}/db/${FILE}.age"
 
       - name: Cleanup
         if: always()
-        run: rm -f db-*.dump db-*.age
+        run: rm -f db-*.dump db-*.age db-*.age.sha256
