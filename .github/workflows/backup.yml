@@ -21,6 +21,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      # Добавлен обязательный шаг checkout для нормальной работы раннера
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install PostgreSQL client 17
         run: |
           set -euo pipefail
