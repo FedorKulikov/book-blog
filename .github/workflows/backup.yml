@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: db-backup
@@ -18,9 +19,11 @@ jobs:
     name: dump → age → S3
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+
     steps:
       - name: Install PostgreSQL client 17
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y curl ca-certificates
           sudo install -d /usr/share/postgresql-common/pgdg
@@ -30,20 +33,39 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends postgresql-client-17
+          pg_dump --version
 
       - name: Install age and awscli
         run: |
-          sudo apt-get install -y --no-install-recommends age awscli
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends age
+          pip install awscli
+          age --version
+          aws --version
 
       - name: Validate configuration
         env:
-          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+          S3_BUCKET: ${{ vars.S3_BUCKET }}
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+          S3_REGION: ${{ vars.S3_REGION }}
         run: |
           set -euo pipefail
-          [ -n "${SUPABASE_DB_URL:-}" ] || { echo "::error::SUPABASE_DB_URL empty"; exit 1; }
-          printf '%s' "${AGE_RECIPIENT:-}" | grep -qE '^age1[0-9a-z]{20,}$' \
-            || { echo "::error::AGE_RECIPIENT invalid"; exit 1; }
+          fail=0
+          for v in SUPABASE_DB_URL B2_KEY_ID B2_APPLICATION_KEY AGE_RECIPIENT S3_BUCKET S3_ENDPOINT S3_REGION; do
+            if [ -z "${!v:-}" ]; then
+              echo "::error::$v is empty (secret or variable not configured)"
+              fail=1
+            fi
+          done
+          if ! printf '%s' "${AGE_RECIPIENT:-}" | grep -qE '^age1[0-9a-z]{20,}$'; then
+            echo "::error::AGE_RECIPIENT does not look like an age public key (age1...)"
+            fail=1
+          fi
+          exit $fail
 
       - name: Dump database
         env:
@@ -67,10 +89,10 @@ jobs:
             exit 1
           fi
 
-          # Проверка целостности архива до шифрования
           pg_restore --list "$FILE" > /dev/null
 
           ls -lh "$FILE"
+          echo "Backup size: $(wc -c < "$FILE") bytes"
 
       - name: Encrypt with age
         env:
@@ -85,14 +107,12 @@ jobs:
             exit 1
           fi
 
-          # Проверка магического заголовка age
           head -c 22 "${FILE}.age" | grep -q 'age-encryption.org' \
             || { echo "::error::not an age file"; exit 1; }
 
-          # Контрольная сумма
           sha256sum "${FILE}.age" | awk '{print $1}' > "${FILE}.age.sha256"
 
-          ls -lh "${FILE}.age"
+          ls -lh "${FILE}.age" "${FILE}.age.sha256"
 
       - name: Upload to S3 (Backblaze B2)
         env:
@@ -113,3 +133,18 @@ jobs:
       - name: Cleanup
         if: always()
         run: rm -f db-*.dump db-*.age db-*.age.sha256
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE="🔴 Backup failed: $(date -u +%Y-%m-%d)"
+          EXISTING=$(gh issue list --state open --search 'Backup failed in:title' --json number --jq 'length')
+          BODY="Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$EXISTING" -eq 0 ]; then
+            gh issue create --title "$TITLE" --body "$BODY"
+          else
+            echo "Open 'Backup failed' issue already exists — не создаём дубликат"
+          fi
