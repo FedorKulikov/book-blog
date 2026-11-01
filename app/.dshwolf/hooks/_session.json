@@ -569,6 +569,22 @@
     {
       "file": "C:/Users/Fedor/projects/book-blog/app/components/Header.tsx",
       "at": "2026-11-01T18:51:58.566Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-11-01T19:02:15.442Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-11-01T19:02:19.767Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-11-01T19:08:36.844Z"
+    },
+    {
+      "file": "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx",
+      "at": "2026-11-01T19:08:36.881Z"
     }
   ],
   "edit_counts": {
@@ -589,7 +605,7 @@
     "C:/Users/Fedor/projects/book-blog/app/sitemap.ts": 2,
     "C:/Users/Fedor/projects/book-blog/app/books/BooksClient.tsx": 3,
     "C:/Users/Fedor/projects/book-blog/app/posts/page.tsx": 2,
-    "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx": 15,
+    "C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx": 19,
     "C:/Users/Fedor/projects/book-blog/lib/text.ts": 1,
     "C:/Users/Fedor/projects/book-blog/app/posts/postsQuery.ts": 3,
     "C:/Users/Fedor/projects/book-blog/app/posts/PostList.tsx": 1,

@@ -49,15 +49,15 @@ export default function PostCard({ post }: { post: PostCardData }) {
     .slice(0, 3)
 
   return (
-    <article className="bg-cream-warm/25 border border-emerald-dark/8 rounded-2xl overflow-hidden hover:border-emerald-dark/20 transition-colors group flex flex-row">
+    <article className="bg-cream-warm/25 border border-emerald-dark/8 rounded-2xl overflow-hidden hover:border-emerald-dark/20 transition-colors group flex flex-col md:flex-row">
       {cover && (
         <Link
           href={`/post/${post.id}`}
-          // Горизонтальная карточка на всех экранах.
-          // Картинка уже (96 → 128 → 256 px), чтобы текстовой колонке хватало места
-          // на мобильных. self-stretch + min-h-* = картинка тянется по высоте
-          // карточки, пустых полос под ней не бывает.
-          className="relative block w-24 shrink-0 self-stretch min-h-32 overflow-hidden bg-emerald-mid/10 sm:w-32 sm:min-h-40 md:w-64 md:min-h-56"
+          // Мобильные: картинка на всю ширину, пропорция 16:10, текст под ней.
+          // md+: картинка слева фиксированной ширины 256px.
+          // self-stretch + min-h-56 вместо жёсткого h-56: если текст выше 224px,
+          // картинка дотянется до низа карточки и под ней не будет пустой полосы.
+          className="relative block w-full aspect-[16/10] shrink-0 overflow-hidden bg-emerald-mid/10 md:aspect-auto md:w-64 md:self-stretch md:min-h-56"
         >
           <img
             src={cover}
@@ -72,7 +72,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
         </Link>
       )}
 
-      <div className="p-3 sm:p-4 md:p-6 flex flex-col flex-1 min-w-0">
+      <div className="p-4 md:p-5 flex flex-col flex-1 min-w-0">
         {/* Без обложки тип поста показываем в тексте (с обложкой он на картинке).
             «На проверке» всегда живёт здесь: на узкой мобильной обложке
             два бейджа не помещаются и наезжают друг на друга. */}
@@ -94,7 +94,8 @@ export default function PostCard({ post }: { post: PostCardData }) {
         )}
 
         <Link href={`/post/${post.id}`}>
-          <h3 className="font-playfair text-[15px] sm:text-base md:text-lg font-bold text-emerald-dark mb-1 leading-snug hover:text-wine transition-colors line-clamp-2">
+          {/* Заголовок — максимум 2 строки: длинные названия не растягивают карточку */}
+          <h3 className="font-playfair text-lg md:text-xl font-bold text-emerald-dark mb-1 leading-snug hover:text-wine transition-colors line-clamp-2">
             {post.title}
           </h3>
         </Link>
@@ -102,7 +103,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
         {post.books && (
           <Link
             href={`/book/${post.books.id}`}
-            className="inline-flex items-center gap-1.5 text-[11px] text-emerald-mid hover:text-wine transition-colors mb-1"
+            className="inline-flex items-center gap-1.5 text-[11px] text-emerald-mid hover:text-wine transition-colors mb-1.5"
             onClick={(e) => e.stopPropagation()}
           >
             <BookOpen size={11} strokeWidth={1.8} />
@@ -119,19 +120,16 @@ export default function PostCard({ post }: { post: PostCardData }) {
         )}
 
         {/* Превью + явный вход в пост. Markdown вычищаем через toPlainText (lib/text.ts).
-            На мобильной колонке 3 строки, от sm — 4; без обложки карточка
-            на всю ширину — 5 строк. На странице поста текст не обрезается. */}
+            Текст обрезаем: 3 строки на мобильных, 4 на десктопе — карточка остаётся
+            компактной, полный текст читается на странице поста.
+            Ссылка «Читать далее» стоит сразу под текстом, поэтому видна всегда. */}
         <div className="min-w-0">
-          <p
-            className={`text-brown-dark/65 text-[13px] sm:text-sm mb-1 leading-snug sm:leading-relaxed ${
-              cover ? 'line-clamp-3 sm:line-clamp-4' : 'line-clamp-5'
-            }`}
-          >
+          <p className="text-brown-dark/65 text-sm mb-2 leading-relaxed line-clamp-3 md:line-clamp-4">
             {toPlainText(post.content ?? '')}
           </p>
           <Link
             href={`/post/${post.id}`}
-            className="inline-flex items-center gap-1 text-xs font-medium text-wine hover:gap-1.5 transition-all mb-2"
+            className="inline-flex items-center gap-1 text-xs font-medium text-wine hover:gap-1.5 transition-all mb-3"
           >
             <span>Читать далее</span>
             <span aria-hidden="true">→</span>
@@ -141,7 +139,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
         {/* Теги на мобильных скрыты: в узкой колонке они добавляют строк
             и растягивают карточку по высоте. */}
         {tags.length > 0 && (
-          <div className="hidden sm:flex flex-wrap gap-2 mb-2">
+          <div className="hidden sm:flex flex-wrap gap-2 mb-3">
             {tags.map(t => (
               <Link
                 key={t.slug}
