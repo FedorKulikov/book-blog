@@ -38,11 +38,17 @@ export default function PostCard({ post }: { post: PostCardData }) {
     .slice(0, 3)
 
   return (
-    <article className="bg-cream-warm/25 border border-emerald-dark/8 rounded-2xl overflow-hidden hover:border-emerald-dark/20 transition-colors group flex flex-col">
+    <article
+      className={`bg-cream-warm/25 border border-emerald-dark/8 rounded-2xl overflow-hidden hover:border-emerald-dark/20 transition-colors group flex flex-col ${
+        // С обложкой на md+ карточка горизонтальная (Дзен/DTF),
+        // без обложки и на мобильных — вертикальная
+        cover ? 'md:flex-row' : ''
+      }`}
+    >
       {cover && (
         <Link
           href={`/post/${post.id}`}
-          className="block relative aspect-[16/10]"
+          className="relative block aspect-[16/10] overflow-hidden md:aspect-auto md:w-72 md:flex-shrink-0 md:self-stretch md:min-h-[13rem]"
         >
           <img
             src={cover}
@@ -62,7 +68,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
         </Link>
       )}
 
-      <div className="p-5 flex flex-col flex-1">
+      <div className="p-5 flex flex-col flex-1 min-w-0">
         {/* Пост без фото: тип и статус раньше жили на обложке — переносим сюда,
             чтобы информация не потерялась. */}
         {!cover && (
@@ -104,10 +110,15 @@ export default function PostCard({ post }: { post: PostCardData }) {
         )}
 
         {/* Превью + явный вход в пост. Markdown вычищаем через toPlainText (lib/text.ts).
-            Лента одноколоночная и широкая: 5 строк читаются нормально и не превращают
-            карточку без фото в «простыню». На странице поста текст не обрезается. */}
+            В горизонтальной карточке текстовая колонка узкая — 4 строки,
+            без обложки карточка на всю ширину — 5 строк.
+            На странице поста текст не обрезается вообще. */}
         <div>
-          <p className="text-brown-dark/65 text-sm line-clamp-5 mb-2 leading-relaxed">
+          <p
+            className={`text-brown-dark/65 text-sm mb-2 leading-relaxed ${
+              cover ? 'line-clamp-4' : 'line-clamp-5'
+            }`}
+          >
             {toPlainText(post.content ?? '')}
           </p>
           <Link
@@ -135,7 +146,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
           </div>
         )}
 
-        <div className="flex items-center gap-2 text-xs text-brown/50 border-t border-emerald-dark/6 pt-3">
+        <div className="flex items-center gap-2 text-xs text-brown/50 border-t border-emerald-dark/6 pt-3 mt-auto">
           <Link
             href={
               post.profiles?.username
