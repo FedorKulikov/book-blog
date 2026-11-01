@@ -110,3 +110,14 @@ Chronological action log.
 | 2026-10-30 22:05 | write | `C:/Users/Fedor/projects/book-blog/.github/workflows/backup.yml` | ok | 0 |
 | 2026-10-31 19:50 | edit | `C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx` | ok | 0 |
 | 2026-11-01 17:34 | write | `C:/Users/Fedor/projects/book-blog/app/components/PostCard.tsx` | ok | 0 |
+| 2026-11-01 18:51 | write | `C:/Users/Fedor/projects/book-blog/.github/workflows/backup.yml` | error | 0 |
+| 2026-11-01 20:10 | write | `C:/Users/Fedor/projects/book-blog/scripts/reset-pg-password.ps1` | ok | 0 |
+| 2026-11-01 20:47 | write | `C:/Users/Fedor/projects/book-blog/app/books/booksQuery.ts` | ok | 0 |
+| 2026-11-01 20:47 | write | `C:/Users/Fedor/projects/book-blog/app/books/page.tsx` | error | 0 |
+| 2026-11-01 20:47 | write | `C:/Users/Fedor/projects/book-blog/app/books/page.tsx` | error | 0 |
+| 2026-11-01 20:47 | write | `C:/Users/Fedor/projects/book-blog/app/books/BooksClient.tsx` | error | 0 |
+| 2026-11-01 20:47 | edit | `C:/Users/Fedor/projects/book-blog/app/books/page.tsx` | error | 0 |
+| 2026-11-01 20:49 | write | `C:/Users/Fedor/projects/book-blog/app/books/page.tsx` | ok | 0 |
+| 2026-11-01 20:49 | write | `C:/Users/Fedor/projects/book-blog/app/books/BooksClient.tsx` | ok | 0 |
+| 2026-11-01 20:50 | write | `C:/Users/Fedor/restore-test/fn-test.sql` | ok | 0 |
+| 2026-11-01 20:51 | write | `C:/Users/Fedor/restore-test/verify-books-fn.sql` | ok | 0 |

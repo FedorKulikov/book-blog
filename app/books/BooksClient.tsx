@@ -2,38 +2,62 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase/client'
 import Hero from '../components/Hero'
 import EmptyState from '../components/EmptyState'
 import SortTabs, { SortKey } from '../components/SortTabs'
 import { BookOpen, Search, MessageCircle, Eye } from '../components/icons'
+import { fetchBooksPage, type BookRow } from './booksQuery'
 
-/** Строка книги, которую отдаёт PostgREST (без any). */
-export type BookRow = {
-  id: string
-  title: string | null
-  author: string | null
-  cover_url: string | null
-  views_count?: number | null
-  created_at: string
-}
+export type { BookRow } from './booksQuery'
 
 export default function BooksClient({
   initialBooks,
-  initialPostsCountByBook,
+  initialHasMore,
   initialQuery = '',
 }: {
   initialBooks: BookRow[]
-  initialPostsCountByBook: Record<string, number>
+  initialHasMore: boolean
   initialQuery?: string
 }) {
-  const [books] = useState<BookRow[]>(initialBooks)
-  const [postsCountByBook] = useState<Record<string, number>>(
-    initialPostsCountByBook
-  )
+  const [books, setBooks] = useState<BookRow[]>(initialBooks)
+  const [hasMore, setHasMore] = useState(initialHasMore)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [sort, setSort] = useState<SortKey>('new')
   const [query, setQuery] = useState(initialQuery)
 
   const q = query.trim().toLowerCase()
+
+  /** Догрузка следующей страницы по курсору последней книги */
+  async function handleLoadMore() {
+    if (loadingMore || !hasMore) return
+
+    const last = books[books.length - 1]
+    if (!last) return
+
+    setLoadingMore(true)
+    setError(null)
+
+    const res = await fetchBooksPage(supabase, {
+      createdAt: last.created_at,
+      id: last.id,
+    })
+
+    if (res.error) {
+      setError('Не удалось загрузить книги: ' + res.error)
+      setLoadingMore(false)
+      return
+    }
+
+    // На случай пересечения границ страниц — дедупликация по id
+    setBooks(prev => {
+      const seen = new Set(prev.map(b => b.id))
+      return [...prev, ...res.books.filter(b => !seen.has(b.id))]
+    })
+    setHasMore(res.hasMore)
+    setLoadingMore(false)
+  }
 
   const filteredBooks = books
     .filter(b => {
@@ -44,11 +68,13 @@ export default function BooksClient({
       )
     })
     .sort((a, b) => {
+      // Сортировка работает по уже загруженным книгам: порядок страниц
+      // задаёт БД (created_at DESC, id DESC), клиент сортирует видимое.
       if (sort === 'popular') {
         return (b.views_count ?? 0) - (a.views_count ?? 0)
       }
       if (sort === 'discussed') {
-        return (postsCountByBook[b.id] ?? 0) - (postsCountByBook[a.id] ?? 0)
+        return b.discussion_count - a.discussion_count
       }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
@@ -88,7 +114,9 @@ export default function BooksClient({
           title={query ? 'Ничего не найдено' : 'Пока нет книг'}
           description={
             query
-              ? 'Попробуйте другой запрос.'
+              ? hasMore
+                ? 'Поиск идёт по загруженным книгам — нажмите «Показать ещё», чтобы искать дальше.'
+                : 'Попробуйте другой запрос.'
               : 'Книги появятся, когда авторы начнут писать о них.'
           }
           action={
@@ -99,7 +127,7 @@ export default function BooksClient({
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
         {filteredBooks.map(book => {
-          const postsCount = postsCountByBook[book.id] ?? 0
+          const postsCount = book.discussion_count
           const viewsCount = book.views_count ?? 0
 
           return (
@@ -157,6 +185,28 @@ export default function BooksClient({
             </Link>
           )
         })}
+      </div>
+
+      {/* Догрузка */}
+      <div className="flex flex-col items-center gap-2 mt-10">
+        {error && <p className="text-sm text-wine">{error}</p>}
+
+        {hasMore ? (
+          <button
+            type="button"
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className="bg-emerald-dark text-cream px-6 py-2.5 rounded-full text-sm font-medium hover:bg-emerald-mid transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? 'Загружаем…' : 'Показать ещё'}
+          </button>
+        ) : (
+          <p className="text-xs text-brown/45">Показаны все книги</p>
+        )}
+
+        <p className="text-[11px] text-brown/30">
+          Загружено книг: {books.length}
+        </p>
       </div>
     </main>
   )

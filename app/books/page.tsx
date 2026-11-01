@@ -1,60 +1,45 @@
-import { createClient } from '@supabase/supabase-js'
+// app/books/page.tsx
+// Server Component: первая порция книг приходит с сервера (SEO),
+// статистика обсуждений считается в БД через RPC get_books_page().
+import type { Metadata } from 'next'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { fetchBooksPage } from './booksQuery'
 import BooksClient from './BooksClient'
 
-// Отключаем кэширование, чтобы каталог всегда показывал свежие книги
+// Каталог всегда свежий
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'Книги',
+  description:
+    'Каталог книг книжного сообщества «Хлеба и букв»: обзоры, обсуждения и авторы.',
+  alternates: { canonical: '/books' },
+}
 
 export default async function BooksPage({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string }>
 }) {
-  // В Next.js 15/16 searchParams — это Promise, его нужно await'ить
+  // В Next.js 15/16 searchParams — это Promise
   const { q } = await searchParams
 
-  // Создаем чистый клиент Supabase для сервера (анонимный доступ)
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = await createSupabaseServerClient()
+  const { books, hasMore, error } = await fetchBooksPage(supabase, null)
 
-  // Запрашиваем каталог книг.
-  // Если RLS не разрешает анонимное чтение, тут будет ошибка.
-  const { data: books, error: booksError } = await supabase
-    .from('books')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-  if (booksError) {
-    // Выводим ошибку в терминал, чтобы увидеть причину
-    console.error("ОШИБКА SUPABASE:", booksError)
-
+  if (error) {
     return (
-      <div className="p-8 text-center text-wine">
+      <main className="p-8 text-center text-wine max-w-3xl mx-auto">
         Не удалось загрузить каталог книг. Попробуйте позже.
-      </div>
+      </main>
     )
   }
 
-  // Сколько одобренных постов написано о каждой книге
-  const { data: rows } = await supabase
-    .from('posts')
-    .select('book_id')
-    .eq('status', 'approved')
-    .not('book_id', 'is', null)
-
-  const counts: Record<string, number> = {}
-  for (const row of (rows as { book_id: string | null }[] | null) ?? []) {
-    if (!row.book_id) continue
-    counts[row.book_id] = (counts[row.book_id] ?? 0) + 1
-  }
-
-  // Передаем данные в клиентский компонент
   return (
     <BooksClient
-      initialBooks={books || []}
-      initialPostsCountByBook={counts}
-      initialQuery={q || ''}
+      initialBooks={books}
+      initialHasMore={hasMore}
+      initialQuery={q ?? ''}
     />
   )
 }
