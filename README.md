@@ -1,36 +1,154 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 📚 Хлеба и букв
 
-## Getting Started
+Книжное блог-сообщество: обзоры, обсуждения и творчество вокруг книг.
 
-First, run the development server:
+**Хлеба и букв** — это площадка, где читатели пишут о прочитанном, находят книги по вкусу и
+обсуждают их с другими. Вместо ленты безликих постов — каталог книг, привязанные к ним
+обзоры, живые ветки комментариев и личные сообщения.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Живая версия: **https://book-blog-main.layero.app**
+
+---
+
+## ✨ Что умеет
+
+| Раздел | Возможности |
+|---|---|
+| **Посты** | Публикация обзоров, новинок и творческих материалов; загрузка фото, теги, привязка к книге; модерация новых записей |
+| **Каталог книг** | Курсорная пагинация, поиск, сортировка; карточка книги со всеми обсуждениями и статистикой |
+| **Комментарии** | Древовидные ответы, подгрузка по страницам, Realtime-обновление без перезагрузки |
+| **Реакции** | Лайки постов и комментариев, закладки «на потом» |
+| **Люди** | Публичные профили, подписки, аватары, биография |
+| **Сообщения** | Личные диалоги в реальном времени, блокировка пользователей |
+| **Уведомления** | Bell-меню с непрочитанными, живое обновление |
+| **Поддержка** | Тикеты с перепиской, статусы, ответы редакции |
+| **Модерация** | Админка: посты на проверке, жалобы, роли (admin / moderator) |
+
+---
+
+## 🧱 Стек
+
+| Слой | Технологии |
+|---|---|
+| Фронтенд | **Next.js 16** (App Router, Server Components), **React 19**, **TypeScript** (strict, без `any`) |
+| Стили | **Tailwind CSS 4** (кастомная палитра `emerald` / `cream` / `wine`, тёмная тема) |
+| Бэкенд | **Supabase**: PostgreSQL + RLS, Auth (cookie-сессии через `@supabase/ssr`), Storage (аватары, фото постов), Realtime (комментарии, сообщения, уведомления) |
+| Иконки | `lucide-react` |
+| Хостинг | **Layero** |
+| Резервные копии | `pg_dump` → `age` (шифрование) → приватный bucket Backblaze B2, ежедневный GitHub Actions |
+
+---
+
+## 🚀 Запуск локально
+
+### 1. Клонировать репозиторий
+
+```powershell
+git clone https://github.com/FedorKulikov/book-blog.git
+cd book-blog
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Установить зависимости
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```powershell
+npm install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 3. Настроить переменные окружения
 
-## Learn More
+Создай в корне файл `.env.local`:
 
-To learn more about Next.js, take a look at the following resources:
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Значения берутся в Supabase → **Project Settings → API**. Anon-ключ безопасно держать
+на клиенте: доступ ограничен RLS-политиками. Сервисный (`service_role`) ключ проекту не
+нужен и **не должен** попадать в клиентский бандл.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Переменная | Обязательна | Назначение |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | да | Адрес проекта Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | да | Публичный ключ (RLS ограничивает доступ) |
+| `NEXT_PUBLIC_SITE_URL` | нет | Канонический домен для `metadataBase`, sitemap и OG-тегов |
+| `SUPABASE_DB_URL` | только в CI | Строка подключения для ночных бэкапов |
 
-## Deploy on Vercel
+### 4. Запустить
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```powershell
+npm run dev
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Приложение откроется на **http://localhost:3000**.
+
+### 5. Проверка перед коммитом
+
+```powershell
+npx tsc --noEmit   # типы
+npm run build      # прод-сборка
+npm run lint       # eslint
+```
+
+---
+
+## 🗂 Структура проекта
+
+```
+app/
+├── page.tsx              главная (лента + сайдбар)
+├── posts/                все посты: серверный RPC-пагинатор
+├── post/[id]/            пост, его редактирование (Server Component + форма)
+├── books/, book/[id]/    каталог книг и карточка книги
+├── news/, creative/, discussions/   разделы по типу контента
+├── profile/[username]/   публичный профиль
+├── profile/edit/         настройки профиля (аватар, био)
+├── messages/             личные диалоги (Realtime)
+├── support/              тикеты поддержки
+├── admin/                модерация и жалобы
+└── components/           UI-компоненты (клиентские островки)
+lib/                      клиенты Supabase, текст, форматирование, поддержка
+proxy.ts                  refresh сессии + серверный guard для /admin
+.github/workflows/        ежедневный зашифрованный бэкап БД
+```
+
+---
+
+## 🔐 Безопасность
+
+- **RLS включён на всех таблицах.** Чтение и запись ограничены политиками; анонимный ключ
+  не даёт доступа к чужим приватным данным.
+- **Редактирование постов** — только автор или staff, проверка и на сервере (`getPost` +
+  роль), и в RLS политике `posts_update_own_or_staff`.
+- **Загрузка файлов** — лимит 5 МБ и MIME-фильтр (JPEG/PNG/WebP/GIF) на клиенте **и**
+  в настройках Storage-бакета.
+- **Модерация** — триггеры БД отклоняют стоп-слова и забаненных пользователей; лимиты
+  действий (посты/комментарии) считаются в БД, а не в браузере.
+- **Бэкапы** — ежедневный `pg_dump` шифруется `age` и уходит в приватный бакет; ключ
+  шифрования хранится только офлайн.
+
+---
+
+## 🌍 Деплой
+
+Проект развёрнут на **Layero** (сборка `npm run build`, запуск `next start`).
+При деплое обязательно задай переменные окружения из раздела
+[«Настроить переменные окружения»](#3-настроить-переменные-окружения) и убедись, что
+`NEXT_PUBLIC_SITE_URL` указывает на боевой домен — от него зависят canonical-ссылки,
+sitemap и превью в соцсетях.
+
+---
+
+## 👤 Автор
+
+**Фёдор Куликов** — автор и мейнтейнер проекта.
+
+- GitHub: [@FedorKulikov](https://github.com/FedorKulikov)
+- Репозиторий: [FedorKulikov/book-blog](https://github.com/FedorKulikov/book-blog)
+
+---
+
+## 📄 Лицензия
+
+Личный проект. Код открыт для ознакомления; если хочешь использовать его как основу —
+напиши, договоримся.

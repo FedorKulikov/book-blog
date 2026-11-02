@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Upload } from './icons'
+import { IMAGE_ACCEPT_ATTR, validateImageFile } from './imageValidation'
 
 type Props = {
   currentUrl?: string | null
@@ -16,12 +17,12 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
 
   async function handleFile(file: File | null) {
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Файл больше 5 МБ')
-      return
-    }
-    if (!file.type.startsWith('image/')) {
-      setError('Только изображения')
+
+    // Та же проверка, что и в ImageUploader: размер ≤ 5 МБ и только
+    // JPEG/PNG/WebP/GIF. Клиентская — для UX, серверная — в Storage.
+    const check = validateImageFile(file)
+    if (!check.ok) {
+      setError(check.message)
       return
     }
 
@@ -35,12 +36,12 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
       return
     }
 
-    const ext = file.name.split('.').pop()
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
     const fileName = `${user.id}/avatar-${Date.now()}.${ext}`
 
     const { error: upErr } = await supabase.storage
       .from('avatars')
-      .upload(fileName, file, { upsert: true })
+      .upload(fileName, file, { upsert: true, contentType: file.type })
 
     if (upErr) {
       setError(upErr.message)
@@ -73,9 +74,12 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
             <span>Выбрать файл</span>
             <input
               type="file"
-              accept="image/*"
+              accept={IMAGE_ACCEPT_ATTR}
               disabled={uploading}
-              onChange={(e) => handleFile(e.target.files?.[0] || null)}
+              onChange={(e) => {
+                void handleFile(e.target.files?.[0] || null)
+                e.currentTarget.value = ''
+              }}
               className="hidden"
             />
           </label>
@@ -84,7 +88,7 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
           )}
           {error && <p className="text-xs text-wine mt-2">{error}</p>}
           <p className="text-xs text-brown/50 mt-2">
-            JPG, PNG. До 5 МБ.
+            JPG, PNG, WebP или GIF. До 5 МБ.
           </p>
         </div>
       </div>
