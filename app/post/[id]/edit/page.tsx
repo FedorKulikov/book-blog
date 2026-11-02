@@ -1,212 +1,78 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+// app/post/[id]/edit/page.tsx
+// Server Component: грузит пост через getPost(), проверяет права на сервере
+// и отдаёт данные в клиентскую форму EditPostForm.
+import type { Metadata } from 'next'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
-import { formatPostContent } from '@/lib/format'
-import Comments from '@/app/components/Comments'
-import LikeButton from '@/app/components/LikeButton'
-import ReportButton from '@/app/components/ReportButton'
-import ViewCounter from '@/app/components/ViewCounter'
-import { ChevronLeft, Pencil, Trash2, Eye } from '@/app/components/icons'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { ChevronLeft } from '@/app/components/icons'
+import { getPost } from '../getPost'
+import EditPostForm from './EditPostForm'
 
-export default function PostPage() {
-  const params = useParams()
-  const id = params.id as string
-  const router = useRouter()
+// Права зависят от сессии — страницу нельзя кешировать
+export const dynamic = 'force-dynamic'
 
-  const [post, setPost] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
-  const [currentUser, setCurrentUser] = useState<any>(null)
-  const [deleting, setDeleting] = useState(false)
+export const metadata: Metadata = {
+  title: 'Редактирование поста',
+  robots: { index: false, follow: false },
+}
 
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      setCurrentUser(user)
+export default async function EditPostPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
 
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*, profiles!posts_user_id_fkey(username, avatar_url), post_images(url), books(id, title, author, year)')
-        .eq('id', id)
-        .single()
+  // RLS уже отсекает чужие непубличные посты: вернётся null → 404
+  const post = await getPost(id)
+  if (!post) notFound()
 
-      if (error || !data) {
-        setNotFound(true)
-      } else {
-        setPost(data)
-      }
-      setLoading(false)
-    }
-    load()
-  }, [id])
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  async function handleDelete() {
-    if (!confirm('Удалить этот пост? Действие нельзя отменить.')) return
-    setDeleting(true)
+  // Гостя отправляем логиниться, а не показываем 404 — так понятнее
+  if (!user) redirect('/login')
 
-    await supabase.from('post_images').delete().eq('post_id', id)
-    await supabase.from('comments').delete().eq('post_id', id)
-    await supabase.from('likes').delete().eq('post_id', id)
-    await supabase.from('reports').delete().eq('post_id', id)
+  const isAuthor = user.id === post.user_id
 
-    const { error } = await supabase.from('posts').delete().eq('id', id)
+  let isStaff = false
+  if (!isAuthor) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle()
 
-    if (error) {
-      alert('Ошибка удаления: ' + error.message)
-      setDeleting(false)
-      return
-    }
-
-    router.push('/news')
-    router.refresh()
+    const role = (profile as { role: string | null } | null)?.role ?? null
+    isStaff = role === 'admin' || role === 'moderator'
   }
 
-  if (loading) {
-    return <main className="p-4 md:p-8 max-w-4xl mx-auto">Загрузка…</main>
-  }
-
-  if (notFound || !post) {
-    return (
-      <main className="p-4 md:p-8 max-w-4xl mx-auto">
-        <p className="text-wine">Пост не найден.</p>
-        <Link
-          href="/"
-          className="text-wine hover:underline text-sm mt-3 inline-block"
-        >
-          ← На главную
-        </Link>
-      </main>
-    )
-  }
-
-  const isAuthor = currentUser && currentUser.id === post.user_id
+  // Чужим и не-staff — не раскрываем даже существование формы
+  if (!isAuthor && !isStaff) notFound()
 
   return (
-    <main className="p-4 md:p-8 max-w-4xl mx-auto">
-      <ViewCounter postId={post.id} />
-
+    <main className="p-4 md:p-8 max-w-2xl mx-auto">
       <Link
-        href={
-          post.type === 'news'
-            ? '/news'
-            : post.type === 'creative'
-            ? '/creative'
-            : '/discussions'
-        }
-        className="flex items-center gap-1 text-sm text-brown/70 hover:text-wine mb-4 transition-colors"
+        href={`/post/${post.id}`}
+        className="flex items-center gap-1 text-sm text-brown/70 hover:text-wine mb-6 transition-colors"
       >
         <ChevronLeft size={15} strokeWidth={2} />
-        <span>Назад</span>
+        <span>Назад к посту</span>
       </Link>
 
-      <article className="bg-cream-warm/30 border border-emerald-dark/10 rounded-2xl overflow-hidden">
-        {post.post_images && post.post_images.length > 0 && (
-          <img
-            src={post.post_images[0].url}
-            alt={post.title}
-            className="w-full max-h-96 object-cover"
-          />
-        )}
+      <h1 className="font-playfair text-2xl md:text-3xl font-bold text-emerald-dark mb-2">
+        Редактирование поста
+      </h1>
+      <p className="text-sm text-brown/60 mb-8">
+        {isAuthor
+          ? 'Изменения появятся сразу после сохранения.'
+          : 'Вы редактируете чужой пост как представитель редакции.'}
+      </p>
 
-        <div className="p-6 md:p-8">
-          {isAuthor && (
-            <div className="flex gap-3 justify-end mb-3">
-              <Link
-                href={`/post/${post.id}/edit`}
-                className="flex items-center gap-1.5 text-sm text-brown/70 hover:text-emerald-mid transition-colors"
-              >
-                <Pencil size={14} strokeWidth={1.8} />
-                <span>Редактировать</span>
-              </Link>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex items-center gap-1.5 text-sm text-brown/70 hover:text-wine transition-colors disabled:opacity-50"
-              >
-                <Trash2 size={14} strokeWidth={1.8} />
-                <span>{deleting ? 'Удаляем…' : 'Удалить'}</span>
-              </button>
-            </div>
-          )}
-
-          {post.status === 'pending' && (
-            <div className="mb-3">
-              <span className="text-xs bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full">
-                На проверке модератором
-              </span>
-            </div>
-          )}
-
-          <h1 className="font-playfair text-3xl md:text-4xl font-bold text-emerald-dark mb-4 leading-tight">
-            {post.title}
-          </h1>
-
-          <div className="flex items-center gap-3 text-sm text-brown/60 mb-6 pb-6 border-b border-emerald-dark/10 flex-wrap">
-            <Link
-              href={
-                post.profiles?.username
-                  ? `/profile/${post.profiles.username}`
-                  : '#'
-              }
-              className="flex items-center gap-3 hover:text-wine transition-colors"
-            >
-              {post.profiles?.avatar_url ? (
-                <img
-                  src={post.profiles.avatar_url}
-                  alt=""
-                  className="w-8 h-8 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-emerald-mid text-cream flex items-center justify-center text-sm font-bold">
-                  {(post.profiles?.username || '?')[0].toUpperCase()}
-                </div>
-              )}
-              <span className="font-medium text-brown-dark">
-                {post.profiles?.username || 'Аноним'}
-              </span>
-            </Link>
-            <span className="text-brown/30">·</span>
-            <span>
-              {new Date(post.created_at).toLocaleString('ru-RU', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              })}
-            </span>
-
-            <span className="ml-auto flex items-center gap-3">
-              <span className="flex items-center gap-1 text-xs text-brown/50">
-                <Eye size={13} strokeWidth={1.8} />
-                <span>{post.views_count ?? 0}</span>
-              </span>
-              <LikeButton postId={post.id} />
-              {!isAuthor && <ReportButton postId={post.id} />}
-            </span>
-          </div>
-
-          <div className="post-content mb-6">
-            {formatPostContent(post.content || '')}
-          </div>
-
-          {post.post_images && post.post_images.length > 1 && (
-            <div className="flex flex-col gap-4 mt-6">
-              {post.post_images.slice(1).map((img: any, i: number) => (
-                <img
-                  key={i}
-                  src={img.url}
-                  alt=""
-                  className="rounded-lg border border-emerald-dark/10 w-full"
-                />
-              ))}
-            </div>
-          )}
-
-          <Comments postId={post.id} />
-        </div>
-      </article>
+      <EditPostForm post={post} />
     </main>
   )
 }

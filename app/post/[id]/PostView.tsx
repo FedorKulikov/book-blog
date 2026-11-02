@@ -130,7 +130,7 @@ export default function PostView({ post }: { post: PostDetail }) {
         <div className="p-6 md:p-8">
           {(isAuthor || isStaff) && (
             <div className="flex gap-3 justify-end mb-3">
-              {isAuthor && (
+              {(isAuthor || isStaff) && (
                 <Link
                   href={`/post/${post.id}/edit`}
                   className="flex items-center gap-1.5 text-sm text-brown/70 hover:text-emerald-mid transition-colors"
