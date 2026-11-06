@@ -81,6 +81,8 @@ h1, h2, h3 {
   bottom: 0;
   left: 0;
   width: 16rem;
+  /* Фиксированная ширина: на ноутбуках колонка не должна сжиматься */
+  min-width: 16rem;
   z-index: 50;
   transition: transform 0.3s ease;
   display: flex;

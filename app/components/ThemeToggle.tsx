@@ -31,7 +31,11 @@ export default function ThemeToggle({
     <button
       type="button"
       onClick={toggle}
-      className={`text-cream/70 hover:text-cream transition-colors p-2 ${className}`}
+      // Намеренно без фона и рамки: в сайдбаре это просто иконка,
+      // меняющая цвет при наведении. Фон/кольцо появляются только на
+      // focus-visible (клавиатурная навигация), иначе кнопка выглядела
+      // как белая плашка с обводкой.
+      className={`inline-flex items-center justify-center border-0 bg-transparent rounded-full p-2 leading-none text-cream/70 transition-colors hover:text-cream focus:outline-none focus-visible:ring-1 focus-visible:ring-cream/40 ${className}`}
       aria-label={isDark ? 'Включить светлую тему' : 'Включить тёмную тему'}
       title={isDark ? 'Светлая тема' : 'Тёмная тема'}
     >

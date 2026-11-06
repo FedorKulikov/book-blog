@@ -237,7 +237,7 @@ export default function Sidebar() {
         </nav>
 
         {/* Поиск */}
-        <div className="px-4 pb-3">
+        <div className="px-5 pb-3">
           <Link
             href="/search"
             className="flex items-center justify-center gap-2 bg-cream/5 hover:bg-cream/10 text-cream/90 rounded py-2.5 text-sm transition-colors border border-cream/10"
@@ -248,7 +248,7 @@ export default function Sidebar() {
         </div>
 
         {/* Создать пост */}
-        <div className="px-4 pb-3">
+        <div className="px-5 pb-3">
           <Link
             href="/news/new"
             className="flex items-center justify-center gap-2 bg-wine hover:bg-wine-dark text-white rounded py-2.5 text-sm transition-colors"
@@ -260,7 +260,7 @@ export default function Sidebar() {
 
         {/* Админ-панель */}
         {isStaff && (
-          <div className="px-4 pb-3">
+          <div className="px-5 pb-3">
             <Link
               href="/admin"
               className="flex items-center justify-center gap-2 bg-brown hover:bg-brown-dark text-cream rounded py-2 text-sm transition-colors"
@@ -272,7 +272,7 @@ export default function Sidebar() {
         )}
 
         {/* Пользователь или вход */}
-        <div className="px-4 pb-4 border-t border-cream/10 pt-4">
+        <div className="px-5 pb-4 border-t border-cream/10 pt-4">
           {user ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
