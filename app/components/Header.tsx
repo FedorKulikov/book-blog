@@ -322,13 +322,15 @@ export default function Sidebar() {
 
         {/* Цитата */}
         <div className="px-6 pb-6 pt-4 border-t border-cream/10">
-          <p className="font-playfair text-xs italic text-cream/40 leading-relaxed mb-3">
+          <p className="font-playfair text-xs italic text-cream/40 leading-relaxed">
             «Хорошие книги —<br />
             это часть жизни,<br />
             которая вдохновляет.»
           </p>
-          {/* Переключатель темы по центру под цитатой */}
-          <div className="flex w-full items-center justify-center">
+          {/* Переключатель темы — по левому краю, под первой буквой цитаты.
+              -ml-2.5 компенсирует прозрачные поля кнопки (бокс 40px, иконка 18px),
+              иначе солнце визуально съезжало бы вправо на ~11px. */}
+          <div className="-ml-2.5 mt-2 flex w-full items-center justify-start">
             <ThemeToggle className="text-cream/50 hover:text-cream" />
           </div>
         </div>
