@@ -1,0 +1,45 @@
+name: Backfill news metadata
+
+# Ручной запуск: обогащает уже сохранённые записи external_news
+# (автор, год, обложка из Open Library + перевод на русский).
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Сколько записей обработать за один запуск'
+        required: false
+        default: '10'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backfill-news
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: enrich existing news
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Node 20 не имеет нативного WebSocket, который нужен @supabase/supabase-js
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backfill news metadata
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ENRICH_LIMIT: ${{ inputs.limit }}
+        run: npx tsx scripts/fetch-rss-news.ts --backfill

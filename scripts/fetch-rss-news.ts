@@ -11,6 +11,7 @@
  * Запуск:
  *   npx tsx scripts/fetch-rss-news.ts            # боевой режим (нужны env)
  *   npx tsx scripts/fetch-rss-news.ts --dry-run  # распарсить + обогатить, без записи
+ *   npx tsx scripts/fetch-rss-news.ts --backfill # обогатить уже сохранённые записи
  *
  * Переменные окружения:
  *   SUPABASE_URL                — адрес проекта (или NEXT_PUBLIC_SUPABASE_URL)
@@ -40,6 +41,9 @@ const OPENLIBRARY_DELAY_MS = 300
 const OPENLIBRARY_TIMEOUT_MS = 8_000
 
 const DRY_RUN = process.argv.includes('--dry-run')
+
+/** --backfill: не тянем ленту, а обогащаем уже сохранённые записи */
+const BACKFILL = process.argv.includes('--backfill')
 
 /* ------------------------------------------------------------------ */
 /* Типы                                                                */
@@ -245,21 +249,24 @@ async function translateToRussian(text: string): Promise<string | null> {
   const clean = text.trim()
   if (!clean || !needsTranslation(clean)) return null
 
-  try {
-    // Google Translate (неофициальный публичный endpoint через библиотеку).
-    // Лимит на длину запроса — режем длинные описания до перевода.
-    const result = await translate(clean.slice(0, 1000), { to: 'ru' })
-    return (result.text ?? '').trim() || null
-  } catch (error) {
-    logWarn(
-      'перевод не удался:',
-      error instanceof Error ? error.message : error,
-    )
-    return null
-  } finally {
-    // Пауза даже при ошибке: не заваливаем переводчик запросами
-    await sleep(TRANSLATE_DELAY_MS)
+  // Две попытки: публичный endpoint Google периодически отвечает 429,
+  // особенно с «облачных» IP (GitHub Actions, VPN)
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      // Лимит на длину запроса — режем длинные описания до перевода.
+      const result = await translate(clean.slice(0, 1000), { to: 'ru' })
+      return (result.text ?? '').trim() || null
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (attempt === 2) {
+        logWarn('перевод не удался:', message)
+        return null
+      }
+      await sleep(TRANSLATE_DELAY_MS)
+    }
   }
+
+  return null
 }
 
 /* ------------------------------------------------------------------ */
@@ -357,51 +364,79 @@ function buildRows(items: FeedItemLike[]): NewRow[] {
 /* Обогащение: Open Library + перевод                                  */
 /* ------------------------------------------------------------------ */
 
+type EnrichableRow = {
+  title: string
+  summary: string | null
+  author: string | null
+  cover_url: string | null
+  content_type: string | null
+  published_year: number | null
+}
+
+/** Обогащает одну запись: Open Library (автор/год/обложка) + перевод */
+async function enrichOne<T extends EnrichableRow>(row: T): Promise<T> {
+  let next: T = { ...row }
+
+  // Название могло сохраниться вместе с префиксом «Автор: » — разделяем,
+  // иначе Open Library ищет по строке вида «Kazuo Ishiguro: Klara and the Sun»
+  if (!next.author) {
+    const split = splitAuthorFromTitle(next.title)
+    if (split.author) {
+      next = { ...next, title: split.title, author: split.author }
+    }
+  }
+
+  // 1. Автор / год / обложка — только для книг и только если чего-то не хватает
+  if (
+    (next.content_type ?? 'book') === 'book' &&
+    (!next.author || !next.published_year || !next.cover_url)
+  ) {
+    const hit = await openLibraryLookup(next.title, next.author)
+    if (hit) {
+      next = {
+        ...next,
+        author: next.author ?? hit.author,
+        published_year: next.published_year ?? hit.year,
+        cover_url: next.cover_url ?? hit.coverUrl,
+      }
+    }
+    await sleep(OPENLIBRARY_DELAY_MS)
+  }
+
+  // 2. Перевод — только если латиницы в тексте больше, чем кириллицы
+  if (needsTranslation(next.title)) {
+    const translated = await translateToRussian(next.title)
+    if (translated) next = { ...next, title: truncate(translated, TITLE_MAX) }
+  }
+
+  if (next.summary && needsTranslation(next.summary)) {
+    const translated = await translateToRussian(next.summary)
+    if (translated) next = { ...next, summary: truncate(translated, SUMMARY_MAX) }
+  }
+
+  return next
+}
+
 async function enrichRows(rows: NewRow[]): Promise<NewRow[]> {
   const enriched: NewRow[] = []
   const limit = Math.min(rows.length, Math.max(0, ENRICH_LIMIT))
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
-    if (!row || i >= limit) {
-      if (row) enriched.push(row)
-      continue
-    }
-
-    let next: NewRow = { ...row }
-
-    // 1. Автор / год / обложка — только для книг и только если чего-то не хватает
-    if (
-      next.content_type === 'book' &&
-      (!next.author || !next.published_year || !next.cover_url)
-    ) {
-      const hit = await openLibraryLookup(next.title, next.author)
-      if (hit) {
-        next = {
-          ...next,
-          author: next.author ?? hit.author,
-          published_year: next.published_year ?? hit.year,
-          cover_url: next.cover_url ?? hit.coverUrl,
-        }
-      }
-      await sleep(OPENLIBRARY_DELAY_MS)
-    }
-
-    // 2. Перевод — только если текста нет кириллицы
-    if (needsTranslation(next.title)) {
-      const translated = await translateToRussian(next.title)
-      if (translated) next.title = truncate(translated, TITLE_MAX)
-    }
-
-    if (next.summary && needsTranslation(next.summary)) {
-      const translated = await translateToRussian(next.summary)
-      if (translated) next.summary = truncate(translated, SUMMARY_MAX)
-    }
-
-    enriched.push(next)
+    if (!row) continue
+    enriched.push(i < limit ? await enrichOne(row) : row)
   }
 
   return enriched
+}
+
+/** Нужно ли дообогащать сохранённую запись */
+function needsBackfill(row: EnrichableRow): boolean {
+  const missingMeta = !row.author || !row.cover_url || !row.published_year
+  const untranslated =
+    needsTranslation(row.title) ||
+    (row.summary ? needsTranslation(row.summary) : false)
+  return missingMeta || untranslated
 }
 
 /* ------------------------------------------------------------------ */
@@ -491,10 +526,105 @@ async function saveRows(rows: NewRow[]): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Backfill: обогащение уже сохранённых записей                        */
+/* ------------------------------------------------------------------ */
+
+async function backfill(): Promise<void> {
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error(
+      'не заданы SUPABASE_URL (или NEXT_PUBLIC_SUPABASE_URL) и SUPABASE_SERVICE_ROLE_KEY',
+    )
+  }
+
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const { data, error } = await supabase
+    .from('external_news')
+    .select(
+      'id, title, url, summary, author, cover_url, content_type, published_year',
+    )
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    throw new Error(`не удалось прочитать external_news: ${error.message}`)
+  }
+
+  const rows = (data ?? []) as unknown as (EnrichableRow & {
+    id: string
+    url: string
+  })[]
+
+  const pending = rows.filter(needsBackfill)
+  const targets = pending.slice(0, Math.max(0, ENRICH_LIMIT))
+
+  log(
+    `backfill: записей всего ${rows.length}, требуют обогащения ${pending.length}, обработаем ${targets.length}`,
+  )
+
+  if (targets.length === 0) {
+    log('все записи уже обогащены — делать нечего')
+    return
+  }
+
+  let updated = 0
+
+  for (const row of targets) {
+    const enriched = await enrichOne(row)
+
+    const patch = {
+      title: enriched.title,
+      summary: enriched.summary,
+      author: enriched.author,
+      cover_url: enriched.cover_url,
+      published_year: enriched.published_year,
+    }
+
+    if (DRY_RUN) {
+      log(
+        `  [dry] «${row.title}» → «${patch.title}» | автор: ${patch.author ?? '—'} | год: ${patch.published_year ?? '—'} | обложка: ${patch.cover_url ? 'да' : '—'}`,
+      )
+      continue
+    }
+
+    const { error: updateError } = await supabase
+      .from('external_news')
+      .update(patch)
+      .eq('id', row.id)
+
+    if (updateError) {
+      logWarn(`не удалось обновить ${row.id}: ${updateError.message}`)
+      continue
+    }
+
+    updated++
+    log(`  ✓ «${row.title}» → «${patch.title}»`)
+  }
+
+  log(
+    DRY_RUN
+      ? 'dry-run: изменения не сохранены'
+      : `обновлено записей: ${updated} из ${targets.length}`,
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* Entry point                                                         */
 /* ------------------------------------------------------------------ */
 
 async function main(): Promise<void> {
+  if (BACKFILL) {
+    log(`режим: backfill${DRY_RUN ? ' (dry-run)' : ''}`)
+    await backfill()
+    return
+  }
+
   log(`источник: ${FEED_URL}${DRY_RUN ? ' (dry-run)' : ''}`)
 
   const { feedTitle, items } = await loadFeed()

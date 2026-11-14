@@ -130,7 +130,7 @@ export default function Sidebar() {
   }[] = [
     { href: '/', label: 'Главная', Icon: Home },
     { href: '/books', label: 'Книги', Icon: BookOpen },
-    { href: '/external-news', label: 'Новости', Icon: Newspaper },
+    { href: '/external-news', label: 'Книжные новости', Icon: Newspaper },
     // Пункт появляется, только если раздел не пуст (hasNews выше)
     ...(hasNews ? [{ href: '/news', label: 'Новости', Icon: FileText }] : []),
     { href: '/creative', label: 'Творчество', Icon: Feather },

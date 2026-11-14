@@ -13,7 +13,7 @@ export default function MobileNav() {
     { href: '/', Icon: Home, label: 'Главная' },
     { href: '/books', Icon: BookOpen, label: 'Книги' },
     { href: '/news/new', Icon: PenLine, label: 'Создать', accent: true },
-    { href: '/external-news', Icon: Newspaper, label: 'Новости' },
+    { href: '/external-news', Icon: Newspaper, label: 'Новинки' },
     { href: '/profile', Icon: User, label: 'Профиль' },
   ]
 
