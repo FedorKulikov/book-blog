@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import LikeButton from './LikeButton'
 import BookmarkButton from './BookmarkButton'
+import AvatarLightbox from './AvatarLightbox'
 import { MessageCircle, Hash, BookOpen, Eye } from './icons'
 import { toPlainText } from '@/lib/text'
 
@@ -47,6 +49,10 @@ export default function PostCard({ post }: { post: PostCardData }) {
     .map(pt => pt.tags)
     .filter((t): t is { name: string; slug: string } => !!t)
     .slice(0, 3)
+
+  const [lightbox, setLightbox] = useState<{ src: string; name: string } | null>(
+    null,
+  )
 
   return (
     <article className="bg-cream-warm/25 border border-emerald-dark/8 rounded-2xl overflow-hidden hover:border-emerald-dark/20 transition-colors group flex flex-row">
@@ -145,30 +151,47 @@ export default function PostCard({ post }: { post: PostCardData }) {
         {/* mt-auto прижимает футер к низу текстовой части; flex-wrap не даёт
             статистике выдавить ник и дату за границу на мобильных */}
         <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-brown/50 border-t border-emerald-dark/6 pt-2">
-          <Link
-            href={
-              post.profiles?.username
-                ? `/profile/${post.profiles.username}`
-                : '#'
-            }
-            className="flex items-center gap-2 min-w-0 hover:text-wine transition-colors"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="flex items-center gap-2 min-w-0">
             {post.profiles?.avatar_url ? (
-              <img
-                src={post.profiles.avatar_url}
-                alt=""
-                className="w-5 h-5 rounded-full object-cover"
-              />
+              // Клик по аватару открывает лайтбокс, а не профиль:
+              // preventDefault + stopPropagation обязательны, чтобы не сработала ссылка
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setLightbox({
+                    src: post.profiles?.avatar_url ?? '',
+                    name: post.profiles?.username || 'Аноним',
+                  })
+                }}
+                className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-wine/50"
+                aria-label={`Увеличить фото ${post.profiles?.username || 'автора'}`}
+                title="Открыть фото"
+              >
+                <img
+                  src={post.profiles.avatar_url}
+                  alt=""
+                  className="w-5 h-5 rounded-full object-cover"
+                />
+              </button>
             ) : (
               <div className="w-5 h-5 rounded-full bg-emerald-mid text-cream flex items-center justify-center text-[10px] font-bold">
                 {(post.profiles?.username || '?')[0].toUpperCase()}
               </div>
             )}
-            <span className="font-medium text-brown-dark text-[11px] truncate">
+            <Link
+              href={
+                post.profiles?.username
+                  ? `/profile/${post.profiles.username}`
+                  : '#'
+              }
+              className="font-medium text-brown-dark text-[11px] truncate hover:text-wine transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
               {post.profiles?.username || 'Аноним'}
-            </span>
-          </Link>
+            </Link>
+          </div>
           <span className="text-brown/20">·</span>
           <span className="text-[11px] whitespace-nowrap">
             {dateFormatter.format(new Date(post.created_at))}
@@ -193,6 +216,14 @@ export default function PostCard({ post }: { post: PostCardData }) {
           </span>
         </div>
       </div>
+
+      {lightbox && (
+        <AvatarLightbox
+          src={lightbox.src}
+          username={lightbox.name}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </article>
   )
 }

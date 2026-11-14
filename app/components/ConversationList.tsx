@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import EmptyState from './EmptyState'
+import AvatarLightbox from './AvatarLightbox'
 import { Mail, BellOff } from './icons'
 
 type Profile = {
@@ -88,6 +89,10 @@ export default function ConversationList({
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filter>('all')
+  // Просмотр аватара собеседника на весь экран
+  const [lightbox, setLightbox] = useState<{ src: string; name: string } | null>(
+    null,
+  )
 
   useEffect(() => {
     async function load() {
@@ -252,16 +257,39 @@ export default function ConversationList({
         {visible.map(conv => {
           const isActive = activeId === conv.id
           return (
-            <Link
+            <div
               key={conv.id}
-              href={`/messages/${conv.id}`}
               className={`flex items-center gap-3 px-4 py-2.5 border-l-2 transition-colors ${
                 isActive
                   ? 'bg-cream-warm/70 border-wine'
                   : 'border-transparent hover:bg-cream-warm/40'
               }`}
             >
-              <div className="w-11 h-11 rounded-full bg-emerald-mid text-cream flex items-center justify-center font-bold flex-shrink-0 overflow-hidden">
+              {/* Клик по аватару открывает лайтбокс, а не диалог.
+                  Аватар вынесен из <Link>: вкладывать кнопку в ссылку нельзя. */}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  if (conv.otherUser?.avatar_url) {
+                    setLightbox({
+                      src: conv.otherUser.avatar_url,
+                      name: conv.otherUser.username || 'Аноним',
+                    })
+                  }
+                }}
+                disabled={!conv.otherUser?.avatar_url}
+                className={`w-11 h-11 rounded-full bg-emerald-mid text-cream flex items-center justify-center font-bold flex-shrink-0 overflow-hidden ${
+                  conv.otherUser?.avatar_url ? 'cursor-zoom-in' : 'cursor-default'
+                }`}
+                aria-label={
+                  conv.otherUser?.avatar_url
+                    ? `Увеличить фото ${conv.otherUser.username}`
+                    : 'Фото профиля отсутствует'
+                }
+                title={conv.otherUser?.avatar_url ? 'Открыть фото' : undefined}
+              >
                 {conv.otherUser?.avatar_url ? (
                   <img
                     src={conv.otherUser.avatar_url}
@@ -271,9 +299,9 @@ export default function ConversationList({
                 ) : (
                   (conv.otherUser?.username?.[0] || '?').toUpperCase()
                 )}
-              </div>
+              </button>
 
-              <div className="flex-1 min-w-0">
+              <Link href={`/messages/${conv.id}`} className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span
                     className={`font-medium text-sm truncate ${
@@ -313,11 +341,19 @@ export default function ConversationList({
                     </span>
                   )}
                 </div>
-              </div>
-            </Link>
+              </Link>
+            </div>
           )
         })}
       </div>
+
+      {lightbox && (
+        <AvatarLightbox
+          src={lightbox.src}
+          username={lightbox.name}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   )
 }
