@@ -190,10 +190,19 @@ export default function AdminPage() {
       <h1 className="text-2xl md:text-3xl font-bold text-emerald-dark mb-2">
         🛡 Панель модератора
       </h1>
-      <p className="text-sm text-brown/60 mb-6">
+      <p className="text-sm text-brown/60 mb-4">
         Роль: {me?.role}. Жалоб открытых: {reports.length}. Постов на проверке:{' '}
         {pending.length}.
       </p>
+
+      <div className="mb-6">
+        <Link
+          href="/admin/news"
+          className="inline-flex items-center gap-2 rounded-full bg-emerald-mid px-4 py-2 text-sm text-cream transition-colors hover:bg-emerald-dark"
+        >
+          📰 Внешние новости
+        </Link>
+      </div>
 
       <div className="flex gap-2 mb-6 border-b border-emerald-dark/10 pb-2 overflow-x-auto">
         <button
