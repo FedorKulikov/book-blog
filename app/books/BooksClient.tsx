@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase/client'
 import Hero from '../components/Hero'
 import EmptyState from '../components/EmptyState'
 import SortTabs, { SortKey } from '../components/SortTabs'
-import { BookOpen, Search, MessageCircle, Eye } from '../components/icons'
+import { BookOpen, Search, MessageCircle, Eye, Plus } from '../components/icons'
 import { fetchBooksPage, type BookRow } from './booksQuery'
 
 export type { BookRow } from './booksQuery'
@@ -15,10 +15,12 @@ export default function BooksClient({
   initialBooks,
   initialHasMore,
   initialQuery = '',
+  canAddBook = false,
 }: {
   initialBooks: BookRow[]
   initialHasMore: boolean
   initialQuery?: string
+  canAddBook?: boolean
 }) {
   const [books, setBooks] = useState<BookRow[]>(initialBooks)
   const [hasMore, setHasMore] = useState(initialHasMore)
@@ -88,20 +90,32 @@ export default function BooksClient({
       />
 
       <div className="space-y-6 mb-8">
-        {/* Строка поиска */}
-        <div className="relative">
-          <Search
-            size={16}
-            strokeWidth={1.8}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-brown/40 pointer-events-none"
-          />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Найти книгу или автора…"
-            className="w-full border border-emerald-dark/15 rounded-lg pl-9 pr-3 py-2 bg-cream-warm/40 focus:outline-none focus:border-emerald-mid"
-          />
+        {/* Поиск + кнопка добавления (только для авторизованных) */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search
+              size={16}
+              strokeWidth={1.8}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-brown/40 pointer-events-none"
+            />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Найти книгу или автора…"
+              className="w-full border border-emerald-dark/15 rounded-lg pl-9 pr-3 py-2 bg-cream-warm/40 focus:outline-none focus:border-emerald-mid"
+            />
+          </div>
+
+          {canAddBook && (
+            <Link
+              href="/books/add"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-emerald-dark px-4 py-2 text-sm text-cream transition-colors hover:bg-emerald-mid"
+            >
+              <Plus size={16} strokeWidth={1.8} />
+              <span>Добавить книгу</span>
+            </Link>
+          )}
         </div>
 
         {/* Сортировка */}

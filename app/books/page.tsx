@@ -27,6 +27,11 @@ export default async function BooksPage({
   const supabase = await createSupabaseServerClient()
   const { books, hasMore, error } = await fetchBooksPage(supabase, null)
 
+  // Кнопку «Добавить книгу» показываем только авторизованным
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   if (error) {
     return (
       <main className="p-8 text-center text-wine max-w-3xl mx-auto">
@@ -40,6 +45,7 @@ export default async function BooksPage({
       initialBooks={books}
       initialHasMore={hasMore}
       initialQuery={q ?? ''}
+      canAddBook={Boolean(user)}
     />
   )
 }
