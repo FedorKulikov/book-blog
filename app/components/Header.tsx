@@ -24,6 +24,7 @@ import {
   Menu,
   X as XIcon,
   Library,
+  Newspaper,
 } from './icons'
 import UnreadMessagesBadge from './UnreadMessagesBadge'
 import ThemeToggle from './ThemeToggle'
@@ -129,6 +130,7 @@ export default function Sidebar() {
   }[] = [
     { href: '/', label: 'Главная', Icon: Home },
     { href: '/books', label: 'Книги', Icon: BookOpen },
+    { href: '/external-news', label: 'Новости', Icon: Newspaper },
     // Пункт появляется, только если раздел не пуст (hasNews выше)
     ...(hasNews ? [{ href: '/news', label: 'Новости', Icon: FileText }] : []),
     { href: '/creative', label: 'Творчество', Icon: Feather },

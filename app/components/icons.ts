@@ -59,4 +59,5 @@ export {
   Check,
   Bookmark,
   LifeBuoy,
+  Newspaper,
 } from 'lucide-react'

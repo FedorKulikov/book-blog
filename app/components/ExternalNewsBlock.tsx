@@ -3,9 +3,12 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Calendar, ExternalLink } from './icons'
+import { BookOpen, Calendar, ExternalLink } from './icons'
 import {
+  EXTERNAL_NEWS_LEGACY_SELECT,
+  EXTERNAL_NEWS_SELECT,
   formatNewsDate,
+  normalizeExternalNewsRow,
   type ExternalNewsItem,
 } from '@/app/external-news/externalNewsQuery'
 
@@ -14,7 +17,8 @@ const LIMIT = 5
 
 /**
  * Блок «Новости книжного мира» для тёмного сайдбара главной.
- * Если новостей нет — блок не рендерится вовсе (никакой пустой рамки).
+ * Компактный список с маленькими обложками. Если новостей нет —
+ * блок не рендерится вовсе (никакой пустой рамки).
  */
 export default function ExternalNewsBlock() {
   const [items, setItems] = useState<ExternalNewsItem[]>([])
@@ -24,21 +28,32 @@ export default function ExternalNewsBlock() {
     let alive = true
 
     void (async () => {
-      const { data, error } = await supabase
-        .from('external_news')
-        .select('id, title, url, source, summary, created_at')
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(LIMIT)
+      // Сначала пробуем полный набор колонок, при их отсутствии — базовый
+      const load = async (select: string) =>
+        supabase
+          .from('external_news')
+          .select(select)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(LIMIT)
+
+      let result = await load(EXTERNAL_NEWS_SELECT)
+      if (result.error && /column .* does not exist/i.test(result.error.message)) {
+        result = await load(EXTERNAL_NEWS_LEGACY_SELECT)
+      }
 
       if (!alive) return
-      if (error) {
-        console.error('[external-news] sidebar fetch failed:', error.message)
+      if (result.error) {
+        console.error('[external-news] sidebar fetch failed:', result.error.message)
         setLoading(false)
         return
       }
 
-      setItems((data ?? []) as unknown as ExternalNewsItem[])
+      setItems(
+        ((result.data ?? []) as unknown as Parameters<typeof normalizeExternalNewsRow>[0][]).map(
+          normalizeExternalNewsRow,
+        ),
+      )
       setLoading(false)
     })()
 
@@ -65,23 +80,43 @@ export default function ExternalNewsBlock() {
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="block rounded-xl bg-cream/5 p-3 transition-colors hover:bg-cream/10"
+              className="flex items-start gap-2.5 rounded-xl bg-cream/5 p-2.5 transition-colors hover:bg-cream/10"
             >
-              <span className="text-sm leading-snug text-cream/90 hover:text-cream-warm line-clamp-2">
-                {item.title}
+              {/* Маленькая обложка или заглушка */}
+              <span className="w-8 h-11 shrink-0 overflow-hidden rounded bg-cream/10 flex items-center justify-center">
+                {item.cover_url ? (
+                  <img
+                    src={item.cover_url}
+                    alt=""
+                    loading="lazy"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <BookOpen
+                    size={14}
+                    strokeWidth={1.5}
+                    className="text-cream/40"
+                  />
+                )}
               </span>
 
-              {item.summary && (
-                <span className="mt-1 block text-[11px] text-cream/50 leading-snug line-clamp-2">
-                  {item.summary}
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm leading-snug text-cream/90 hover:text-cream-warm line-clamp-2">
+                  {item.title}
                 </span>
-              )}
 
-              <span className="mt-1.5 flex items-center gap-1.5 text-[10px] text-cream/40">
-                <span>{item.source}</span>
-                <span className="text-cream/20">·</span>
-                <Calendar size={10} strokeWidth={1.8} />
-                <span>{formatNewsDate(item.created_at)}</span>
+                {item.author && (
+                  <span className="mt-0.5 block text-[10px] text-cream/45 line-clamp-1">
+                    {item.author}
+                  </span>
+                )}
+
+                <span className="mt-1 flex items-center gap-1.5 text-[10px] text-cream/40">
+                  <span>{item.source}</span>
+                  <span className="text-cream/20">·</span>
+                  <Calendar size={10} strokeWidth={1.8} />
+                  <span>{formatNewsDate(item.created_at)}</span>
+                </span>
               </span>
             </a>
           </li>

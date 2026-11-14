@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Calendar, ExternalLink } from '@/app/components/icons'
+import ExternalNewsCard from '@/app/components/ExternalNewsCard'
 import {
   fetchExternalNewsPage,
-  formatNewsDate,
   type ExternalNewsItem,
 } from './externalNewsQuery'
 
@@ -49,41 +48,10 @@ export default function ExternalNewsList({
 
   return (
     <div>
-      <div className="flex flex-col gap-4 max-w-3xl mx-auto w-full">
+      {/* 1 колонка на мобильных, 2 на планшете, 3 на широком экране */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
         {items.map(item => (
-          <article
-            key={item.id}
-            className="bg-cream-warm/25 border border-emerald-dark/8 rounded-2xl p-4 md:p-5 hover:border-emerald-dark/20 transition-colors"
-          >
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group inline-flex items-start gap-1.5 font-playfair text-lg md:text-xl font-bold text-emerald-dark hover:text-wine transition-colors"
-            >
-              <span className="line-clamp-2">{item.title}</span>
-              <ExternalLink
-                size={14}
-                strokeWidth={1.8}
-                className="mt-1 shrink-0 opacity-50"
-              />
-            </a>
-
-            {item.summary && (
-              <p className="mt-1.5 text-sm text-brown-dark/65 leading-relaxed line-clamp-3">
-                {item.summary}
-              </p>
-            )}
-
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-brown/50">
-              <span className="font-medium text-brown/70">{item.source}</span>
-              <span className="text-brown/20">·</span>
-              <span className="flex items-center gap-1">
-                <Calendar size={11} strokeWidth={1.8} />
-                {formatNewsDate(item.created_at)}
-              </span>
-            </div>
-          </article>
+          <ExternalNewsCard key={item.id} item={item} />
         ))}
       </div>
 

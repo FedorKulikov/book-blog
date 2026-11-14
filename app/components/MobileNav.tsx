@@ -2,16 +2,18 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, BookOpen, PenLine, User, Search } from './icons'
+import { Home, BookOpen, PenLine, User, Newspaper } from './icons'
 
 export default function MobileNav() {
   const pathname = usePathname()
 
+  // Поиск убран: он уже есть в верхней мобильной панели (иконка лупы),
+  // а «Новости» — отдельный раздел, на который хочется попадать в один тап.
   const items = [
     { href: '/', Icon: Home, label: 'Главная' },
     { href: '/books', Icon: BookOpen, label: 'Книги' },
     { href: '/news/new', Icon: PenLine, label: 'Создать', accent: true },
-    { href: '/search', Icon: Search, label: 'Поиск' },
+    { href: '/external-news', Icon: Newspaper, label: 'Новости' },
     { href: '/profile', Icon: User, label: 'Профиль' },
   ]
 
@@ -19,7 +21,9 @@ export default function MobileNav() {
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-emerald-dark text-cream border-t border-cream/10">
       <div className="flex items-center justify-around h-16">
         {items.map(({ href, Icon, label, accent }) => {
-          const isActive = pathname === href
+          const isActive =
+            href === '/' ? pathname === '/' : pathname.startsWith(href)
+
           return (
             <Link
               key={href}
