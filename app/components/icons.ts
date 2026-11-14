@@ -60,4 +60,6 @@ export {
   Bookmark,
   LifeBuoy,
   Newspaper,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'

@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
+
+type UsernameStatus = 'idle' | 'checking' | 'free' | 'taken'
 
 /**
  * Ошибки уникальности username приходят из БД (UNIQUE-констрейнт
@@ -31,17 +33,66 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Живая проверка занятости имени (с дебаунсом, чтобы не дёргать БД на каждый символ)
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle')
+
   const router = useRouter()
+
+  useEffect(() => {
+    const clean = username.trim()
+
+    if (clean.length < 3) {
+      setUsernameStatus('idle')
+      return
+    }
+
+    setUsernameStatus('checking')
+    let alive = true
+
+    const timer = setTimeout(async () => {
+      const { data, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', clean)
+        .limit(1)
+        .maybeSingle()
+
+      if (!alive) return
+
+      if (checkError) {
+        // RLS мог не дать прочитать profiles — не мешаем заполнять форму,
+        // окончательное решение примет UNIQUE-констрейнт при регистрации
+        console.warn('[signup] username check failed:', checkError.message)
+        setUsernameStatus('idle')
+        return
+      }
+
+      setUsernameStatus(data ? 'taken' : 'free')
+    }, 500)
+
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [username])
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
     setError(null)
 
     const cleanUsername = username.trim()
 
-    // 1. Предпроверка: имя уже занято? Тогда не бьёмся о констрейнт в базе,
-    // а сразу показываем понятное сообщение.
+    // Имя занято — не отправляем форму даже если пользователь нажал Enter
+    if (usernameStatus === 'taken') {
+      setError('Это имя уже занято. Попробуйте другое.')
+      return
+    }
+
+    setLoading(true)
+
+    // Финальная предпроверка прямо перед регистрацией: за время заполнения
+    // имя могло освободиться или, наоборот, его мог занять кто-то другой
     const { data: taken, error: checkError } = await supabase
       .from('profiles')
       .select('id')
@@ -50,16 +101,15 @@ export default function SignupPage() {
       .maybeSingle()
 
     if (checkError) {
-      // RLS мог не дать прочитать profiles — не блокируем регистрацию,
-      // окончательное решение примет UNIQUE-констрейнт (ветка ниже)
       console.warn('[signup] username pre-check failed:', checkError.message)
     } else if (taken) {
       setError('Это имя уже занято. Попробуйте другое.')
+      setUsernameStatus('taken')
       setLoading(false)
       return
     }
 
-    // 2. Регистрируем пользователя
+    // Регистрируем пользователя
     const { error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -87,6 +137,9 @@ export default function SignupPage() {
     }
   }
 
+  const submitDisabled =
+    loading || usernameStatus === 'taken' || usernameStatus === 'checking'
+
   return (
     <main className="p-4 md:p-8 flex justify-center">
       <div className="w-full max-w-md">
@@ -107,12 +160,35 @@ export default function SignupPage() {
               minLength={3}
               maxLength={30}
               pattern="[a-zA-Z0-9_]+"
-              className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
+              aria-invalid={usernameStatus === 'taken'}
+              className={`w-full border rounded px-3 py-2 bg-cream-warm/50 ${
+                usernameStatus === 'taken'
+                  ? 'border-wine'
+                  : usernameStatus === 'free'
+                  ? 'border-emerald-mid'
+                  : 'border-emerald-dark/20'
+              }`}
               placeholder="ivan_reader"
             />
-            <p className="text-xs text-brown/60 mt-1">
-              Только латинские буквы, цифры и подчёркивание
-            </p>
+
+            {usernameStatus === 'checking' && (
+              <p className="text-xs text-brown/50 mt-1">Проверяем имя…</p>
+            )}
+            {usernameStatus === 'free' && (
+              <p className="text-xs text-emerald-mid mt-1">
+                ✓ Имя свободно
+              </p>
+            )}
+            {usernameStatus === 'taken' && (
+              <p className="text-xs text-wine mt-1">
+                Это имя уже занято. Попробуйте другое.
+              </p>
+            )}
+            {usernameStatus === 'idle' && (
+              <p className="text-xs text-brown/60 mt-1">
+                Только латинские буквы, цифры и подчёркивание
+              </p>
+            )}
           </div>
 
           <div>
@@ -148,10 +224,14 @@ export default function SignupPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={submitDisabled}
             className="w-full bg-emerald-mid text-cream py-2 rounded hover:bg-emerald-dark disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Регистрируем…' : 'Зарегистрироваться'}
+            {loading
+              ? 'Регистрируем…'
+              : usernameStatus === 'taken'
+              ? 'Имя занято'
+              : 'Зарегистрироваться'}
           </button>
         </form>
 

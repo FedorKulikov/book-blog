@@ -8,6 +8,7 @@ import { humanizeError } from '@/lib/errors'
 import PostCard from '@/app/components/PostCard'
 import FollowButton from '@/app/components/FollowButton'
 import ShareProfileButton from '@/app/components/ShareProfileButton'
+import AvatarLightbox from '@/app/components/AvatarLightbox'
 import { Mail, UserX, UserCheck } from '@/app/components/icons'
 import type { ProfilePageData } from './getProfile'
 
@@ -27,6 +28,8 @@ export default function ProfileView({
   const [startingChat, setStartingChat] = useState(false)
   const [isBlocking, setIsBlocking] = useState(false)
   const [blockBusy, setBlockBusy] = useState(false)
+  // Просмотр аватара другого участника на весь экран (с зумом)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -129,11 +132,19 @@ export default function ProfileView({
 
         <div className="absolute bottom-4 left-4 right-4 md:bottom-6 md:left-6 md:right-6 flex items-end gap-4 md:gap-5 flex-wrap">
           {profile.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt=""
-              className="w-20 h-20 md:w-28 md:h-28 rounded-full object-cover flex-shrink-0 border-4 border-cream shadow-lg"
-            />
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              className="group flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-cream/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-dark/40"
+              aria-label={`Увеличить фото профиля ${profile.username}`}
+              title="Открыть фото"
+            >
+              <img
+                src={profile.avatar_url}
+                alt={`Фото профиля ${profile.username}`}
+                className="w-20 h-20 md:w-28 md:h-28 rounded-full object-cover border-4 border-cream shadow-lg transition-transform group-hover:scale-[1.03]"
+              />
+            </button>
           ) : (
             <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-wine text-white flex items-center justify-center text-3xl md:text-5xl font-bold flex-shrink-0 border-4 border-cream shadow-lg">
               {initial}
@@ -229,6 +240,14 @@ export default function ProfileView({
           <PostCard key={post.id} post={post} />
         ))}
       </div>
+
+      {lightboxOpen && profile.avatar_url && (
+        <AvatarLightbox
+          src={profile.avatar_url}
+          username={profile.username}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </main>
   )
 }
