@@ -6,6 +6,25 @@ import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
 
+/**
+ * Ошибки уникальности username приходят из БД (UNIQUE-констрейнт
+ * profiles_username_key) — между клиентской проверкой и вставкой имя
+ * мог занять кто-то другой. Показываем то же понятное сообщение.
+ */
+function explainSignupError(message: string): string {
+  const lower = message.toLowerCase()
+
+  if (
+    lower.includes('duplicate key') ||
+    lower.includes('profiles_username_key') ||
+    lower.includes('unique constraint')
+  ) {
+    return 'Это имя уже занято. Попробуйте другое.'
+  }
+
+  return humanizeError(message)
+}
+
 export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
@@ -19,15 +38,36 @@ export default function SignupPage() {
     setLoading(true)
     setError(null)
 
-    // Регистрируем пользователя
+    const cleanUsername = username.trim()
+
+    // 1. Предпроверка: имя уже занято? Тогда не бьёмся о констрейнт в базе,
+    // а сразу показываем понятное сообщение.
+    const { data: taken, error: checkError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('username', cleanUsername)
+      .limit(1)
+      .maybeSingle()
+
+    if (checkError) {
+      // RLS мог не дать прочитать profiles — не блокируем регистрацию,
+      // окончательное решение примет UNIQUE-констрейнт (ветка ниже)
+      console.warn('[signup] username pre-check failed:', checkError.message)
+    } else if (taken) {
+      setError('Это имя уже занято. Попробуйте другое.')
+      setLoading(false)
+      return
+    }
+
+    // 2. Регистрируем пользователя
     const { error: signUpError } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { username } },
+      options: { data: { username: cleanUsername } },
     })
 
     if (signUpError) {
-      setError(humanizeError(signUpError.message))
+      setError(explainSignupError(signUpError.message))
       setLoading(false)
       return
     }
