@@ -7,6 +7,7 @@ import Hero from './components/Hero'
 import PostCard from './components/PostCard'
 import TopAuthors from './components/TopAuthors'
 import PopularPosts from './components/PopularPosts'
+import ExternalNewsBlock from './components/ExternalNewsBlock'
 import TopTags from './components/TopTags'
 import EmptyState from './components/EmptyState'
 import { PostGridSkeleton } from './components/Skeleton'
@@ -220,6 +221,7 @@ export default function HomeClient({ initialPosts }: { initialPosts: any[] }) {
           <div className="hidden lg:block">
             <PopularPosts />
           </div>
+          <ExternalNewsBlock />
           <TopTags mobileLimit={6} />
 
           <div className="pt-6 border-t border-cream/15">
