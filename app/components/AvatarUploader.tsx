@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Upload } from './icons'
 import { IMAGE_ACCEPT_ATTR, validateImageFile } from './imageValidation'
+import AvatarCropper from './AvatarCropper'
 
 type Props = {
   currentUrl?: string | null
@@ -14,8 +15,10 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(currentUrl || null)
   const [error, setError] = useState<string | null>(null)
+  // Файл, выбранный для обрезки: пока он есть, показываем модальный кроппер
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
 
-  async function handleFile(file: File | null) {
+  function handleFile(file: File | null) {
     if (!file) return
 
     // Та же проверка, что и в ImageUploader: размер ≤ 5 МБ и только
@@ -26,6 +29,11 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
       return
     }
 
+    setError(null)
+    setPendingFile(file) // дальше — модальное окно с кроппером
+  }
+
+  async function handleCroppedSave(blob: Blob) {
     setUploading(true)
     setError(null)
 
@@ -36,12 +44,11 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
       return
     }
 
-    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-    const fileName = `${user.id}/avatar-${Date.now()}.${ext}`
+    const fileName = `${user.id}/avatar-${Date.now()}.jpg`
 
     const { error: upErr } = await supabase.storage
       .from('avatars')
-      .upload(fileName, file, { upsert: true, contentType: file.type })
+      .upload(fileName, blob, { upsert: true, contentType: 'image/jpeg' })
 
     if (upErr) {
       setError(upErr.message)
@@ -52,6 +59,7 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
     const { data } = supabase.storage.from('avatars').getPublicUrl(fileName)
     setPreview(data.publicUrl)
     onUploaded(data.publicUrl)
+    setPendingFile(null)
     setUploading(false)
   }
 
@@ -77,7 +85,7 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
               accept={IMAGE_ACCEPT_ATTR}
               disabled={uploading}
               onChange={(e) => {
-                void handleFile(e.target.files?.[0] || null)
+                handleFile(e.target.files?.[0] || null)
                 e.currentTarget.value = ''
               }}
               className="hidden"
@@ -88,10 +96,22 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
           )}
           {error && <p className="text-xs text-wine mt-2">{error}</p>}
           <p className="text-xs text-brown/50 mt-2">
-            JPG, PNG, WebP или GIF. До 5 МБ.
+            JPG, PNG, WebP или GIF. До 5 МБ. После выбора можно подвинуть
+            и обрезать фото.
           </p>
         </div>
       </div>
+
+      {pendingFile && (
+        <AvatarCropper
+          file={pendingFile}
+          uploading={uploading}
+          onCancel={() => {
+            if (!uploading) setPendingFile(null)
+          }}
+          onSave={handleCroppedSave}
+        />
+      )}
     </div>
   )
 }
