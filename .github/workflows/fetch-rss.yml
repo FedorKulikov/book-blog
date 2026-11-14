@@ -1,0 +1,40 @@
+name: Fetch RSS news
+
+on:
+  schedule:
+    # 06:00 UTC = 09:00 по Москве
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fetch-rss-news
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    name: litres RSS → external_news
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch and store RSS news
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RSS_FEED_URL: https://www.litres.ru/rss/
+        run: npx tsx scripts/fetch-rss-news.ts

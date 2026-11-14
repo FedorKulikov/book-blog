@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fetch:rss": "tsx scripts/fetch-rss-news.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -25,7 +26,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^16.4.2",
+    "rss-parser": "^3.13.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
