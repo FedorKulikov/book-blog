@@ -2,7 +2,7 @@
  * scripts/fetch-rss-news.ts
  *
  * Забирает новые книги из RSS-ленты «Литрес», обогащает данные
- * (автор, год, обложка через Open Library; перевод на русский) и складывает
+ * (автор, год, обложка через Open Library) и складывает
  * всё в public.external_news.
  *
  * Скрипт автономен: не участвует в сборке сайта и не импортирует код приложения,
@@ -21,7 +21,6 @@
  */
 import Parser from 'rss-parser'
 import { createClient } from '@supabase/supabase-js'
-import { translate } from '@vitalets/google-translate-api'
 
 const FEED_URL = process.env.RSS_FEED_URL ?? 'https://www.litres.ru/rss/'
 const SOURCE = 'Литрес'
@@ -31,11 +30,9 @@ const FETCH_TIMEOUT_MS = 30_000
 const TITLE_MAX = 200
 const SUMMARY_MAX = 300
 
-/** Сколько записей обогащаем за один прогон (Open Library + перевод не бесплатны по времени) */
+/** Сколько записей обогащаем за один прогон (запросы к Open Library не бесплатны по времени) */
 const ENRICH_LIMIT = Number(process.env.ENRICH_LIMIT ?? '10')
 
-/** Пауза между запросами к переводчику — чтобы не получить 429 */
-const TRANSLATE_DELAY_MS = 1_000
 /** Пауза между запросами к Open Library — вежливость к публичному API */
 const OPENLIBRARY_DELAY_MS = 300
 const OPENLIBRARY_TIMEOUT_MS = 8_000
@@ -119,22 +116,6 @@ function stripHtml(input: string): string {
 function truncate(value: string, max: number): string {
   if (value.length <= max) return value
   return value.slice(0, max - 1).trimEnd() + '…'
-}
-
-function hasCyrillic(value: string): boolean {
-  return /[а-яё]/i.test(value)
-}
-
-/**
- * Нужен ли перевод. Простой «есть ли кириллица» не годится: у Литреса описание
- * начинается с русского слова «Аннотация:», а дальше идёт английский текст.
- * Поэтому сравниваем количество латинских и кириллических букв.
- */
-function needsTranslation(value: string): boolean {
-  const cyrillic = (value.match(/[а-яё]/gi) ?? []).length
-  const latin = (value.match(/[a-z]/gi) ?? []).length
-  if (latin === 0) return false
-  return cyrillic === 0 || latin > cyrillic
 }
 
 function isHttpUrl(value: string): boolean {
@@ -242,34 +223,6 @@ async function openLibraryLookup(
 }
 
 /* ------------------------------------------------------------------ */
-/* Перевод                                                             */
-/* ------------------------------------------------------------------ */
-
-async function translateToRussian(text: string): Promise<string | null> {
-  const clean = text.trim()
-  if (!clean || !needsTranslation(clean)) return null
-
-  // Две попытки: публичный endpoint Google периодически отвечает 429,
-  // особенно с «облачных» IP (GitHub Actions, VPN)
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      // Лимит на длину запроса — режем длинные описания до перевода.
-      const result = await translate(clean.slice(0, 1000), { to: 'ru' })
-      return (result.text ?? '').trim() || null
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (attempt === 2) {
-        logWarn('перевод не удался:', message)
-        return null
-      }
-      await sleep(TRANSLATE_DELAY_MS)
-    }
-  }
-
-  return null
-}
-
-/* ------------------------------------------------------------------ */
 /* Загрузка и парсинг                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -361,7 +314,7 @@ function buildRows(items: FeedItemLike[]): NewRow[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Обогащение: Open Library + перевод                                  */
+/* Обогащение: Open Library                                           */
 /* ------------------------------------------------------------------ */
 
 type EnrichableRow = {
@@ -373,7 +326,7 @@ type EnrichableRow = {
   published_year: number | null
 }
 
-/** Обогащает одну запись: Open Library (автор/год/обложка) + перевод */
+/** Обогащает одну запись: автор, год и обложка из Open Library */
 async function enrichOne<T extends EnrichableRow>(row: T): Promise<T> {
   let next: T = { ...row }
 
@@ -403,17 +356,6 @@ async function enrichOne<T extends EnrichableRow>(row: T): Promise<T> {
     await sleep(OPENLIBRARY_DELAY_MS)
   }
 
-  // 2. Перевод — только если латиницы в тексте больше, чем кириллицы
-  if (needsTranslation(next.title)) {
-    const translated = await translateToRussian(next.title)
-    if (translated) next = { ...next, title: truncate(translated, TITLE_MAX) }
-  }
-
-  if (next.summary && needsTranslation(next.summary)) {
-    const translated = await translateToRussian(next.summary)
-    if (translated) next = { ...next, summary: truncate(translated, SUMMARY_MAX) }
-  }
-
   return next
 }
 
@@ -430,13 +372,9 @@ async function enrichRows(rows: NewRow[]): Promise<NewRow[]> {
   return enriched
 }
 
-/** Нужно ли дообогащать сохранённую запись */
+/** Нужно ли дообогащать сохранённую запись (перевод больше не используем) */
 function needsBackfill(row: EnrichableRow): boolean {
-  const missingMeta = !row.author || !row.cover_url || !row.published_year
-  const untranslated =
-    needsTranslation(row.title) ||
-    (row.summary ? needsTranslation(row.summary) : false)
-  return missingMeta || untranslated
+  return !row.author || !row.cover_url || !row.published_year
 }
 
 /* ------------------------------------------------------------------ */
@@ -637,7 +575,7 @@ async function main(): Promise<void> {
   }
 
   log(
-    `обогащаем первые ${Math.min(baseRows.length, ENRICH_LIMIT)} записей (Open Library + перевод)…`,
+    `обогащаем первые ${Math.min(baseRows.length, ENRICH_LIMIT)} записей (Open Library)…`,
   )
   const rows = await enrichRows(baseRows)
 
