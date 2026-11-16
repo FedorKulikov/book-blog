@@ -8,6 +8,7 @@
  *   npx tsx scripts/import-books.ts ./knigi.zip                     # только новые книги
  *   npx tsx scripts/import-books.ts ./knigi.zip --dry-run           # показать план
  *   npx tsx scripts/import-books.ts ./knigi.zip --update-existing   # обновить существующие
+ *   npx tsx scripts/import-books.ts ./knigi.zip --update-existing --skip-failed  # отложить сбои
  *   npx tsx scripts/import-books.ts --fix-authors                   # проставить авторов
  *
  * Переменные окружения:
@@ -42,6 +43,8 @@ const DRY_RUN = args.includes('--dry-run')
 const FIX_AUTHORS = args.includes('--fix-authors')
 /** --update-existing: обновить уже существующие книги обложкой и аннотацией из архива */
 const UPDATE_EXISTING = args.includes('--update-existing')
+/** --skip-failed: не считать ошибкой книгу, которая не прошла после всех повторов */
+const SKIP_FAILED = args.includes('--skip-failed')
 const zipPath =
   args.find(a => !a.startsWith('--')) ??
   process.env.BOOKS_ZIP ??
@@ -83,6 +86,8 @@ type Stats = {
   skipped: number
   /** Сколько книг обновлено/добавлено без обложки из-за сбоя Storage */
   coversFailed: number
+  /** Сколько книг отложено после исчерпания повторов (--skip-failed) */
+  postponed: number
 }
 
 type ExistingRow = {
@@ -137,9 +142,11 @@ async function readZipEntries(path: string): Promise<ZipEntry[]> {
 
       zip.on('entry', (entry: yauzl.Entry) => {
         const rawName = entry.fileName as unknown as Buffer
-        const name = decodeEntryName(
+        const decoded = decodeEntryName(
           Buffer.isBuffer(rawName) ? rawName : Buffer.from(String(rawName)),
         )
+        // Архивы, собранные на Windows, иногда хранят разделители как «\»
+        const name = decoded.replace(/\\/g, '/')
 
         // Папки пропускаем: книги определяем по файлам
         if (name.endsWith('/')) {
@@ -452,6 +459,45 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+/* ------------------------------------------------------------------ */
+/* Повторы при транзиентных сетевых сбоях                              */
+/* ------------------------------------------------------------------ */
+
+/** Нарастающие паузы: 5 попыток = 4 паузы 1000 → 2000 → 3000 → 5000 мс */
+const RETRY_DELAYS_MS = [1_000, 2_000, 3_000, 5_000]
+const RETRY_ATTEMPTS = RETRY_DELAYS_MS.length + 1
+
+type Attempt<T> = { ok: true; value: T } | { ok: false; error: string }
+
+/**
+ * Повторяет операцию до успеха или исчерпания попыток.
+ * Антивирус на машине пользователя рвёт соединения выборочно —
+ * поэтому любая сетевая операция должна уметь пережить несколько обрывов.
+ */
+async function retry<T>(
+  label: string,
+  attempt: () => Promise<Attempt<T>>,
+): Promise<Attempt<T>> {
+  let last: Attempt<T> = { ok: false, error: 'неизвестная ошибка' }
+
+  for (let index = 0; index < RETRY_ATTEMPTS; index++) {
+    last = await attempt()
+    if (last.ok) return last
+
+    const delay = RETRY_DELAYS_MS[index]
+    if (delay !== undefined) {
+      logWarn(
+        `  ${label}: попытка ${index + 1}/${RETRY_ATTEMPTS} не удалась (${last.error}), повтор через ${delay} мс`,
+      )
+      await sleep(delay)
+    }
+  }
+
+  logWarn(`  ${label}: все ${RETRY_ATTEMPTS} попыток не удались`)
+
+  return last
+}
+
 /**
  * Ищет первого автора книги в Google Books (ключ не нужен).
  * Всегда выдерживает паузу 300 мс — и при успехе, и при ошибке.
@@ -627,6 +673,7 @@ async function main(): Promise<void> {
     duplicates: 0,
     skipped: 0,
     coversFailed: 0,
+    postponed: 0,
   }
 
   // Клиент создаём сразу (если env задан): нужен и для импорта, и для --fix-authors,
@@ -761,26 +808,24 @@ async function main(): Promise<void> {
     const jpeg = await coverToJpeg(data)
     const path = `${STORAGE_PREFIX}/${randomUUID()}.jpg`
 
-    // Один повтор: «fetch failed» часто транзиентный (антивирус/TLS)
-    let lastError: unknown = null
-
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    const result = await retry(`обложка ${baseName(path)}`, async () => {
       const { error } = await db.storage
         .from(BUCKET)
         .upload(path, jpeg, { contentType: 'image/jpeg', upsert: false })
 
-      if (!error) {
-        const { data: publicUrl } = db.storage.from(BUCKET).getPublicUrl(path)
-        return publicUrl.publicUrl
-      }
+      if (error) return { ok: false as const, error: error.message }
 
-      lastError = error
-      if (attempt === 1) await sleep(500)
+      const { data: publicUrl } = db.storage.from(BUCKET).getPublicUrl(path)
+      return { ok: true as const, value: publicUrl.publicUrl }
+    })
+
+    if (!result.ok) {
+      throw new Error(
+        `Storage: ${result.error} (бакет «${BUCKET}» существует?)`,
+      )
     }
 
-    const message =
-      lastError instanceof Error ? lastError.message : String(lastError)
-    throw new Error(`Storage: ${message} (бакет «${BUCKET}» существует?)`)
+    return result.value
   }
 
   const existing = await loadExistingTitles()
@@ -870,6 +915,21 @@ async function main(): Promise<void> {
   stats.processed = planned.length
   stats.duplicates = UPDATE_EXISTING ? 0 : toUpdate.length
 
+  const postponed: { title: string; reason: string }[] = []
+
+  /** Книга не прошла после всех повторов: с --skip-failed откладываем, иначе считаем ошибкой */
+  function failBook(title: string, reason: string): void {
+    if (SKIP_FAILED) {
+      postponed.push({ title, reason })
+      stats.postponed++
+      logWarn(`  отложено: «${title}» — ${reason}`)
+      return
+    }
+
+    stats.skipped++
+    logWarn(`  ошибка «${title}»: ${reason}`)
+  }
+
   // 1. Обновляем существующие книги: обложка и аннотация из архива,
   //    название не трогаем (в базе оно полное), автора — только если пусто.
   if (UPDATE_EXISTING) {
@@ -900,24 +960,25 @@ async function main(): Promise<void> {
         if (coverUrl) patch.cover_url = coverUrl
         if (!twin.author && book.author) patch.author = book.author
 
-        const { data: updatedRows, error } = await db
-          .from('books')
-          .update(patch)
-          .eq('id', twin.id)
-          .select('id')
+        const result = await retry(`update «${twin.title}»`, async () => {
+          const { data: updatedRows, error } = await db
+            .from('books')
+            .update(patch)
+            .eq('id', twin.id)
+            .select('id')
 
-        if (error) {
-          logWarn(`  ошибка обновления «${twin.title}»: ${error.message}`)
-          stats.skipped++
+          if (error) return { ok: false as const, error: error.message }
+          return { ok: true as const, value: updatedRows ?? [] }
+        })
+
+        if (!result.ok) {
+          failBook(twin.title, result.error)
           continue
         }
 
-        // RLS без прав «молча» обновляет 0 строк — это не успех
-        if (!updatedRows || updatedRows.length === 0) {
-          logWarn(
-            `  не обновлено «${twin.title}»: 0 строк (нужен service_role ключ?)`,
-          )
-          stats.skipped++
+        // RLS без прав «молча» обновляет 0 строк — это не успех и не транзиентный сбой
+        if (result.value.length === 0) {
+          failBook(twin.title, 'обновлено 0 строк (нужен service_role ключ?)')
           continue
         }
 
@@ -926,10 +987,10 @@ async function main(): Promise<void> {
           `  обновлено: «${twin.title}»${patch.author ? ' (+автор)' : ''}${coverUrl ? '' : ' (без обложки)'}`,
         )
       } catch (error) {
-        logWarn(
-          `  ошибка «${twin.title}»: ${error instanceof Error ? error.message : error}`,
+        failBook(
+          twin.title,
+          error instanceof Error ? error.message : String(error),
         )
-        stats.skipped++
       }
     }
   }
@@ -949,26 +1010,33 @@ async function main(): Promise<void> {
         )
       }
 
-      const { data: inserted, error } = await db
-        .from('books')
-        .insert({
-          title: book.title,
-          author: book.author,
-          description: book.description,
-          cover_url: coverUrl,
-        })
-        .select('id')
-        .single()
+      const result = await retry(`insert «${book.title}»`, async () => {
+        const { data, error } = await db
+          .from('books')
+          .insert({
+            title: book.title,
+            author: book.author,
+            description: book.description,
+            cover_url: coverUrl,
+          })
+          .select('id')
+          .single()
 
-      if (error) {
-        logWarn(`  ошибка вставки «${book.title}»: ${error.message}`)
-        stats.skipped++
+        if (error) return { ok: false as const, error: error.message }
+        return {
+          ok: true as const,
+          value: (data as { id: string } | null)?.id ?? '',
+        }
+      })
+
+      if (!result.ok) {
+        failBook(book.title, result.error)
         continue
       }
 
       // Пополняем карту, чтобы одинаковые названия внутри архива не задвоились
       const newRow: ExistingRow = {
-        id: (inserted as { id: string } | null)?.id ?? '',
+        id: result.value,
         title: book.title,
         tokens: titleTokens(book.title),
         author: book.author,
@@ -982,10 +1050,10 @@ async function main(): Promise<void> {
         `  добавлено: «${book.title}»${book.author ? ' — ' + book.author : ''}`,
       )
     } catch (error) {
-      logWarn(
-        `  ошибка «${book.title}»: ${error instanceof Error ? error.message : error}`,
+      failBook(
+        book.title,
+        error instanceof Error ? error.message : String(error),
       )
-      stats.skipped++
     }
   }
 
@@ -1000,6 +1068,13 @@ async function main(): Promise<void> {
     log(
       `  без обложки (Storage недоступен): ${stats.coversFailed} — перезапусти, чтобы догрузить`,
     )
+  }
+  if (stats.postponed > 0) {
+    log(`  отложено (--skip-failed): ${stats.postponed}`)
+    log('--- отложенные книги (перезапусти, чтобы догрузить) ---')
+    for (const item of postponed) {
+      log(`  • «${item.title}» — ${item.reason}`)
+    }
   }
 }
 
