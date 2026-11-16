@@ -177,14 +177,51 @@ function isCover(path: string): boolean {
   return COVER_EXTENSIONS.includes(extensionOf(path))
 }
 
-/** Ключ для сравнения дубликатов: регистр, ё, кавычки, пробелы */
+/** Ключ для сравнения дубликатов: регистр, ё и пунктуация не важны */
 function dedupeKey(value: string): string {
   return value
     .toLowerCase()
     .replace(/ё/g, 'е')
-    .replace(/[«»"“”']/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-zа-я0-9]+/g, ' ')
     .trim()
+}
+
+/** Значимые слова названия (короткие предлоги и цифры отбрасываем) */
+function titleTokens(value: string): string[] {
+  return dedupeKey(value)
+    .split(' ')
+    .filter(token => token.length > 2)
+}
+
+/**
+ * В архиве названия усечены: «кубок огня» вместо «Гарри Поттер и Кубок огня».
+ * Поэтому кроме точного совпадения проверяем покрытие слов названия
+ * (с учётом словоформ по первым 4 буквам: «приключение» ~ «приключения»).
+ */
+function isLikelyDuplicate<T extends { title: string; tokens: string[] }>(
+  title: string,
+  candidates: T[],
+): T | null {
+  const tokens = titleTokens(title)
+  if (tokens.length === 0) return null
+
+  for (const candidate of candidates) {
+    let hits = 0
+
+    for (const token of tokens) {
+      const prefix = token.slice(0, 4)
+      const matched = candidate.tokens.some(
+        other =>
+          other === token ||
+          (other.length >= 4 && prefix.length >= 4 && other.slice(0, 4) === prefix),
+      )
+      if (matched) hits++
+    }
+
+    if (hits / tokens.length >= 0.8) return candidate
+  }
+
+  return null
 }
 
 /**
@@ -282,7 +319,12 @@ async function buildBooks(entries: ZipEntry[], stats: Stats): Promise<ParsedBook
       continue
     }
 
-    const { title, author } = parseTitleAndAuthor(folder)
+    const parsed = parseTitleAndAuthor(folder)
+
+    // Название могло быть усечено при сборке архива — сверяемся со справочником
+    const alias = TITLE_ALIASES.get(dedupeKey(parsed.title))
+    const title = alias ?? normalizeTitle(parsed.title)
+
     if (title.length < 2) {
       logWarn(`пропуск «${folder}»: не удалось определить название`)
       stats.skipped++
@@ -308,8 +350,8 @@ async function buildBooks(entries: ZipEntry[], stats: Stats): Promise<ParsedBook
 
     books.push({
       folder,
-      title: normalizeTitle(title),
-      author,
+      title,
+      author: parsed.author,
       description,
       coverName: baseName(cover.name),
       coverData: cover.data,
@@ -349,6 +391,31 @@ function loadManualAuthors(): Map<string, string> {
 }
 
 const MANUAL_AUTHORS = loadManualAuthors()
+
+/* ------------------------------------------------------------------ */
+/* Исправление названий, усечённых в архиве                            */
+/* ------------------------------------------------------------------ */
+
+const TITLE_ALIASES_PATH =
+  process.env.BOOKS_TITLES_FILE ?? 'scripts/book-titles.json'
+
+function loadTitleAliases(): Map<string, string> {
+  try {
+    const raw = readFileSync(TITLE_ALIASES_PATH, 'utf8')
+    const parsed = JSON.parse(raw) as Record<string, string>
+    const map = new Map<string, string>()
+
+    for (const [from, to] of Object.entries(parsed)) {
+      if (from && to) map.set(dedupeKey(from), to)
+    }
+
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
+const TITLE_ALIASES = loadTitleAliases()
 
 /* ------------------------------------------------------------------ */
 /* Google Books: поиск автора по названию                              */
@@ -494,8 +561,10 @@ async function enrichAuthors(
     if (book.author) continue
     if (networkQueries >= limit) break
 
-    // 1. Ручной справочник: точное совпадение, без сетевых запросов
+    // 1. Ручной справочник: точное совпадение, без сетевых запросов.
+    //    Значение «-» означает «автор неизвестен, не ищем».
     const manual = MANUAL_AUTHORS.get(dedupeKey(book.title))
+    if (manual === '-') continue
     if (manual) {
       book.author = manual
       book.authorSource = 'manual'
@@ -623,9 +692,12 @@ async function main(): Promise<void> {
 
   // Замыкания, а не отдельные функции: так типы supabase-js выводятся из
   // конкретного клиента и не требуют «any»/ручных генериков.
-  async function loadExistingTitles(): Promise<Map<string, string | null>> {
+  async function loadExistingTitles(): Promise<{
+    byKey: Map<string, string | null>
+    list: { title: string; tokens: string[]; author: string | null }[]
+  }> {
     const db = supabase
-    if (!db) return new Map()
+    if (!db) return { byKey: new Map(), list: [] }
 
     const { data, error } = await db.from('books').select('id, title, author')
 
@@ -633,17 +705,24 @@ async function main(): Promise<void> {
       throw new Error(`не удалось прочитать books: ${error.message}`)
     }
 
-    const map = new Map<string, string | null>()
+    const byKey = new Map<string, string | null>()
+    const list: { title: string; tokens: string[]; author: string | null }[] = []
+
     for (const row of (data ?? []) as {
       id: string
       title: string | null
       author: string | null
     }[]) {
       if (!row.title) continue
-      map.set(dedupeKey(row.title), row.author)
+      byKey.set(dedupeKey(row.title), row.author)
+      list.push({
+        title: row.title,
+        tokens: titleTokens(row.title),
+        author: row.author,
+      })
     }
 
-    return map
+    return { byKey, list }
   }
 
   async function uploadCover(data: Buffer): Promise<string> {
@@ -671,9 +750,29 @@ async function main(): Promise<void> {
 
   const existing = await loadExistingTitles()
 
-  // Дубликаты отсекаем ДО обогащения: не тратим запросы к Open Library зря
-  const fresh = books.filter(book => !existing.has(dedupeKey(book.title)))
+  // Дубликаты отсекаем ДО обогащения: не тратим запросы к Open Library зря.
+  // Два уровня: точное совпадение по ключу и «похожее название» — в архиве
+  // названия усечены («кубок огня» вместо «Гарри Поттер и Кубок огня»).
+  const fresh: ParsedBook[] = []
+  let nearDuplicates = 0
+
+  for (const book of books) {
+    if (existing.byKey.has(dedupeKey(book.title))) continue
+
+    const twin = isLikelyDuplicate(book.title, existing.list)
+    if (twin) {
+      nearDuplicates++
+      log(`  пропуск (уже есть): «${book.title}» ≈ «${twin.title}»`)
+      continue
+    }
+
+    fresh.push(book)
+  }
+
   const duplicates = books.length - fresh.length
+  if (nearDuplicates > 0) {
+    log(`из них ${nearDuplicates} — те же книги с усечёнными названиями`)
+  }
 
   // Авторов ищем только у новых книг. В dry-run проверяем 10 штук,
   // чтобы оценить качество поиска, а не гонять все 30+ вхолостую.
@@ -700,7 +799,7 @@ async function main(): Promise<void> {
 
     log(
       `dry-run: новых ${fresh.length}, дубликатов ${duplicates}` +
-        (existing.size === 0 ? ' (база не проверялась: env не задан)' : ''),
+        (existing.byKey.size === 0 ? ' (база не проверялась: env не задан)' : ''),
     )
     log('в БД и Storage ничего не записано')
     return
@@ -713,7 +812,7 @@ async function main(): Promise<void> {
     )
   }
 
-  log(`в books уже есть записей: ${existing.size}`)
+  log(`в books уже есть записей: ${existing.byKey.size}`)
   stats.processed = fresh.length
   stats.duplicates = duplicates
 
@@ -734,8 +833,13 @@ async function main(): Promise<void> {
         continue
       }
 
-      // Обновляем карту, чтобы одинаковые названия в архиве не задвоились
-      existing.set(dedupeKey(book.title), book.author)
+      // Пополняем карту, чтобы одинаковые названия внутри архива не задвоились
+      existing.byKey.set(dedupeKey(book.title), book.author)
+      existing.list.push({
+        title: book.title,
+        tokens: titleTokens(book.title),
+        author: book.author,
+      })
       stats.inserted++
       log(
         `  добавлено: «${book.title}»${book.author ? ' — ' + book.author : ''}`,
