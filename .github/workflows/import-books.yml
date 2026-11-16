@@ -1,12 +1,21 @@
 name: Import books from ZIP
 
-# Ручной запуск. Архив скачивается по приватной ссылке из секрета BOOKS_ZIP_URL,
-# поэтому в репозиторий 20-мегабайтный файл не нужен.
+# Ручной запуск. Архив лежит в ПРИВАТНОМ бакете Backblaze B2, поэтому прямая
+# ссылка для curl не работает — скачиваем через AWS CLI (S3-совместимый API B2),
+# используя секреты B2_KEY_ID / B2_APPLICATION_KEY.
 on:
   workflow_dispatch:
     inputs:
       dry_run:
         description: 'Только проверить (true — не писать в БД и Storage)'
+        type: boolean
+        default: true
+      update_existing:
+        description: 'Обновлять существующие книги (обложки + аннотации)'
+        type: boolean
+        default: true
+      skip_failed:
+        description: 'Откладывать книги, которые не прошли после всех повторов'
         type: boolean
         default: true
 
@@ -16,6 +25,12 @@ permissions:
 concurrency:
   group: import-books
   cancel-in-progress: false
+
+env:
+  B2_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+  B2_BUCKET: hleba-backups-fedor
+  B2_REGION: us-east-005
+  ARCHIVE_NAME: knigi.zip
 
 jobs:
   import:
@@ -37,17 +52,51 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download archive
-        env:
-          BOOKS_ZIP_URL: ${{ secrets.BOOKS_ZIP_URL }}
+      - name: Install AWS CLI
         run: |
           set -euo pipefail
-          if [ -z "${BOOKS_ZIP_URL:-}" ]; then
-            echo "::error::Секрет BOOKS_ZIP_URL не задан"
+          # На ubuntu-24.04 AWS CLI v2 обычно уже есть; если нет — ставим официальным установщиком
+          if ! command -v aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+            unzip -q awscliv2.zip
+            sudo ./aws/install
+          fi
+          aws --version
+
+      - name: Download archive from B2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AWS_DEFAULT_REGION: us-east-005
+        run: |
+          set -euo pipefail
+
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "::error::Не заданы секреты B2_KEY_ID / B2_APPLICATION_KEY"
             exit 1
           fi
-          curl -fsSL "$BOOKS_ZIP_URL" -o knigi.zip
-          ls -lh knigi.zip
+
+          aws s3 cp "s3://${B2_BUCKET}/${ARCHIVE_NAME}" "./${ARCHIVE_NAME}" \
+            --endpoint-url "${B2_ENDPOINT}" \
+            --only-show-errors
+
+          ls -lh "${ARCHIVE_NAME}"
+
+          # Проверяем, что скачался целый ZIP (иначе импорт упадёт на первом же чтении)
+          python3 - <<'PY'
+          import sys, zipfile
+          name = "knigi.zip"
+          try:
+              with zipfile.ZipFile(name) as z:
+                  bad = z.testzip()
+          except zipfile.BadZipFile as exc:
+              print(f"::error::Архив повреждён: {exc}")
+              sys.exit(1)
+          if bad:
+              print(f"::error::Битый файл в архиве: {bad}")
+              sys.exit(1)
+          print(f"архив целый, файлов: {len(zipfile.ZipFile(name).namelist())}")
+          PY
 
       - name: Import books
         env:
@@ -56,8 +105,17 @@ jobs:
           BOOKS_BUCKET: ${{ vars.BOOKS_BUCKET }}
         run: |
           set -euo pipefail
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            npx tsx scripts/import-books.ts ./knigi.zip --dry-run
-          else
-            npx tsx scripts/import-books.ts ./knigi.zip
+
+          ARGS=""
+          if [ "${{ inputs.update_existing }}" = "true" ]; then
+            ARGS="${ARGS} --update-existing"
           fi
+          if [ "${{ inputs.skip_failed }}" = "true" ]; then
+            ARGS="${ARGS} --skip-failed"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="${ARGS} --dry-run"
+          fi
+
+          echo "аргументы импорта:${ARGS:- (нет)}"
+          npx tsx scripts/import-books.ts "./${ARCHIVE_NAME}" ${ARGS}
