@@ -47,10 +47,12 @@ const UPDATE_EXISTING = args.includes('--update-existing')
 const SKIP_FAILED = args.includes('--skip-failed')
 const zipPath =
   args.find(a => !a.startsWith('--')) ??
-  process.env.BOOKS_ZIP ??
-  './knigi.zip'
+  ((process.env.BOOKS_ZIP || '').trim() || './knigi.zip')
 
-const BUCKET = process.env.BOOKS_BUCKET ?? 'post-images'
+// «??» не спасает от пустой строки: в GitHub Actions незаданная переменная
+// приходит как "" — и тогда бакетом становится пустое имя («Bucket not found»).
+// Поэтому пустое значение и одни пробелы трактуем как «не задано».
+const BUCKET = (process.env.BOOKS_BUCKET || '').trim() || 'post-images'
 const STORAGE_PREFIX = 'books'
 const DESCRIPTION_MAX = 4000
 const COVER_QUALITY = 82
@@ -393,7 +395,7 @@ async function buildBooks(entries: ZipEntry[], stats: Stats): Promise<ParsedBook
  * scripts/book-authors.json: название → автор. Справочник имеет приоритет.
  */
 const MANUAL_AUTHORS_PATH =
-  process.env.BOOKS_AUTHORS_FILE ?? 'scripts/book-authors.json'
+  (process.env.BOOKS_AUTHORS_FILE || '').trim() || 'scripts/book-authors.json'
 
 function loadManualAuthors(): Map<string, string> {
   try {
@@ -419,7 +421,7 @@ const MANUAL_AUTHORS = loadManualAuthors()
 /* ------------------------------------------------------------------ */
 
 const TITLE_ALIASES_PATH =
-  process.env.BOOKS_TITLES_FILE ?? 'scripts/book-titles.json'
+  (process.env.BOOKS_TITLES_FILE || '').trim() || 'scripts/book-titles.json'
 
 function loadTitleAliases(): Map<string, string> {
   try {
@@ -742,6 +744,7 @@ async function main(): Promise<void> {
   }
 
   log(`архив: ${zipPath}${DRY_RUN ? ' (dry-run)' : ''}`)
+  log(`бакет Storage: ${BUCKET}`)
 
   const entries = await readZipEntries(zipPath)
   log(`файлов в архиве: ${entries.length}`)
