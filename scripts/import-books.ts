@@ -172,14 +172,36 @@ function isCover(path: string): boolean {
   return COVER_EXTENSIONS.includes(extensionOf(path))
 }
 
-/** Нормализация для сравнения дубликатов */
-function normalizeTitle(value: string): string {
+/** Ключ для сравнения дубликатов: регистр, ё, кавычки, пробелы */
+function dedupeKey(value: string): string {
   return value
     .toLowerCase()
     .replace(/ё/g, 'е')
     .replace(/[«»"“”']/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/**
+ * Вид названия в каталоге: заглавной становится только первая буква.
+ * - «анна каренина» → «Анна каренина»
+ * - «generation «п»» → «Generation «п»»
+ * - «1984», «451 градус по фаренгейту» — не меняем (начинаются с цифры)
+ * - уже заглавные и аббревиатуры не трогаем
+ */
+function normalizeTitle(value: string): string {
+  const title = value.trim()
+  if (!title) return title
+
+  const firstLetter = title.charAt(0)
+
+  // Не буква (цифра, кавычка, знак) — оставляем как есть
+  if (!/[a-zа-яё]/i.test(firstLetter)) return title
+
+  // Уже заглавная — не трогаем остальные буквы
+  if (firstLetter !== firstLetter.toLowerCase()) return title
+
+  return firstLetter.toUpperCase() + title.slice(1)
 }
 
 /**
@@ -281,7 +303,7 @@ async function buildBooks(entries: ZipEntry[], stats: Stats): Promise<ParsedBook
 
     books.push({
       folder,
-      title,
+      title: normalizeTitle(title),
       author,
       description,
       coverName: baseName(cover.name),
@@ -290,6 +312,91 @@ async function buildBooks(entries: ZipEntry[], stats: Stats): Promise<ParsedBook
   }
 
   return books
+}
+
+/* ------------------------------------------------------------------ */
+/* Open Library: поиск автора по названию                              */
+/* ------------------------------------------------------------------ */
+
+const OPENLIBRARY_DELAY_MS = 300
+const OPENLIBRARY_TIMEOUT_MS = 8_000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Ищет первого автора книги в Open Library.
+ * Всегда выдерживает паузу 300 мс — и при успехе, и при ошибке.
+ */
+async function findAuthorInOpenLibrary(title: string): Promise<string | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OPENLIBRARY_TIMEOUT_MS)
+  let author: string | null = null
+
+  try {
+    // Пунктуация в названиях («Ведьмак.последнее желание») снижает шанс совпадения:
+    // заменяем её пробелами перед запросом.
+    const query = title
+      .replace(/[.,;:!?()«»"'’]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    const params = new URLSearchParams({
+      q: query,
+      fields: 'author_name',
+      limit: '1',
+    })
+
+    const response = await fetch(
+      `https://openlibrary.org/search.json?${params.toString()}`,
+      {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      },
+    )
+
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        docs?: { author_name?: string[] }[]
+      }
+      const candidate = payload.docs?.[0]?.author_name?.[0]
+      if (candidate && candidate.trim()) author = candidate.trim()
+    }
+  } catch {
+    // Сеть/таймаут — просто возвращаем null, импорт продолжается
+  } finally {
+    clearTimeout(timer)
+    await sleep(OPENLIBRARY_DELAY_MS)
+  }
+
+  return author
+}
+
+/**
+ * Добирает авторов для книг, у которых он не извлёкся из имени папки.
+ * Возвращает количество найденных авторов.
+ */
+async function enrichAuthors(
+  books: ParsedBook[],
+  limit: number,
+): Promise<number> {
+  let found = 0
+  let queries = 0
+
+  for (const book of books) {
+    if (book.author) continue
+    if (queries >= limit) break
+
+    queries++
+    const author = await findAuthorInOpenLibrary(book.title)
+    if (author) {
+      book.author = author
+      found++
+    }
+  }
+
+  return found
 }
 
 /* ------------------------------------------------------------------ */
@@ -353,7 +460,7 @@ async function main(): Promise<void> {
       author: string | null
     }[]) {
       if (!row.title) continue
-      map.set(normalizeTitle(row.title), row.author)
+      map.set(dedupeKey(row.title), row.author)
     }
 
     return map
@@ -384,53 +491,53 @@ async function main(): Promise<void> {
 
   const existing = await loadExistingTitles()
 
+  // Дубликаты отсекаем ДО обогащения: не тратим запросы к Open Library зря
+  const fresh = books.filter(book => !existing.has(dedupeKey(book.title)))
+  const duplicates = books.length - fresh.length
+
+  // Авторов ищем только у новых книг. В dry-run ограничиваемся пятёркой,
+  // чтобы прогон оставался быстрым, но было видно, что логика работает.
+  const enrichLimit = DRY_RUN ? Math.min(fresh.length, 5) : fresh.length
+  if (enrichLimit > 0) {
+    log(
+      `ищем авторов в Open Library: запросов ${enrichLimit}, пауза ${OPENLIBRARY_DELAY_MS} мс`,
+    )
+    const found = await enrichAuthors(fresh, enrichLimit)
+    log(`авторы найдены у ${found} из ${enrichLimit} (поиск был нужен не всем)`)
+  }
+
   if (DRY_RUN) {
-    let duplicates = 0
-
-    books.forEach((book, index) => {
-      const isDuplicate = existing.has(normalizeTitle(book.title))
-      if (isDuplicate) duplicates++
-
-      if (index < 12) {
-        log(
-          `  ${isDuplicate ? 'ДУБЛИКАТ' : 'новая   '}: «${book.title}» | ${book.description.length} симв. | ${book.coverName}`,
-        )
-      }
+    fresh.slice(0, 12).forEach(book => {
+      log(
+        `  • «${book.title}» — ${book.author ?? 'автор не найден'} | ${book.description.length} симв. | ${book.coverName}`,
+      )
     })
+    if (fresh.length > 12) log(`  … и ещё ${fresh.length - 12}`)
 
     log(
-      `dry-run: новых ${books.length - duplicates}, дубликатов ${duplicates}` +
+      `dry-run: новых ${fresh.length}, дубликатов ${duplicates}` +
         (existing.size === 0 ? ' (база не проверялась: env не задан)' : ''),
     )
     log('в БД и Storage ничего не записано')
     return
   }
 
-  if (!supabase) {
+  const db = supabase
+  if (!db) {
     throw new Error(
       'Supabase не настроен: нужны SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY',
     )
   }
 
   log(`в books уже есть записей: ${existing.size}`)
+  stats.processed = fresh.length
+  stats.duplicates = duplicates
 
-  for (const book of books) {
-    stats.processed++
-    const normalized = normalizeTitle(book.title)
-
-    if (existing.has(normalized)) {
-      stats.duplicates++
-      const existingAuthor = existing.get(normalized)
-      log(
-        `  дубликат: «${book.title}»${existingAuthor ? ' — ' + existingAuthor : ''} (папка «${book.folder}»)`,
-      )
-      continue
-    }
-
+  for (const book of fresh) {
     try {
       const coverUrl = await uploadCover(book.coverData)
 
-      const { error } = await supabase.from('books').insert({
+      const { error } = await db.from('books').insert({
         title: book.title,
         author: book.author,
         description: book.description,
@@ -444,9 +551,11 @@ async function main(): Promise<void> {
       }
 
       // Обновляем карту, чтобы одинаковые названия в архиве не задвоились
-      existing.set(normalized, book.author)
+      existing.set(dedupeKey(book.title), book.author)
       stats.inserted++
-      log(`  добавлено: «${book.title}»`)
+      log(
+        `  добавлено: «${book.title}»${book.author ? ' — ' + book.author : ''}`,
+      )
     } catch (error) {
       logWarn(
         `  ошибка «${book.title}»: ${error instanceof Error ? error.message : error}`,
