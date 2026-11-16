@@ -60,6 +60,8 @@ type ParsedBook = {
   folder: string
   title: string
   author: string | null
+  /** Откуда взялся автор, если его нашли в интернете */
+  authorSource?: 'google-books' | 'open-library'
   description: string
   coverName: string
   coverData: Buffer
@@ -315,28 +317,98 @@ async function buildBooks(entries: ZipEntry[], stats: Stats): Promise<ParsedBook
 }
 
 /* ------------------------------------------------------------------ */
-/* Open Library: поиск автора по названию                              */
+/* Google Books: поиск автора по названию                              */
 /* ------------------------------------------------------------------ */
 
-const OPENLIBRARY_DELAY_MS = 300
-const OPENLIBRARY_TIMEOUT_MS = 8_000
+const GOOGLEBOOKS_DELAY_MS = 300
+const GOOGLEBOOKS_TIMEOUT_MS = 8_000
+
+/**
+ * Без API-ключа Google Books сидит на общей анонимной квоте,
+ * которая почти всегда исчерпана (HTTP 429 на первый же запрос).
+ * Поэтому по умолчанию работаем через Open Library, а Google Books
+ * включается, если задан GOOGLE_BOOKS_API_KEY (1000 запросов/сутки бесплатно).
+ */
+const GOOGLE_BOOKS_API_KEY = process.env.GOOGLE_BOOKS_API_KEY ?? ''
+let googleBooksDisabled = !GOOGLE_BOOKS_API_KEY
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 /**
- * Ищет первого автора книги в Open Library.
+ * Ищет первого автора книги в Google Books (ключ не нужен).
  * Всегда выдерживает паузу 300 мс — и при успехе, и при ошибке.
  */
+async function findAuthorInGoogleBooks(title: string): Promise<string | null> {
+  if (googleBooksDisabled) return null
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), GOOGLEBOOKS_TIMEOUT_MS)
+  let author: string | null = null
+
+  try {
+    // Пунктуация в названиях («Ведьмак.последнее желание») мешает поиску
+    const query = title
+      .replace(/[.,;:!?()«»"'’]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    if (!query) return null
+
+    const params = new URLSearchParams({
+      q: `intitle:"${query}"`,
+      maxResults: '1',
+    })
+    if (GOOGLE_BOOKS_API_KEY) params.set('key', GOOGLE_BOOKS_API_KEY)
+
+    const response = await fetch(
+      `https://www.googleapis.com/books/v1/volumes?${params.toString()}`,
+      {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      },
+    )
+
+    if (response.status === 429) {
+      googleBooksDisabled = true
+      logWarn(
+        'Google Books: квота без ключа исчерпана (429) — дальше ищем авторов в Open Library',
+      )
+      return null
+    }
+
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        items?: { volumeInfo?: { authors?: string[] } }[]
+      }
+      const candidate = payload.items?.[0]?.volumeInfo?.authors?.[0]
+      if (candidate && candidate.trim()) author = candidate.trim()
+    }
+  } catch {
+    // Сеть/таймаут — просто возвращаем null, импорт продолжается
+  } finally {
+    clearTimeout(timer)
+    await sleep(GOOGLEBOOKS_DELAY_MS)
+  }
+
+  return author
+}
+
+/* ------------------------------------------------------------------ */
+/* Open Library: запасной вариант поиска автора                        */
+/* ------------------------------------------------------------------ */
+
+const OPENLIBRARY_DELAY_MS = 300
+const OPENLIBRARY_TIMEOUT_MS = 8_000
+
+/** Ищет первого автора книги в Open Library (хорошо знает русскую классику) */
 async function findAuthorInOpenLibrary(title: string): Promise<string | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), OPENLIBRARY_TIMEOUT_MS)
   let author: string | null = null
 
   try {
-    // Пунктуация в названиях («Ведьмак.последнее желание») снижает шанс совпадения:
-    // заменяем её пробелами перед запросом.
     const query = title
       .replace(/[.,;:!?()«»"'’]/g, ' ')
       .replace(/\s+/g, ' ')
@@ -364,7 +436,7 @@ async function findAuthorInOpenLibrary(title: string): Promise<string | null> {
       if (candidate && candidate.trim()) author = candidate.trim()
     }
   } catch {
-    // Сеть/таймаут — просто возвращаем null, импорт продолжается
+    // Сеть/таймаут — просто возвращаем null
   } finally {
     clearTimeout(timer)
     await sleep(OPENLIBRARY_DELAY_MS)
@@ -375,6 +447,7 @@ async function findAuthorInOpenLibrary(title: string): Promise<string | null> {
 
 /**
  * Добирает авторов для книг, у которых он не извлёкся из имени папки.
+ * Порядок: Google Books → Open Library (если квота Google исчерпана).
  * Возвращает количество найденных авторов.
  */
 async function enrichAuthors(
@@ -389,9 +462,19 @@ async function enrichAuthors(
     if (queries >= limit) break
 
     queries++
-    const author = await findAuthorInOpenLibrary(book.title)
-    if (author) {
-      book.author = author
+
+    const fromGoogle = await findAuthorInGoogleBooks(book.title)
+    if (fromGoogle) {
+      book.author = fromGoogle
+      book.authorSource = 'google-books'
+      found++
+      continue
+    }
+
+    const fromOpenLibrary = await findAuthorInOpenLibrary(book.title)
+    if (fromOpenLibrary) {
+      book.author = fromOpenLibrary
+      book.authorSource = 'open-library'
       found++
     }
   }
@@ -495,12 +578,14 @@ async function main(): Promise<void> {
   const fresh = books.filter(book => !existing.has(dedupeKey(book.title)))
   const duplicates = books.length - fresh.length
 
-  // Авторов ищем только у новых книг. В dry-run ограничиваемся пятёркой,
-  // чтобы прогон оставался быстрым, но было видно, что логика работает.
-  const enrichLimit = DRY_RUN ? Math.min(fresh.length, 5) : fresh.length
+  // Авторов ищем только у новых книг. В dry-run проверяем 10 штук,
+  // чтобы оценить качество поиска, а не гонять все 30+ вхолостую.
+  const enrichLimit = DRY_RUN ? Math.min(fresh.length, 10) : fresh.length
   if (enrichLimit > 0) {
     log(
-      `ищем авторов в Open Library: запросов ${enrichLimit}, пауза ${OPENLIBRARY_DELAY_MS} мс`,
+      googleBooksDisabled
+        ? `Google Books без ключа отключён (общая квота 429) — авторов ищем в Open Library, запросов ${enrichLimit}`
+        : `ищем авторов: сначала Google Books, затем Open Library; запросов ${enrichLimit}`,
     )
     const found = await enrichAuthors(fresh, enrichLimit)
     log(`авторы найдены у ${found} из ${enrichLimit} (поиск был нужен не всем)`)
@@ -508,8 +593,9 @@ async function main(): Promise<void> {
 
   if (DRY_RUN) {
     fresh.slice(0, 12).forEach(book => {
+      const source = book.authorSource ? ` [${book.authorSource}]` : ''
       log(
-        `  • «${book.title}» — ${book.author ?? 'автор не найден'} | ${book.description.length} симв. | ${book.coverName}`,
+        `  • «${book.title}» — ${book.author ? book.author + source : 'автор не найден'} | ${book.description.length} симв. | ${book.coverName}`,
       )
     })
     if (fresh.length > 12) log(`  … и ещё ${fresh.length - 12}`)
