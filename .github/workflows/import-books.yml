@@ -1,0 +1,63 @@
+name: Import books from ZIP
+
+# Ручной запуск. Архив скачивается по приватной ссылке из секрета BOOKS_ZIP_URL,
+# поэтому в репозиторий 20-мегабайтный файл не нужен.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Только проверить (true — не писать в БД и Storage)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: import-books
+  cancel-in-progress: false
+
+jobs:
+  import:
+    name: books ZIP → Supabase
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # @supabase/supabase-js требует нативный WebSocket (Node 22+)
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download archive
+        env:
+          BOOKS_ZIP_URL: ${{ secrets.BOOKS_ZIP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BOOKS_ZIP_URL:-}" ]; then
+            echo "::error::Секрет BOOKS_ZIP_URL не задан"
+            exit 1
+          fi
+          curl -fsSL "$BOOKS_ZIP_URL" -o knigi.zip
+          ls -lh knigi.zip
+
+      - name: Import books
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BOOKS_BUCKET: ${{ vars.BOOKS_BUCKET }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            npx tsx scripts/import-books.ts ./knigi.zip --dry-run
+          else
+            npx tsx scripts/import-books.ts ./knigi.zip
+          fi
