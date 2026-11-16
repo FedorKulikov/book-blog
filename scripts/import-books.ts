@@ -81,6 +81,8 @@ type Stats = {
   updated: number
   duplicates: number
   skipped: number
+  /** Сколько книг обновлено/добавлено без обложки из-за сбоя Storage */
+  coversFailed: number
 }
 
 type ExistingRow = {
@@ -624,6 +626,7 @@ async function main(): Promise<void> {
     updated: 0,
     duplicates: 0,
     skipped: 0,
+    coversFailed: 0,
   }
 
   // Клиент создаём сразу (если env задан): нужен и для импорта, и для --fix-authors,
@@ -758,16 +761,26 @@ async function main(): Promise<void> {
     const jpeg = await coverToJpeg(data)
     const path = `${STORAGE_PREFIX}/${randomUUID()}.jpg`
 
-    const { error } = await db.storage
-      .from(BUCKET)
-      .upload(path, jpeg, { contentType: 'image/jpeg', upsert: false })
+    // Один повтор: «fetch failed» часто транзиентный (антивирус/TLS)
+    let lastError: unknown = null
 
-    if (error) {
-      throw new Error(`Storage: ${error.message} (бакет «${BUCKET}» существует?)`)
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const { error } = await db.storage
+        .from(BUCKET)
+        .upload(path, jpeg, { contentType: 'image/jpeg', upsert: false })
+
+      if (!error) {
+        const { data: publicUrl } = db.storage.from(BUCKET).getPublicUrl(path)
+        return publicUrl.publicUrl
+      }
+
+      lastError = error
+      if (attempt === 1) await sleep(500)
     }
 
-    const { data: publicUrl } = db.storage.from(BUCKET).getPublicUrl(path)
-    return publicUrl.publicUrl
+    const message =
+      lastError instanceof Error ? lastError.message : String(lastError)
+    throw new Error(`Storage: ${message} (бакет «${BUCKET}» существует?)`)
   }
 
   const existing = await loadExistingTitles()
@@ -864,22 +877,34 @@ async function main(): Promise<void> {
       if (!twin) continue
 
       try {
-        const coverUrl = await uploadCover(book.coverData)
+        // Обложка — необязательный шаг: если Storage недоступен (сетевой глюк,
+        // антивирус), всё равно обновляем аннотацию, а старую обложку не трогаем.
+        let coverUrl: string | null = null
+        try {
+          coverUrl = await uploadCover(book.coverData)
+        } catch (coverError) {
+          stats.coversFailed++
+          logWarn(
+            `  обложка не загрузилась «${twin.title}»: ` +
+              `${coverError instanceof Error ? coverError.message : coverError} — обновляю только аннотацию`,
+          )
+        }
 
         const patch: {
-          cover_url: string
           description: string
           author?: string
+          cover_url?: string
         } = {
-          cover_url: coverUrl,
           description: book.description,
         }
+        if (coverUrl) patch.cover_url = coverUrl
         if (!twin.author && book.author) patch.author = book.author
 
-        const { error } = await db
+        const { data: updatedRows, error } = await db
           .from('books')
           .update(patch)
           .eq('id', twin.id)
+          .select('id')
 
         if (error) {
           logWarn(`  ошибка обновления «${twin.title}»: ${error.message}`)
@@ -887,8 +912,19 @@ async function main(): Promise<void> {
           continue
         }
 
+        // RLS без прав «молча» обновляет 0 строк — это не успех
+        if (!updatedRows || updatedRows.length === 0) {
+          logWarn(
+            `  не обновлено «${twin.title}»: 0 строк (нужен service_role ключ?)`,
+          )
+          stats.skipped++
+          continue
+        }
+
         stats.updated++
-        log(`  обновлено: «${twin.title}»${patch.author ? ' (+автор)' : ''}`)
+        log(
+          `  обновлено: «${twin.title}»${patch.author ? ' (+автор)' : ''}${coverUrl ? '' : ' (без обложки)'}`,
+        )
       } catch (error) {
         logWarn(
           `  ошибка «${twin.title}»: ${error instanceof Error ? error.message : error}`,
@@ -901,7 +937,17 @@ async function main(): Promise<void> {
   // 2. Добавляем действительно новые книги
   for (const { book } of toInsert) {
     try {
-      const coverUrl = await uploadCover(book.coverData)
+      // Обложка не должна блокировать импорт: без неё книга всё равно попадёт в базу
+      let coverUrl: string | null = null
+      try {
+        coverUrl = await uploadCover(book.coverData)
+      } catch (coverError) {
+        stats.coversFailed++
+        logWarn(
+          `  обложка не загрузилась «${book.title}»: ` +
+            `${coverError instanceof Error ? coverError.message : coverError} — добавляю без обложки`,
+        )
+      }
 
       const { data: inserted, error } = await db
         .from('books')
@@ -950,6 +996,11 @@ async function main(): Promise<void> {
   log(`  обновлено: ${stats.updated}`)
   log(`  пропущено дубликатов: ${stats.duplicates}`)
   log(`  пропущено с ошибками: ${stats.skipped}`)
+  if (stats.coversFailed > 0) {
+    log(
+      `  без обложки (Storage недоступен): ${stats.coversFailed} — перезапусти, чтобы догрузить`,
+    )
+  }
 }
 
 main().catch((error: unknown) => {
