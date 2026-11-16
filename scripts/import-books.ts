@@ -5,8 +5,10 @@
  * DOCX с литературной аннотацией и файл обложки (AVIF/JPG/PNG).
  *
  * Запуск:
- *   npx tsx scripts/import-books.ts ./knigi.zip            # боевой импорт
- *   npx tsx scripts/import-books.ts ./knigi.zip --dry-run  # без записи в БД и Storage
+ *   npx tsx scripts/import-books.ts ./knigi.zip                     # только новые книги
+ *   npx tsx scripts/import-books.ts ./knigi.zip --dry-run           # показать план
+ *   npx tsx scripts/import-books.ts ./knigi.zip --update-existing   # обновить существующие
+ *   npx tsx scripts/import-books.ts --fix-authors                   # проставить авторов
  *
  * Переменные окружения:
  *   SUPABASE_URL                — адрес проекта (или NEXT_PUBLIC_SUPABASE_URL)
@@ -38,6 +40,8 @@ const args = process.argv.slice(2)
 const DRY_RUN = args.includes('--dry-run')
 /** --fix-authors: не читать архив, а проставить авторов уже импортированным книгам */
 const FIX_AUTHORS = args.includes('--fix-authors')
+/** --update-existing: обновить уже существующие книги обложкой и аннотацией из архива */
+const UPDATE_EXISTING = args.includes('--update-existing')
 const zipPath =
   args.find(a => !a.startsWith('--')) ??
   process.env.BOOKS_ZIP ??
@@ -74,8 +78,17 @@ type Stats = {
   folders: number
   processed: number
   inserted: number
+  updated: number
   duplicates: number
   skipped: number
+}
+
+type ExistingRow = {
+  id: string
+  title: string
+  tokens: string[]
+  author: string | null
+  coverUrl: string | null
 }
 
 /* ------------------------------------------------------------------ */
@@ -608,6 +621,7 @@ async function main(): Promise<void> {
     folders: 0,
     processed: 0,
     inserted: 0,
+    updated: 0,
     duplicates: 0,
     skipped: 0,
   }
@@ -693,33 +707,41 @@ async function main(): Promise<void> {
   // Замыкания, а не отдельные функции: так типы supabase-js выводятся из
   // конкретного клиента и не требуют «any»/ручных генериков.
   async function loadExistingTitles(): Promise<{
-    byKey: Map<string, string | null>
-    list: { title: string; tokens: string[]; author: string | null }[]
+    byKey: Map<string, ExistingRow>
+    list: ExistingRow[]
   }> {
     const db = supabase
     if (!db) return { byKey: new Map(), list: [] }
 
-    const { data, error } = await db.from('books').select('id, title, author')
+    const { data, error } = await db
+      .from('books')
+      .select('id, title, author, cover_url')
 
     if (error) {
       throw new Error(`не удалось прочитать books: ${error.message}`)
     }
 
-    const byKey = new Map<string, string | null>()
-    const list: { title: string; tokens: string[]; author: string | null }[] = []
+    const byKey = new Map<string, ExistingRow>()
+    const list: ExistingRow[] = []
 
     for (const row of (data ?? []) as {
       id: string
       title: string | null
       author: string | null
+      cover_url: string | null
     }[]) {
       if (!row.title) continue
-      byKey.set(dedupeKey(row.title), row.author)
-      list.push({
+
+      const entry: ExistingRow = {
+        id: row.id,
         title: row.title,
         tokens: titleTokens(row.title),
         author: row.author,
-      })
+        coverUrl: row.cover_url,
+      }
+
+      byKey.set(dedupeKey(row.title), entry)
+      list.push(entry)
     }
 
     return { byKey, list }
@@ -750,55 +772,74 @@ async function main(): Promise<void> {
 
   const existing = await loadExistingTitles()
 
-  // Дубликаты отсекаем ДО обогащения: не тратим запросы к Open Library зря.
-  // Два уровня: точное совпадение по ключу и «похожее название» — в архиве
-  // названия усечены («кубок огня» вместо «Гарри Поттер и Кубок огня»).
-  const fresh: ParsedBook[] = []
-  let nearDuplicates = 0
+  // Дедупликация двухуровневая: точный ключ и «похожее» (усечённое) название.
+  type Planned = { book: ParsedBook; twin: ExistingRow | null }
 
-  for (const book of books) {
-    if (existing.byKey.has(dedupeKey(book.title))) continue
+  const planned: Planned[] = books.map(book => {
+    const exact = existing.byKey.get(dedupeKey(book.title)) ?? null
+    const twin = exact ?? isLikelyDuplicate(book.title, existing.list)
+    return { book, twin }
+  })
 
-    const twin = isLikelyDuplicate(book.title, existing.list)
-    if (twin) {
-      nearDuplicates++
-      log(`  пропуск (уже есть): «${book.title}» ≈ «${twin.title}»`)
-      continue
-    }
+  const toInsert = planned.filter(item => !item.twin)
+  const toUpdate = planned.filter(item => item.twin)
 
-    fresh.push(book)
+  if (toUpdate.length > 0) {
+    log(
+      `уже есть в базе: ${toUpdate.length}` +
+        (UPDATE_EXISTING
+          ? ' — обновим обложку и аннотацию'
+          : ' — пропускаем (включи --update-existing, чтобы обновить)'),
+    )
   }
 
-  const duplicates = books.length - fresh.length
-  if (nearDuplicates > 0) {
-    log(`из них ${nearDuplicates} — те же книги с усечёнными названиями`)
-  }
+  // Авторов ищем у новых книг и у существующих записей без автора
+  const needsAuthor: ParsedBook[] = [
+    ...toInsert.map(item => item.book),
+    ...toUpdate.filter(item => !item.twin?.author).map(item => item.book),
+  ]
 
-  // Авторов ищем только у новых книг. В dry-run проверяем 10 штук,
-  // чтобы оценить качество поиска, а не гонять все 30+ вхолостую.
-  const enrichLimit = DRY_RUN ? Math.min(fresh.length, 10) : fresh.length
+  const enrichLimit = DRY_RUN
+    ? Math.min(needsAuthor.length, 10)
+    : needsAuthor.length
   if (enrichLimit > 0) {
     log(
       googleBooksDisabled
         ? `Google Books без ключа отключён (общая квота 429) — авторов ищем в Open Library, запросов ${enrichLimit}`
         : `ищем авторов: сначала Google Books, затем Open Library; запросов ${enrichLimit}`,
     )
-    const { found, networkQueries } = await enrichAuthors(fresh, enrichLimit)
+    const { found, networkQueries } = await enrichAuthors(
+      needsAuthor,
+      enrichLimit,
+    )
     log(
-      `авторы проставлены у ${found} из ${fresh.length} (сетевых запросов: ${networkQueries}, справочник: ${MANUAL_AUTHORS.size} записей)`,
+      `авторы проставлены у ${found} из ${needsAuthor.length} (сетевых запросов: ${networkQueries}, справочник: ${MANUAL_AUTHORS.size} записей)`,
     )
   }
 
   if (DRY_RUN) {
-    fresh.forEach(book => {
+    toInsert.forEach(({ book }) => {
       const source = book.authorSource ? ` [${book.authorSource}]` : ''
       log(
-        `  • «${book.title}» — ${book.author ? book.author + source : 'автор не найден'} | ${book.description.length} симв. | ${book.coverName}`,
+        `  • добавить: «${book.title}» — ${book.author ? book.author + source : 'автор не найден'} | ${book.description.length} симв. | ${book.coverName}`,
       )
     })
 
+    toUpdate.slice(0, 10).forEach(({ book, twin }) => {
+      if (!twin) return
+      const authorNote = !twin.author && book.author ? ` + автор «${book.author}»` : ''
+      log(
+        `  • обновить: «${twin.title}» ← обложка + аннотация ${book.description.length} симв.${authorNote}`,
+      )
+    })
+    if (toUpdate.length > 10) log(`  … и ещё ${toUpdate.length - 10} обновлений`)
+
+    const willUpdate = UPDATE_EXISTING ? toUpdate.length : 0
+    const willSkip = UPDATE_EXISTING ? 0 : toUpdate.length
+
     log(
-      `dry-run: новых ${fresh.length}, дубликатов ${duplicates}` +
+      `dry-run${UPDATE_EXISTING ? ' (--update-existing)' : ''}: ` +
+        `добавить ${toInsert.length}, обновить ${willUpdate}, пропустить ${willSkip}` +
         (existing.byKey.size === 0 ? ' (база не проверялась: env не задан)' : ''),
     )
     log('в БД и Storage ничего не записано')
@@ -813,19 +854,65 @@ async function main(): Promise<void> {
   }
 
   log(`в books уже есть записей: ${existing.byKey.size}`)
-  stats.processed = fresh.length
-  stats.duplicates = duplicates
+  stats.processed = planned.length
+  stats.duplicates = UPDATE_EXISTING ? 0 : toUpdate.length
 
-  for (const book of fresh) {
+  // 1. Обновляем существующие книги: обложка и аннотация из архива,
+  //    название не трогаем (в базе оно полное), автора — только если пусто.
+  if (UPDATE_EXISTING) {
+    for (const { book, twin } of toUpdate) {
+      if (!twin) continue
+
+      try {
+        const coverUrl = await uploadCover(book.coverData)
+
+        const patch: {
+          cover_url: string
+          description: string
+          author?: string
+        } = {
+          cover_url: coverUrl,
+          description: book.description,
+        }
+        if (!twin.author && book.author) patch.author = book.author
+
+        const { error } = await db
+          .from('books')
+          .update(patch)
+          .eq('id', twin.id)
+
+        if (error) {
+          logWarn(`  ошибка обновления «${twin.title}»: ${error.message}`)
+          stats.skipped++
+          continue
+        }
+
+        stats.updated++
+        log(`  обновлено: «${twin.title}»${patch.author ? ' (+автор)' : ''}`)
+      } catch (error) {
+        logWarn(
+          `  ошибка «${twin.title}»: ${error instanceof Error ? error.message : error}`,
+        )
+        stats.skipped++
+      }
+    }
+  }
+
+  // 2. Добавляем действительно новые книги
+  for (const { book } of toInsert) {
     try {
       const coverUrl = await uploadCover(book.coverData)
 
-      const { error } = await db.from('books').insert({
-        title: book.title,
-        author: book.author,
-        description: book.description,
-        cover_url: coverUrl,
-      })
+      const { data: inserted, error } = await db
+        .from('books')
+        .insert({
+          title: book.title,
+          author: book.author,
+          description: book.description,
+          cover_url: coverUrl,
+        })
+        .select('id')
+        .single()
 
       if (error) {
         logWarn(`  ошибка вставки «${book.title}»: ${error.message}`)
@@ -834,12 +921,16 @@ async function main(): Promise<void> {
       }
 
       // Пополняем карту, чтобы одинаковые названия внутри архива не задвоились
-      existing.byKey.set(dedupeKey(book.title), book.author)
-      existing.list.push({
+      const newRow: ExistingRow = {
+        id: (inserted as { id: string } | null)?.id ?? '',
         title: book.title,
         tokens: titleTokens(book.title),
         author: book.author,
-      })
+        coverUrl,
+      }
+      existing.byKey.set(dedupeKey(book.title), newRow)
+      existing.list.push(newRow)
+
       stats.inserted++
       log(
         `  добавлено: «${book.title}»${book.author ? ' — ' + book.author : ''}`,
@@ -856,6 +947,7 @@ async function main(): Promise<void> {
   log(`  папок: ${stats.folders}`)
   log(`  обработано: ${stats.processed}`)
   log(`  добавлено: ${stats.inserted}`)
+  log(`  обновлено: ${stats.updated}`)
   log(`  пропущено дубликатов: ${stats.duplicates}`)
   log(`  пропущено с ошибками: ${stats.skipped}`)
 }
