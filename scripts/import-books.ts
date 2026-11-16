@@ -23,6 +23,7 @@
  *   6. вставляет только новые записи в public.books.
  */
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import yauzl from 'yauzl'
 import mammoth from 'mammoth'
 import sharp from 'sharp'
@@ -35,6 +36,8 @@ import { createClient } from '@supabase/supabase-js'
 
 const args = process.argv.slice(2)
 const DRY_RUN = args.includes('--dry-run')
+/** --fix-authors: не читать архив, а проставить авторов уже импортированным книгам */
+const FIX_AUTHORS = args.includes('--fix-authors')
 const zipPath =
   args.find(a => !a.startsWith('--')) ??
   process.env.BOOKS_ZIP ??
@@ -60,8 +63,8 @@ type ParsedBook = {
   folder: string
   title: string
   author: string | null
-  /** Откуда взялся автор, если его нашли в интернете */
-  authorSource?: 'google-books' | 'open-library'
+  /** Откуда взялся автор, если его нашли в интернете или справочнике */
+  authorSource?: 'manual' | 'google-books' | 'open-library'
   description: string
   coverName: string
   coverData: Buffer
@@ -317,6 +320,37 @@ async function buildBooks(entries: ZipEntry[], stats: Stats): Promise<ParsedBook
 }
 
 /* ------------------------------------------------------------------ */
+/* Ручной справочник авторов                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Внешние API ненадёжны (Google Books без ключа — 429, Open Library слабо
+ * знает русские издания), поэтому основные авторы лежат в файле
+ * scripts/book-authors.json: название → автор. Справочник имеет приоритет.
+ */
+const MANUAL_AUTHORS_PATH =
+  process.env.BOOKS_AUTHORS_FILE ?? 'scripts/book-authors.json'
+
+function loadManualAuthors(): Map<string, string> {
+  try {
+    const raw = readFileSync(MANUAL_AUTHORS_PATH, 'utf8')
+    const parsed = JSON.parse(raw) as Record<string, string>
+    const map = new Map<string, string>()
+
+    for (const [title, author] of Object.entries(parsed)) {
+      if (title && author) map.set(dedupeKey(title), author)
+    }
+
+    return map
+  } catch {
+    // Файла нет — работаем без него
+    return new Map()
+  }
+}
+
+const MANUAL_AUTHORS = loadManualAuthors()
+
+/* ------------------------------------------------------------------ */
 /* Google Books: поиск автора по названию                              */
 /* ------------------------------------------------------------------ */
 
@@ -447,22 +481,31 @@ async function findAuthorInOpenLibrary(title: string): Promise<string | null> {
 
 /**
  * Добирает авторов для книг, у которых он не извлёкся из имени папки.
- * Порядок: Google Books → Open Library (если квота Google исчерпана).
- * Возвращает количество найденных авторов.
+ * Порядок: ручной справочник → Google Books (по ключу) → Open Library.
  */
 async function enrichAuthors(
   books: ParsedBook[],
   limit: number,
-): Promise<number> {
+): Promise<{ found: number; networkQueries: number }> {
   let found = 0
-  let queries = 0
+  let networkQueries = 0
 
   for (const book of books) {
     if (book.author) continue
-    if (queries >= limit) break
+    if (networkQueries >= limit) break
 
-    queries++
+    // 1. Ручной справочник: точное совпадение, без сетевых запросов
+    const manual = MANUAL_AUTHORS.get(dedupeKey(book.title))
+    if (manual) {
+      book.author = manual
+      book.authorSource = 'manual'
+      found++
+      continue
+    }
 
+    networkQueries++
+
+    // 2. Google Books (только если задан ключ)
     const fromGoogle = await findAuthorInGoogleBooks(book.title)
     if (fromGoogle) {
       book.author = fromGoogle
@@ -471,6 +514,7 @@ async function enrichAuthors(
       continue
     }
 
+    // 3. Open Library — запасной вариант
     const fromOpenLibrary = await findAuthorInOpenLibrary(book.title)
     if (fromOpenLibrary) {
       book.author = fromOpenLibrary
@@ -479,7 +523,7 @@ async function enrichAuthors(
     }
   }
 
-  return found
+  return { found, networkQueries }
 }
 
 /* ------------------------------------------------------------------ */
@@ -499,6 +543,71 @@ async function main(): Promise<void> {
     skipped: 0,
   }
 
+  // Клиент создаём сразу (если env задан): нужен и для импорта, и для --fix-authors,
+  // и для dry-run (проверка дубликатов — только чтение).
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+  const supabase =
+    supabaseUrl && serviceKey
+      ? createClient(supabaseUrl, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+      : null
+
+  // --- режим --fix-authors: проставить авторов уже импортированным книгам
+  if (FIX_AUTHORS) {
+    const db = supabase
+    if (!db) {
+      throw new Error(
+        'Supabase не настроен: нужны SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY',
+      )
+    }
+
+    const { data, error } = await db.from('books').select('id, title, author')
+    if (error) {
+      throw new Error(`не удалось прочитать books: ${error.message}`)
+    }
+
+    const rows = (data ?? []) as {
+      id: string
+      title: string | null
+      author: string | null
+    }[]
+
+    let updated = 0
+    let unknown = 0
+
+    for (const row of rows) {
+      if (!row.title) continue
+
+      const author = MANUAL_AUTHORS.get(dedupeKey(row.title))
+      if (!author) {
+        unknown++
+        continue
+      }
+      if (author === row.author) continue
+
+      const { error: updateError } = await db
+        .from('books')
+        .update({ author })
+        .eq('id', row.id)
+
+      if (updateError) {
+        logWarn(`  не удалось обновить «${row.title}»: ${updateError.message}`)
+        continue
+      }
+
+      updated++
+      log(`  автор проставлен: «${row.title}» — ${author}`)
+    }
+
+    log(
+      `--fix-authors: книг в базе ${rows.length}, обновлено авторов ${updated}, нет в справочнике ${unknown}`,
+    )
+    return
+  }
+
   log(`архив: ${zipPath}${DRY_RUN ? ' (dry-run)' : ''}`)
 
   const entries = await readZipEntries(zipPath)
@@ -511,18 +620,6 @@ async function main(): Promise<void> {
     log('нечего импортировать')
     return
   }
-
-  // Клиент создаём сразу (если env задан), чтобы dry-run тоже мог
-  // показать, какие книги окажутся дубликатами — без единой записи.
-  const supabaseUrl =
-    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
-  const supabase =
-    supabaseUrl && serviceKey
-      ? createClient(supabaseUrl, serviceKey, {
-          auth: { persistSession: false, autoRefreshToken: false },
-        })
-      : null
 
   // Замыкания, а не отдельные функции: так типы supabase-js выводятся из
   // конкретного клиента и не требуют «any»/ручных генериков.
@@ -587,18 +684,19 @@ async function main(): Promise<void> {
         ? `Google Books без ключа отключён (общая квота 429) — авторов ищем в Open Library, запросов ${enrichLimit}`
         : `ищем авторов: сначала Google Books, затем Open Library; запросов ${enrichLimit}`,
     )
-    const found = await enrichAuthors(fresh, enrichLimit)
-    log(`авторы найдены у ${found} из ${enrichLimit} (поиск был нужен не всем)`)
+    const { found, networkQueries } = await enrichAuthors(fresh, enrichLimit)
+    log(
+      `авторы проставлены у ${found} из ${fresh.length} (сетевых запросов: ${networkQueries}, справочник: ${MANUAL_AUTHORS.size} записей)`,
+    )
   }
 
   if (DRY_RUN) {
-    fresh.slice(0, 12).forEach(book => {
+    fresh.forEach(book => {
       const source = book.authorSource ? ` [${book.authorSource}]` : ''
       log(
         `  • «${book.title}» — ${book.author ? book.author + source : 'автор не найден'} | ${book.description.length} симв. | ${book.coverName}`,
       )
     })
-    if (fresh.length > 12) log(`  … и ещё ${fresh.length - 12}`)
 
     log(
       `dry-run: новых ${fresh.length}, дубликатов ${duplicates}` +
