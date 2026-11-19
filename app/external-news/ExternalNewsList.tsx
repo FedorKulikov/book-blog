@@ -48,8 +48,8 @@ export default function ExternalNewsList({
 
   return (
     <div>
-      {/* 1 колонка на мобильных, 2 на планшете, 3 на широком экране */}
-      <div className="grid grid-cols-1 items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3">
+      {/* Максимум 2 карточки в ряд: они крупнее и текст читается спокойнее */}
+      <div className="grid grid-cols-1 items-stretch gap-6 md:grid-cols-2">
         {items.map(item => (
           <ExternalNewsCard key={item.id} item={item} />
         ))}

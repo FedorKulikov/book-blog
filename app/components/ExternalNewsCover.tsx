@@ -1,12 +1,15 @@
 'use client'
 
 // app/components/ExternalNewsCover.tsx
-// Обложка внешней новости с двумя защитами:
+// Обложка внешней новости. Три задачи:
 //   1) картинки может не быть вовсе (cover_url = null);
-//   2) ссылка может быть битой (404 у Open Library) — тогда срабатывает onError.
-// В обоих случаях показываем градиентную заглушку с иконкой книги,
-// а не «сломанную картинку» браузера.
+//   2) ссылка может быть битой (404) — тогда срабатывает onError;
+//   3) часть источников (litkarta.ru) отдаёт картинки ТОЛЬКО по http,
+//      а сайт работает по https. Браузер вырезал бы такую картинку как
+//      Mixed Content, поэтому она идёт через next/image: оптимизатор
+//      скачивает её на сервере и отдаёт уже по https.
 import { useState } from 'react'
+import Image from 'next/image'
 import { BookOpen } from './icons'
 
 export default function ExternalNewsCover({
@@ -33,12 +36,16 @@ export default function ExternalNewsCover({
   }
 
   return (
-    <img
-      src={url}
-      alt={alt}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="h-full w-full object-cover"
-    />
+    <span className="relative block h-full w-full overflow-hidden">
+      <Image
+        src={url}
+        alt={alt}
+        fill
+        // Карточки шириной примерно в половину экрана на десктопе
+        sizes="(max-width: 768px) 100vw, 50vw"
+        onError={() => setFailed(true)}
+        className="object-cover"
+      />
+    </span>
   )
 }

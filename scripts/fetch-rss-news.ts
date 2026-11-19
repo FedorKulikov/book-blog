@@ -1190,6 +1190,82 @@ async function purgeForeignNews(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Догонка обложек для старых записей                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Сколько записей без обложки обрабатываем за один прогон.
+ * Импорт только вставляет новые url, поэтому старые строки сами
+ * не обновятся — дозаполняем их при каждом обычном запуске.
+ */
+const COVERS_REFRESH_LIMIT = 20
+
+async function refreshMissingCovers(): Promise<void> {
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+
+  // Без service_role обновление упрётся в RLS — молча выходим
+  if (!supabaseUrl || !serviceKey) return
+
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const { data, error } = await supabase
+    .from('external_news')
+    .select('id, url, created_at')
+    .is('cover_url', null)
+    .order('created_at', { ascending: false })
+    .limit(COVERS_REFRESH_LIMIT)
+
+  if (error) {
+    logWarn(`обложки: не удалось прочитать записи (${error.message})`)
+    return
+  }
+
+  const rows = (data ?? []) as { id: string; url: string }[]
+
+  if (rows.length === 0) {
+    log('обложки: у всех записей уже есть картинки')
+    return
+  }
+
+  log(`обложки: догоняем для ${rows.length} записей без картинки…`)
+
+  let updated = 0
+
+  for (const row of rows) {
+    const image = await fetchOgImage(row.url)
+    if (!image) continue
+
+    if (DRY_RUN) {
+      log(`  [dry] ${row.url} → ${image}`)
+      updated++
+      continue
+    }
+
+    const { data: updatedRows, error: updateError } = await supabase
+      .from('external_news')
+      .update({ cover_url: image })
+      .eq('id', row.id)
+      .select('id')
+
+    if (updateError) {
+      logWarn(`  не удалось обновить ${row.id}: ${updateError.message}`)
+      continue
+    }
+
+    if (!updatedRows || updatedRows.length === 0) continue
+
+    updated++
+    log(`  ✓ ${image}`)
+  }
+
+  log(`обложки: обновлено ${updated} из ${rows.length}`)
+}
+
+/* ------------------------------------------------------------------ */
 /* Entry point                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -1264,6 +1340,9 @@ async function main(): Promise<void> {
     `обогащаем первые ${Math.min(baseRows.length, ENRICH_LIMIT)} записей (Open Library)…`,
   )
   const rows = await enrichRows(baseRows)
+
+  // Дозаполняем обложки у старых записей: импорт их не трогает (только вставка)
+  await refreshMissingCovers()
 
   if (DRY_RUN) {
     log(`dry-run: распознано ${rows.length} записей, в базу не пишем`)
