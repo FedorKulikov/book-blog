@@ -38,9 +38,6 @@ type Profile = {
 export default function Sidebar() {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
-  // Раздел «Новости» показываем только когда в нём есть хотя бы один пост:
-  // пустой раздел в навигации сбивает с толку.
-  const [hasNews, setHasNews] = useState(false)
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
@@ -79,27 +76,6 @@ export default function Sidebar() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Есть ли одобренные посты в разделе «Новости» — от этого зависит пункт меню.
-  // Проверяем на клиенте осознанно: запрос в root layout сделал бы ВСЕ страницы
-  // динамическими, а сейчас /login, /welcome, /search и другие отдаются статикой.
-  // Плюс `head: true` — нам нужен только факт наличия, а не строки.
-  useEffect(() => {
-    let alive = true
-
-    supabase
-      .from('posts')
-      .select('id', { count: 'exact', head: true })
-      .eq('type', 'news')
-      .eq('status', 'approved')
-      .then(({ count }) => {
-        if (alive) setHasNews((count ?? 0) > 0)
-      })
-
-    return () => {
-      alive = false
-    }
-  }, [])
-
   useEffect(() => {
     setOpen(false)
   }, [pathname])
@@ -130,9 +106,11 @@ export default function Sidebar() {
   }[] = [
     { href: '/', label: 'Главная', Icon: Home },
     { href: '/books', label: 'Книги', Icon: BookOpen },
-    { href: '/external-news', label: 'Книжные новости', Icon: Newspaper },
-    // Пункт появляется, только если раздел не пуст (hasNews выше)
-    ...(hasNews ? [{ href: '/news', label: 'Новости', Icon: FileText }] : []),
+    // Портал новостей — постоянный пункт: у раздела есть фильтры и пустое
+    // состояние, поэтому прятать его «пока пусто» больше не нужно.
+    { href: '/news', label: 'Новости', Icon: Newspaper },
+    // Лента Литреса остаётся отдельным пунктом, чтобы не терять доступ
+    { href: '/external-news', label: 'Литрес', Icon: FileText },
     { href: '/creative', label: 'Творчество', Icon: Feather },
     { href: '/discussions', label: 'Обсуждения', Icon: MessageCircle },
     { href: '/messages', label: 'Сообщения', Icon: Mail, badge: true },

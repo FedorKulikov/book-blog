@@ -7,13 +7,12 @@ import { Home, BookOpen, PenLine, User, Newspaper } from './icons'
 export default function MobileNav() {
   const pathname = usePathname()
 
-  // Поиск убран: он уже есть в верхней мобильной панели (иконка лупы),
-  // а «Новости» — отдельный раздел, на который хочется попадать в один тап.
+  // «Новости» ведут в книжный портал /news — тот же раздел, что и в сайдбаре.
   const items = [
     { href: '/', Icon: Home, label: 'Главная' },
     { href: '/books', Icon: BookOpen, label: 'Книги' },
     { href: '/news/new', Icon: PenLine, label: 'Создать', accent: true },
-    { href: '/external-news', Icon: Newspaper, label: 'Новинки' },
+    { href: '/news', Icon: Newspaper, label: 'Новости' },
     { href: '/profile', Icon: User, label: 'Профиль' },
   ]
 

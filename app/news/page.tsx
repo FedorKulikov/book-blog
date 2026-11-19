@@ -53,13 +53,15 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
       <header className="mb-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#014b32]">
+            {/* Тёмная тема: HEX-цвета не переопределяются токенами, поэтому
+                светлые варианты задаются явными dark:-классами */}
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#014b32] dark:text-[#E2E2E0]/60">
               Книжный портал
             </p>
-            <h1 className="font-playfair text-3xl font-bold leading-tight text-[#0E2931] md:text-5xl">
+            <h1 className="font-playfair text-3xl font-bold leading-tight text-[#0E2931] dark:text-[#E2E2E0] md:text-5xl">
               Новости
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#4A2E27]/80">
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#4A2E27]/80 dark:text-[#E2E2E0]/70">
               Конкурсы, анонсы, новинки и события книжного мира. Пишите свои
               новости — читатели увидят их в ленте.
             </p>
@@ -78,7 +80,7 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
       <NewsFilterBar active={filter} />
 
       {error && (
-        <p className="mt-8 rounded-2xl border border-[#681F2D]/30 bg-[#681F2D]/5 p-4 text-sm text-[#681F2D]">
+        <p className="mt-8 rounded-2xl border border-[#681F2D]/30 bg-[#681F2D]/5 p-4 text-sm text-[#681F2D] dark:text-[#c9707f]">
           Не удалось загрузить новости. Попробуйте обновить страницу позже.
         </p>
       )}
@@ -119,7 +121,7 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
         <section className="mt-8" aria-labelledby="news-lead-heading">
           <h2
             id="news-lead-heading"
-            className="mb-4 font-playfair text-lg font-bold text-[#0E2931]"
+            className="mb-4 font-playfair text-lg font-bold text-[#0E2931] dark:text-[#E2E2E0]"
           >
             Главное сегодня
           </h2>
@@ -132,14 +134,14 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
           <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
             <h2
               id="news-latest-heading"
-              className="font-playfair text-2xl font-bold text-[#0E2931] md:text-3xl"
+              className="font-playfair text-2xl font-bold text-[#0E2931] dark:text-[#E2E2E0] md:text-3xl"
             >
               Последние новости
             </h2>
             {filter !== 'all' && (
               <Link
                 href="/news"
-                className="text-sm text-[#014b32] transition-colors hover:text-[#0E2931]"
+                className="text-sm text-[#014b32] transition-colors hover:text-[#0E2931] dark:text-[#E2E2E0]/70 dark:hover:text-[#E2E2E0]"
               >
                 Смотреть все →
               </Link>
