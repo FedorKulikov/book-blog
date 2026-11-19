@@ -236,22 +236,65 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Грубое, но безопасное вычищение HTML и раскодирование основных сущностей */
+/** Именованные HTML-сущности, которые встречаются в лентах */
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: ' ',
+  amp: '&',
+  quot: '"',
+  apos: "'",
+  lt: '<',
+  gt: '>',
+  mdash: '—',
+  ndash: '–',
+  laquo: '«',
+  raquo: '»',
+  hellip: '…',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  bdquo: '„',
+  shy: '',
+}
+
+/**
+ * Раскрывает HTML-сущности: без этого в базе оставался литерал «&mdash;»
+ * и он же показывался на сайте текстом.
+ */
+function decodeEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_, dec: string) =>
+      String.fromCodePoint(Number.parseInt(dec, 10)),
+    )
+    .replace(
+      /&([a-z]+);/gi,
+      (match: string, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? match,
+    )
+}
+
 function stripHtml(input: string): string {
-  return input
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return normalizeTitle(decodeEntities(input.replace(/<[^>]*>/g, ' ')))
 }
 
 function truncate(value: string, max: number): string {
   if (value.length <= max) return value
   return value.slice(0, max - 1).trimEnd() + '…'
+}
+
+/**
+ * Заголовки лент приходят с неразрывными пробелами (U+00A0).
+ * Нормализуем их, чтобы сравнение «заголовок в базе == заголовок в ленте»
+ * не срабатывало ложно: иначе каждый прогон перезаписывал бы десятки
+ * невинно отличающихся строк.
+ */
+function normalizeTitle(value: string): string {
+  return value
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /** Дата публикации из RSS: isoDate приоритетнее pubDate, иначе «сейчас» */
@@ -805,7 +848,7 @@ function buildRows(
     const isBook = Boolean(author) || /\/(book|audiobook)\//.test(url)
 
     rows.push({
-      title: truncate(title, TITLE_MAX),
+      title: truncate(normalizeTitle(title), TITLE_MAX),
       url,
       source: feed.label,
       summary: rawSummary ? truncate(stripHtml(rawSummary), SUMMARY_MAX) : null,
@@ -1224,8 +1267,7 @@ async function refreshNewsMeta(): Promise<void> {
 
   const { data, error } = await supabase
     .from('external_news')
-    .select('id, url, cover_url, news_type')
-    .or('cover_url.is.null,news_type.is.null')
+    .select('id, url, title, cover_url, news_type')
     .order('created_at', { ascending: false })
     .limit(META_REFRESH_LIMIT)
 
@@ -1237,21 +1279,24 @@ async function refreshNewsMeta(): Promise<void> {
   const rows = (data ?? []) as {
     id: string
     url: string
+    title: string
     cover_url: string | null
     news_type: string | null
   }[]
 
   if (rows.length === 0) {
-    log('метаданные: у всех записей есть обложка и тип')
+    log('метаданные: таблица пуста — обновлять нечего')
     return
   }
 
-  log(`метаданные: догоняем для ${rows.length} записей…`)
+  log(`метаданные: сверяем ${rows.length} записей с текущими лентами…`)
 
-  // 1. Собираем обложки и типы из актуальных лент: url → данные
+  // 1. Собираем заголовки, обложки и типы из актуальных лент: url → данные.
+  //    Заголовок тоже берём из ленты: старые записи могли сохраниться
+  //    обрезанными (баг разбиения «Автор: Название» до фикса).
   const fromFeeds = new Map<
     string,
-    { cover_url: string | null; news_type: NewsType }
+    { title: string; cover_url: string | null; news_type: NewsType }
   >()
 
   for (const feed of FEEDS) {
@@ -1261,6 +1306,7 @@ async function refreshNewsMeta(): Promise<void> {
 
       for (const row of built.rows) {
         fromFeeds.set(row.url, {
+          title: row.title,
           cover_url: row.cover_url,
           news_type: row.news_type,
         })
@@ -1272,14 +1318,22 @@ async function refreshNewsMeta(): Promise<void> {
     }
   }
 
+  let updatedTitles = 0
   let updatedCovers = 0
   let updatedTypes = 0
   let ogRequests = 0
 
   for (const row of rows) {
-    const patch: { cover_url?: string; news_type?: string } = {}
+    const patch: { title?: string; cover_url?: string; news_type?: string } = {}
     const fromFeed = fromFeeds.get(row.url)
 
+    // Заголовок отличается от ленты → значит сохранён обрезанный, правим.
+    // Сравниваем нормализованные версии: неразрывные пробелы — не повод
+    // перезаписывать строку.
+    const feedTitle = fromFeed?.title ? normalizeTitle(fromFeed.title) : null
+    if (feedTitle && feedTitle !== normalizeTitle(row.title)) {
+      patch.title = feedTitle
+    }
     if (fromFeed?.cover_url && !row.cover_url) {
       patch.cover_url = fromFeed.cover_url
     }
@@ -1295,12 +1349,13 @@ async function refreshNewsMeta(): Promise<void> {
       if (image) patch.cover_url = image
     }
 
-    if (!patch.cover_url && !patch.news_type) continue
+    if (!patch.title && !patch.cover_url && !patch.news_type) continue
 
     if (DRY_RUN) {
       log(
-        `  [dry] обложка: ${patch.cover_url ?? '—'} | тип: ${patch.news_type ?? '—'} ← ${row.url}`,
+        `  [dry] заголовок: ${patch.title ?? '—'} | обложка: ${patch.cover_url ?? '—'} | тип: ${patch.news_type ?? '—'} ← ${row.url}`,
       )
+      if (patch.title) updatedTitles++
       if (patch.cover_url) updatedCovers++
       if (patch.news_type) updatedTypes++
       continue
@@ -1319,12 +1374,13 @@ async function refreshNewsMeta(): Promise<void> {
 
     if (!changed || changed.length === 0) continue
 
+    if (patch.title) updatedTitles++
     if (patch.cover_url) updatedCovers++
     if (patch.news_type) updatedTypes++
   }
 
   log(
-    `метаданные: обложек обновлено ${updatedCovers}, типов ${updatedTypes} из ${rows.length}`,
+    `метаданные: заголовков обновлено ${updatedTitles}, обложек ${updatedCovers}, типов ${updatedTypes} из ${rows.length}`,
   )
 }
 
