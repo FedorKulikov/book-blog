@@ -1,15 +1,26 @@
 // app/components/ExternalNewsCard.tsx
 // Карточка внешней новости в стиле книжного портала: обложка 16:9,
-// заголовок, источник с датой и кнопка «Читать» на первоисточник.
+// два бейджа (источник + тип материала), заголовок, дата с иконкой часов
+// и кнопка «Читать» на первоисточник.
 // Длинные описания и иностранные аннотации намеренно не выводим.
-import { ExternalLink } from '@/app/components/icons'
+import { Clock, ExternalLink } from '@/app/components/icons'
 import ExternalNewsCover from '@/app/components/ExternalNewsCover'
 import {
   formatNewsDate,
   type ExternalNewsItem,
 } from '@/app/external-news/externalNewsQuery'
 
+/** Бейдж типа: другой цвет, чтобы не путался с бейджем источника */
+const TYPE_BADGE: Record<string, string> = {
+  Новость: 'bg-[#681F2D] text-[#E2E2E0]',
+  Анонс: 'bg-[#493344] text-[#E2E2E0]',
+  Статья: 'bg-[#493344] text-[#E2E2E0]',
+}
+
 export default function ExternalNewsCard({ item }: { item: ExternalNewsItem }) {
+  const type = item.news_type || 'Статья'
+  const typeClass = TYPE_BADGE[type] ?? TYPE_BADGE.Статья
+
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-[#493344] bg-[#0E2931] transition-colors hover:border-[#014b32]">
       {/* Обложка всегда 16:9 — сетка карточек остаётся ровной */}
@@ -19,6 +30,12 @@ export default function ExternalNewsCard({ item }: { item: ExternalNewsItem }) {
         <span className="absolute left-4 top-4 rounded-full bg-[#014b32] px-3 py-1 text-xs font-medium text-[#E2E2E0]">
           {item.source || 'Новости'}
         </span>
+
+        <span
+          className={`absolute right-4 top-4 rounded-full px-3 py-1 text-xs font-medium ${typeClass}`}
+        >
+          {type}
+        </span>
       </div>
 
       <div className="flex flex-1 flex-col p-5">
@@ -27,7 +44,10 @@ export default function ExternalNewsCard({ item }: { item: ExternalNewsItem }) {
         </h3>
 
         <div className="mt-auto flex items-center justify-between gap-3 text-xs text-[#E2E2E0]/60">
-          <span>{formatNewsDate(item.created_at)}</span>
+          <span className="inline-flex items-center gap-1.5">
+            <Clock size={13} strokeWidth={1.8} className="opacity-70" />
+            {formatNewsDate(item.created_at)}
+          </span>
 
           <a
             href={item.url}

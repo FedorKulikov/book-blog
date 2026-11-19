@@ -31,12 +31,22 @@ import { createClient } from '@supabase/supabase-js'
 /* Источники                                                           */
 /* ------------------------------------------------------------------ */
 
+/** Тип материала на карточке: бейдж рядом с источником */
+type NewsType = 'Новость' | 'Анонс' | 'Статья'
+
 type FeedSource = {
   url: string
   /** Подпись источника — попадает в колонку source */
   label: string
   /** Куда вести, если в ленте внезапно оказалась ссылка на магазин */
   siteUrl: string
+  /** Тип по умолчанию: в этих лентах категорий нет вообще */
+  defaultType: NewsType
+  /**
+   * Лента книжных новинок: там заголовки вида «Автор: Название»
+   * и их полезно разделять. У новостных лент двоеточие — часть заголовка.
+   */
+  isBookFeed?: boolean
 }
 
 /**
@@ -49,16 +59,19 @@ const DEFAULT_FEEDS: FeedSource[] = [
     url: 'http://www.litkarta.ru/rss/channel_news/',
     label: 'Новая карта русской литературы',
     siteUrl: 'http://www.litkarta.ru/',
+    defaultType: 'Новость',
   },
   {
     url: 'http://www.litkarta.ru/rss/channel_afisha/',
     label: 'Афиша литературных событий',
     siteUrl: 'http://www.litkarta.ru/',
+    defaultType: 'Анонс',
   },
   {
     url: 'https://www.eksmo.ru/feed/',
     label: 'Эксмо',
     siteUrl: 'https://eksmo.ru/',
+    defaultType: 'Статья',
   },
 ]
 
@@ -69,6 +82,7 @@ function feedFromUrl(url: string): FeedSource {
     url,
     label: parsed.hostname.replace(/^www\./, ''),
     siteUrl: `${parsed.protocol}//${parsed.host}/`,
+    defaultType: 'Статья',
   }
 }
 
@@ -165,9 +179,17 @@ type FeedItemLike = {
   description?: string
   contentSnippet?: string
   content?: string
+  'content:encoded'?: string
   author?: string
   isoDate?: string
   pubDate?: string
+  /** <enclosure url="..."> — основной источник картинок в RSS 2.0 */
+  enclosure?: { url?: string }
+  /** <media:content url="..."> — Media RSS (rss-parser отдаёт через customFields) */
+  mediaContent?: { $?: { url?: string } }[]
+  mediaThumbnail?: { $?: { url?: string } }[]
+  /** <category> — из неё выводим тип материала */
+  categories?: string[]
 }
 
 type FeedMeta = {
@@ -184,6 +206,7 @@ type NewRow = {
   cover_url: string | null
   content_type: 'book' | 'article'
   published_year: number | null
+  news_type: NewsType
 }
 
 type OpenLibraryHit = {
@@ -370,7 +393,16 @@ async function loadFeedOnce(
       throw new Error('ответ не похож на RSS/Atom (нет <rss> или <feed>)')
     }
 
-    const parser = new Parser<FeedMeta, FeedItemLike>()
+    // rss-parser по умолчанию выбрасывает поля из чужих namespace,
+    // поэтому media:content подключаем через customFields
+    const parser = new Parser<FeedMeta, FeedItemLike>({
+      customFields: {
+        item: [
+          ['media:content', 'mediaContent', { keepArray: true }],
+          ['media:thumbnail', 'mediaThumbnail', { keepArray: true }],
+        ],
+      },
+    })
     const parsed = await parser.parseString(xml)
 
     return {
@@ -454,6 +486,59 @@ function resolveItemLink(rawLink: string, feed: FeedSource): string | null {
   return link
 }
 
+function isHttpUrl(value: string | null | undefined): value is string {
+  if (!value) return false
+
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/** Значение Media RSS приходит массивом объектов вида { $: { url } } */
+function mediaUrl(entries: { $?: { url?: string } }[] | undefined): string | null {
+  for (const entry of entries ?? []) {
+    const url = entry?.$?.url
+    if (url) return url
+  }
+
+  return null
+}
+
+/**
+ * Картинка материала: enclosure → media:content/thumbnail → первая <img> в HTML.
+ * Если ничего нет — null, и фронтенд рисует градиентную заглушку
+ * (у «Литературной карты» картинок в RSS нет вообще).
+ */
+function extractImageUrl(item: FeedItemLike): string | null {
+  const enclosureUrl = item.enclosure?.url
+  if (isHttpUrl(enclosureUrl)) return enclosureUrl.trim()
+
+  const media = mediaUrl(item.mediaContent) ?? mediaUrl(item.mediaThumbnail)
+  if (isHttpUrl(media)) return media.trim()
+
+  const html = item['content:encoded'] ?? item.content ?? item.description ?? ''
+  const match = /<img[^>]+src=["']([^"']+)["']/i.exec(html)
+  if (match?.[1] && isHttpUrl(match[1])) return match[1]
+
+  return null
+}
+
+/** Тип материала: из <category>, иначе тип по умолчанию для этой ленты */
+function detectNewsType(item: FeedItemLike, feed: FeedSource): NewsType {
+  const categories = (item.categories ?? []).join(' ').toLowerCase()
+
+  if (/новост|news/.test(categories)) return 'Новость'
+  if (/анонс|афиш|встреч|постанов|событ/.test(categories)) return 'Анонс'
+  if (/стать|обзор|реценз|тест|занимательн|автор/.test(categories)) {
+    return 'Статья'
+  }
+
+  return feed.defaultType
+}
+
 /** Нормализует сырые items в строки таблицы и чистит дубли внутри пачки */
 function buildRows(
   items: FeedItemLike[],
@@ -500,9 +585,14 @@ function buildRows(
       item.contentSnippet ?? item.description ?? item.content ?? '',
     )
 
-    const { author: authorFromTitle, title } = splitAuthorFromTitle(
-      stripHtml(rawTitle),
-    )
+    const cleanTitle = stripHtml(rawTitle)
+
+    // «Автор: Название» — только у книжных лент. В новостях двоеточие
+    // часть заголовка («Итоги сезона: что читали»), и резать его нельзя.
+    const { author: authorFromTitle, title } = feed.isBookFeed
+      ? splitAuthorFromTitle(cleanTitle)
+      : { author: null, title: cleanTitle }
+
     const author = (item.author ?? '').trim() || authorFromTitle
 
     // Книга, если есть автор или ссылка ведёт на карточку книги/аудиокниги
@@ -517,9 +607,10 @@ function buildRows(
       // чтобы лента на сайте сортировалась по свежести книг, а не по времени импорта.
       created_at: itemDate(item),
       author: author ? truncate(author, 120) : null,
-      cover_url: null,
+      cover_url: extractImageUrl(item),
       content_type: isBook ? 'book' : 'article',
       published_year: null,
+      news_type: detectNewsType(item, feed),
     })
   }
 
@@ -543,9 +634,10 @@ type EnrichableRow = {
 async function enrichOne<T extends EnrichableRow>(row: T): Promise<T> {
   let next: T = { ...row }
 
-  // Название могло сохраниться вместе с префиксом «Автор: » — разделяем,
-  // иначе Open Library ищет по строке вида «Kazuo Ishiguro: Klara and the Sun»
-  if (!next.author) {
+  // Название книги могло сохраниться вместе с префиксом «Автор: » — разделяем,
+  // иначе Open Library ищет по строке вида «Kazuo Ishiguro: Klara and the Sun».
+  // Для статей этого не делаем: там двоеточие — часть заголовка.
+  if (!next.author && (next.content_type ?? 'book') === 'book') {
     const split = splitAuthorFromTitle(next.title)
     if (split.author) {
       next = { ...next, title: split.title, author: split.author }
@@ -605,6 +697,21 @@ function toLegacyRow(row: NewRow) {
   }
 }
 
+/** То же, но без news_type: колонку добавляют отдельной миграцией */
+function withoutNewsType(row: NewRow) {
+  return {
+    title: row.title,
+    url: row.url,
+    source: row.source,
+    summary: row.summary,
+    created_at: row.created_at,
+    author: row.author,
+    cover_url: row.cover_url,
+    content_type: row.content_type,
+    published_year: row.published_year,
+  }
+}
+
 async function saveRows(rows: NewRow[]): Promise<void> {
   const supabaseUrl =
     process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
@@ -647,7 +754,8 @@ async function saveRows(rows: NewRow[]): Promise<void> {
     .insert(fresh)
 
   if (insertError) {
-    // 42703 = undefined_column: миграция из шага 3 ещё не применена
+    // 42703 = undefined_column: миграция ещё не применена.
+    // Деградируем постепенно: сначала теряем только news_type, потом — legacy.
     const isMissingColumn =
       insertError.code === '42703' ||
       /column .* does not exist/i.test(insertError.message)
@@ -657,7 +765,33 @@ async function saveRows(rows: NewRow[]): Promise<void> {
     }
 
     logWarn(
-      'в external_news нет новых колонок — пишем базовый набор (выполни SQL из шага 3)',
+      'в external_news нет колонки news_type — пишем без неё ' +
+        '(выполни supabase/migrations/20261121_external_news_type.sql)',
+    )
+
+    const { error: typedError } = await supabase
+      .from('external_news')
+      .insert(fresh.map(withoutNewsType))
+
+    if (!typedError) {
+      log(
+        `добавлено записей: ${fresh.length} (без news_type; дубликатов пропущено: ${rows.length - fresh.length})`,
+      )
+      return
+    }
+
+    if (
+      typedError.code !== '42703' &&
+      !/column .* does not exist/i.test(typedError.message)
+    ) {
+      throw new Error(
+        `не удалось вставить записи: ${typedError.message}`,
+      )
+    }
+
+    logWarn(
+      'в external_news не хватает и других колонок — пишем базовый набор ' +
+        '(выполни миграции external_news)',
     )
 
     const { error: legacyError } = await supabase
@@ -922,8 +1056,8 @@ async function main(): Promise<void> {
     for (const row of rows.slice(0, 10)) {
       log(
         `  • ${row.title}\n` +
-          `    источник: ${row.source} | автор: ${row.author ?? '—'} | тип: ${row.content_type}` +
-          `${row.cover_url ? '\n    обложка: ' + row.cover_url : ''}` +
+          `    источник: ${row.source} | тип: ${row.news_type} | автор: ${row.author ?? '—'} | content: ${row.content_type}` +
+          `${row.cover_url ? '\n    обложка: ' + row.cover_url : '\n    обложка: нет (заглушка)'}` +
           `${row.summary ? '\n    ' + truncate(row.summary, 110) : ''}` +
           `\n    ${row.url}`,
       )

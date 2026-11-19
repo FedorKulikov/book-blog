@@ -16,6 +16,8 @@ export type ExternalNewsItem = {
   cover_url: string | null
   content_type: string | null
   published_year: number | null
+  /** Тип материала: «Новость» | «Анонс» | «Статья» (может быть null) */
+  news_type: string | null
 }
 
 export type ExternalNewsPage = {
@@ -29,9 +31,9 @@ export type ExternalNewsCursor = {
   id: string
 }
 
-/** Полный набор колонок (после миграции с author/cover_url/...) */
+/** Полный набор колонок (после миграции с author/cover_url/news_type) */
 const SELECT =
-  'id, title, url, source, summary, created_at, author, cover_url, content_type, published_year'
+  'id, title, url, source, summary, created_at, author, cover_url, content_type, published_year, news_type'
 
 /** Базовый набор — работает и до миграции */
 const LEGACY_SELECT = 'id, title, url, source, summary, created_at'
@@ -60,6 +62,7 @@ export function normalizeExternalNewsRow(row: RawRow): ExternalNewsItem {
     cover_url: row.cover_url ?? null,
     content_type: row.content_type ?? null,
     published_year: row.published_year ?? null,
+    news_type: row.news_type ?? null,
   }
 }
 
