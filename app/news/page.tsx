@@ -155,6 +155,17 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
           </div>
         </section>
       )}
+
+      {/* Ссылка на ленту внешних источников: страница не должна быть сиротой.
+          Стиль — как у «Смотреть все»: мелкий текст, акцент в светлой теме. */}
+      <div className="mt-12 border-t border-[#493344]/25 pt-6 dark:border-[#E2E2E0]/15">
+        <Link
+          href="/external-news"
+          className="text-sm text-[#014b32] transition-colors hover:text-[#0E2931] dark:text-[#E2E2E0]/70 dark:hover:text-[#E2E2E0]"
+        >
+          Смотреть книжные новости из медиа →
+        </Link>
+      </div>
     </main>
   )
 }

@@ -10,7 +10,6 @@ import {
   Home,
   BookOpen,
   Feather,
-  FileText,
   MessageCircle,
   User,
   Search,
@@ -108,9 +107,9 @@ export default function Sidebar() {
     { href: '/books', label: 'Книги', Icon: BookOpen },
     // Портал новостей — постоянный пункт: у раздела есть фильтры и пустое
     // состояние, поэтому прятать его «пока пусто» больше не нужно.
+    // Ленты внешних источников в главном меню нет: раздел живёт отдельно
+    // и открывается со страницы новостей, чтобы меню не засорялось.
     { href: '/news', label: 'Новости', Icon: Newspaper },
-    // Лента Литреса остаётся отдельным пунктом, чтобы не терять доступ
-    { href: '/external-news', label: 'Литрес', Icon: FileText },
     { href: '/creative', label: 'Творчество', Icon: Feather },
     { href: '/discussions', label: 'Обсуждения', Icon: MessageCircle },
     { href: '/messages', label: 'Сообщения', Icon: Mail, badge: true },

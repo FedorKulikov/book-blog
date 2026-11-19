@@ -49,29 +49,35 @@ export default function ExternalNewsList({
   return (
     <div>
       {/* 1 колонка на мобильных, 2 на планшете, 3 на широком экране */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
+      <div className="grid grid-cols-1 items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3">
         {items.map(item => (
           <ExternalNewsCard key={item.id} item={item} />
         ))}
       </div>
 
-      <div className="mt-8 flex flex-col items-center gap-2">
-        {error && <p className="text-sm text-wine">{error}</p>}
+      <div className="mt-10 flex flex-col items-center gap-3">
+        {error && (
+          <p className="text-sm text-[#681F2D] dark:text-[#c9707f]">{error}</p>
+        )}
 
         {hasMore ? (
           <button
             type="button"
             onClick={() => void handleLoadMore()}
             disabled={loadingMore}
-            className="rounded-full bg-emerald-dark px-6 py-2.5 text-sm font-medium text-cream transition-colors hover:bg-emerald-mid disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-full bg-[#014b32] px-6 py-2.5 text-sm font-medium text-[#E2E2E0] transition-colors hover:bg-[#0E2931] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loadingMore ? 'Загружаем…' : 'Показать ещё'}
           </button>
         ) : (
-          <p className="text-xs text-brown/45">Показаны все новости</p>
+          <p className="text-xs text-[#4A2E27]/55 dark:text-[#E2E2E0]/45">
+            Показаны все новости
+          </p>
         )}
 
-        <p className="text-[11px] text-brown/30">Загружено: {items.length}</p>
+        <p className="text-[11px] text-[#4A2E27]/35 dark:text-[#E2E2E0]/30">
+          Загружено: {items.length}
+        </p>
       </div>
     </div>
   )

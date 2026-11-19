@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { BookOpen, Calendar, ExternalLink } from './icons'
+import { Calendar, ExternalLink } from './icons'
+import ExternalNewsCover from './ExternalNewsCover'
 import {
   EXTERNAL_NEWS_LEGACY_SELECT,
   EXTERNAL_NEWS_SELECT,
@@ -69,7 +70,7 @@ export default function ExternalNewsBlock() {
       <div className="flex items-center gap-2 mb-4">
         <ExternalLink size={15} strokeWidth={1.7} className="text-cream-warm" />
         <h3 className="font-playfair text-base font-bold text-cream">
-          Новости книжного мира
+          Книжные новости
         </h3>
       </div>
 
@@ -82,34 +83,19 @@ export default function ExternalNewsBlock() {
               rel="noopener noreferrer"
               className="flex items-start gap-2.5 rounded-xl bg-cream/5 p-2.5 transition-colors hover:bg-cream/10"
             >
-              {/* Маленькая обложка или заглушка */}
+              {/* Маленькая обложка: битые ссылки заменяются заглушкой */}
               <span className="w-8 h-11 shrink-0 overflow-hidden rounded bg-cream/10 flex items-center justify-center">
-                {item.cover_url ? (
-                  <img
-                    src={item.cover_url}
-                    alt=""
-                    loading="lazy"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <BookOpen
-                    size={14}
-                    strokeWidth={1.5}
-                    className="text-cream/40"
-                  />
-                )}
+                <ExternalNewsCover
+                  url={item.cover_url}
+                  alt=""
+                  iconSize={14}
+                />
               </span>
 
               <span className="min-w-0 flex-1">
                 <span className="block text-sm leading-snug text-cream/90 hover:text-cream-warm line-clamp-2">
                   {item.title}
                 </span>
-
-                {item.author && (
-                  <span className="mt-0.5 block text-[10px] text-cream/45 line-clamp-1">
-                    {item.author}
-                  </span>
-                )}
 
                 <span className="mt-1 flex items-center gap-1.5 text-[10px] text-cream/40">
                   <span>{item.source}</span>
@@ -127,7 +113,7 @@ export default function ExternalNewsBlock() {
         href="/external-news"
         className="mt-4 inline-flex items-center gap-1 text-xs text-cream-warm hover:text-cream transition-colors"
       >
-        Все новости
+        Все книжные новости
         <span aria-hidden="true">→</span>
       </Link>
     </div>
