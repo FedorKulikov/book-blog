@@ -40,23 +40,11 @@ type FeedSource = {
 }
 
 /**
- * Качественные русскоязычные ленты.
- * Литрес убран: он отдавал карточки товаров и главные страницы вместо новостей.
- *
- * museumbook.ru отдаём по http: у него битая цепочка TLS-сертификата,
- * на https обычный fetch падает с ошибкой защищённого канала.
+ * Качественные русскоязычные ленты — только статьи и анонсы.
+ * Литрес и «Музей книги» убраны: они отдавали карточки товаров
+ * и главные страницы вместо новостей.
  */
 const DEFAULT_FEEDS: FeedSource[] = [
-  {
-    url: 'http://www.museumbook.ru/rss2.php?feed=news',
-    label: 'Музей книги',
-    siteUrl: 'http://www.museumbook.ru/',
-  },
-  {
-    url: 'http://www.museumbook.ru/rss2.php?feed=new_products&limit=10',
-    label: 'Музей книги',
-    siteUrl: 'http://www.museumbook.ru/',
-  },
   {
     url: 'http://www.litkarta.ru/rss/channel_news/',
     label: 'Новая карта русской литературы',
@@ -112,7 +100,7 @@ const MAX_ITEMS_PER_FEED = 10
 
 /**
  * Чередует записи из лент (по одной с каждой), чтобы в топе была не только
- * одна лента. Музей книги, например, отдаёт 10 альбомов подряд.
+ * одна лента: у Эксмо, например, 20 материалов подряд против 10 у афиши.
  */
 function interleave(groups: NewRow[][]): NewRow[] {
   const result: NewRow[] = []
@@ -342,7 +330,7 @@ async function openLibraryLookup(
 /* Загрузка и парсинг                                                  */
 /* ------------------------------------------------------------------ */
 
-async function loadFeed(
+async function loadFeedOnce(
   feed: FeedSource,
 ): Promise<{ feedTitle: string; items: FeedItemLike[] }> {
   const controller = new AbortController()
@@ -394,6 +382,26 @@ async function loadFeed(
   }
 }
 
+/**
+ * Оборачивает загрузку одной повторной попыткой: антибот-защита
+ * (403/429) и разовые 5xx часто отпускают после короткой паузы.
+ */
+async function loadFeed(
+  feed: FeedSource,
+): Promise<{ feedTitle: string; items: FeedItemLike[] }> {
+  try {
+    return await loadFeedOnce(feed)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+
+    if (!/\b40[39]\b|\b429\b|\b5\d\d\b/.test(message)) throw error
+
+    logWarn(`  повтор запроса к ${feed.url} через 3 с (${message})`)
+    await sleep(3_000)
+    return loadFeedOnce(feed)
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Фильтры записей                                                     */
 /* ------------------------------------------------------------------ */
@@ -407,7 +415,6 @@ const STOP_WORDS = [
   'промокод',
   'доставка',
   'заказать',
-  'цена',
   'товар',
 ]
 
