@@ -539,6 +539,212 @@ function detectNewsType(item: FeedItemLike, feed: FeedSource): NewsType {
   return feed.defaultType
 }
 
+/* ------------------------------------------------------------------ */
+/* og:image для статей без картинки                                    */
+/* ------------------------------------------------------------------ */
+
+const OG_TIMEOUT_MS = 3_000
+/** Сколько страниц тянем параллельно: литкара не любит пачки запросов */
+const OG_CONCURRENCY = 4
+
+/**
+ * Кэш «страница → картинка» на один прогон: одну и ту же статью
+ * не качаем дважды (например, если запись пришла из двух лент).
+ * null в кэше — тоже результат: повторять таймаут смысла нет.
+ */
+const ogImageCache = new Map<string, string | null>()
+
+/**
+ * Служебная графика сайта: логотипы, иконки, уголки меню, кнопки навигации.
+ * На страницах литкары первые <img> — ровно такие картинки
+ * (logo_in_new.gif, home_in.gif, letter_in.gif…), а og:image не размечен.
+ */
+const CHROME_IMAGE_RE =
+  /(logo|icon|sprite|banner|corner|arrow|bullet|button|menu|sitemap|spacer|pixel|placeholder|avatar|counter|home|letter|regions|nav|footer|header|search|print|mail|share|social|divider|border|_in\.|_in_)/i
+
+/** Абсолютный http(s)-URL или null */
+function toAbsoluteUrl(raw: string, base: string): string | null {
+  try {
+    const url = new URL(raw, base)
+    return isHttpUrl(url.toString()) ? url.toString() : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Пути, где обычно лежат настоящие иллюстрации статей.
+ * У литкары это /images/doc/..., у Эксмо — /upload/iblock/...
+ */
+const CONTENT_IMAGE_RE =
+  /(\/doc\/|\/upload|\/media\/|\/photo|\/content|\/files\/|article_images?)/i
+
+/**
+ * Первая осмысленная картинка страницы: og:image → twitter:image → <img>.
+ * Служебную графику (логотипы, уголки, карты сайта) отбрасываем,
+ * а «контентные» пути получают приоритет — иначе вместо обложки
+ * прилетал очередной home_in.gif.
+ */
+function pickPageImageCandidates(html: string, pageUrl: string): string[] {
+  const candidates: { raw: string; fromMeta: boolean }[] = []
+
+  const metaPatterns = [
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+    /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
+  ]
+
+  for (const pattern of metaPatterns) {
+    const match = pattern.exec(html)
+    if (match?.[1]) candidates.push({ raw: match[1], fromMeta: true })
+  }
+
+  for (const match of html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) {
+    const src = match[1]
+    if (src) candidates.push({ raw: src, fromMeta: false })
+  }
+
+  const scored: { url: string; score: number }[] = []
+
+  for (const { raw, fromMeta } of candidates) {
+    const absolute = toAbsoluteUrl(raw, pageUrl)
+    if (!absolute) continue
+
+    // Обложкой берём только фото: gif-бейджи литкары весят 0,5 КБ
+    // и в карточке 16:9 выглядят как битые пиксели
+    if (!/\.(jpe?g|png|webp|avif)(\?|$)/i.test(absolute)) continue
+    if (CHROME_IMAGE_RE.test(absolute)) continue
+
+    let score = 0
+    if (CONTENT_IMAGE_RE.test(absolute)) score += 3
+    if (fromMeta) score += 2
+
+    // Картинка без «контентного» пути и не из мета-тегов — почти наверняка хром
+    if (score === 0) continue
+
+    scored.push({ url: absolute, score })
+  }
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.url)
+    .filter((url, index, all) => all.indexOf(url) === index)
+}
+
+/**
+ * Обложка должна быть настоящей картинкой, а не иконкой:
+ * проверяем тип и вес (файлы меньше 8 КБ в карточке 16:9 мылят).
+ */
+const MIN_COVER_BYTES = 8 * 1024
+
+async function isUsableImage(url: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OG_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 Chrome/120', Accept: 'image/*' },
+      signal: controller.signal,
+    })
+
+    if (!response.ok) return false
+    if (!(response.headers.get('content-type') ?? '').startsWith('image/')) {
+      return false
+    }
+
+    const bytes = (await response.arrayBuffer()).byteLength
+    return bytes >= MIN_COVER_BYTES
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Первая картинка со страницы: og:image → twitter:image → первый содержательный <img> */
+async function fetchOgImage(pageUrl: string): Promise<string | null> {
+  const cached = ogImageCache.get(pageUrl)
+  if (cached !== undefined) return cached
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OG_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(pageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.9',
+      },
+      signal: controller.signal,
+      redirect: 'follow',
+    })
+
+    if (!response.ok) {
+      ogImageCache.set(pageUrl, null)
+      return null
+    }
+
+    // Страницы литкары в windows-1251 — декодируем как RSS
+    const buffer = Buffer.from(await response.arrayBuffer())
+    const contentType = response.headers.get('content-type') ?? ''
+    const charset =
+      /charset=([\w-]+)/i.exec(contentType)?.[1]?.toLowerCase() ?? 'utf-8'
+    const html = /1251|cp1251|win-1251/.test(charset)
+      ? iconv.decode(buffer, 'win1251')
+      : buffer.toString('utf8')
+
+    const result = pickPageImageCandidates(html, pageUrl)
+
+    // Проверяем кандидатов по порядку: первый, который реально фото и не иконка
+    let cover: string | null = null
+    for (const candidate of result.slice(0, 3)) {
+      if (await isUsableImage(candidate)) {
+        cover = candidate
+        break
+      }
+    }
+
+    ogImageCache.set(pageUrl, cover)
+    return cover
+  } catch {
+    // Таймаут/сеть: запоминаем null, чтобы не ждать снова в этом прогоне
+    ogImageCache.set(pageUrl, null)
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Дозаполняет cover_url для записей без картинки. Возвращает число находок. */
+async function enrichCovers(rows: NewRow[]): Promise<number> {
+  const targets = rows.filter(row => !row.cover_url)
+  let cursor = 0
+  let found = 0
+
+  async function worker(): Promise<void> {
+    while (cursor < targets.length) {
+      const row = targets[cursor]
+      cursor++
+      if (!row) continue
+
+      const image = await fetchOgImage(row.url)
+      if (image) {
+        row.cover_url = image
+        found++
+      }
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(OG_CONCURRENCY, targets.length) },
+    () => worker(),
+  )
+  await Promise.all(workers)
+
+  return found
+}
+
 /** Нормализует сырые items в строки таблицы и чистит дубли внутри пачки */
 function buildRows(
   items: FeedItemLike[],
@@ -1044,6 +1250,14 @@ async function main(): Promise<void> {
   if (baseRows.length === 0) {
     log('в лентах нет пригодных записей — выходим без изменений')
     return
+  }
+
+  // Догоняем обложки со страниц статей: у «Литературной карты» картинок в RSS нет
+  const withoutCover = baseRows.filter(row => !row.cover_url).length
+  if (withoutCover > 0) {
+    log(`ищем og:image для ${withoutCover} записей без картинки…`)
+    const found = await enrichCovers(baseRows)
+    log(`og:image найдено у ${found} из ${withoutCover}`)
   }
 
   log(
