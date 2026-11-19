@@ -676,9 +676,116 @@ function pickPageImageCandidates(html: string, pageUrl: string): string[] {
 
 /**
  * Обложка должна быть настоящей картинкой, а не иконкой:
- * проверяем тип и вес (файлы меньше 8 КБ в карточке 16:9 мылят).
+ * проверяем тип и вес (файлы меньше 8 КБ в карточке мылят).
  */
 const MIN_COVER_BYTES = 8 * 1024
+
+type ImageSize = { width: number; height: number }
+
+/**
+ * Размер картинки из её заголовка — без внешних зависимостей.
+ * Нужен, чтобы выбрать между превью из ленты и og:image страницы:
+ * Эксмо в RSS отдаёт 95×95, а на странице лежит 720×480 —
+ * без этой проверки карточка растягивала квадратик и мылила.
+ */
+function readImageSize(buffer: Buffer): ImageSize | null {
+  // PNG: сигнатура + IHDR
+  if (buffer.length > 24 && buffer.toString('ascii', 1, 4) === 'PNG') {
+    return {
+      width: buffer.readUInt32BE(16),
+      height: buffer.readUInt32BE(20),
+    }
+  }
+
+  // GIF: логический экран
+  if (buffer.length > 10 && buffer.toString('ascii', 0, 3) === 'GIF') {
+    return {
+      width: buffer.readUInt16LE(6),
+      height: buffer.readUInt16LE(8),
+    }
+  }
+
+  // WebP (VP8X / VP8L / VP8 с потерями)
+  if (
+    buffer.length > 30 &&
+    buffer.toString('ascii', 0, 4) === 'RIFF' &&
+    buffer.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    const format = buffer.toString('ascii', 12, 16)
+
+    if (format === 'VP8X') {
+      return {
+        width: 1 + buffer.readUIntLE(24, 3),
+        height: 1 + buffer.readUIntLE(27, 3),
+      }
+    }
+
+    if (format === 'VP8 ') {
+      return {
+        width: buffer.readUInt16LE(26) & 0x3fff,
+        height: buffer.readUInt16LE(28) & 0x3fff,
+      }
+    }
+  }
+
+  // JPEG: идём по маркерам до кадра SOF0..SOF3/SOF5..SOF7/SOF9..SOF11
+  if (buffer.length > 4 && buffer.readUInt16BE(0) === 0xffd8) {
+    let offset = 2
+
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset] !== 0xff) {
+        offset++
+        continue
+      }
+
+      const marker = buffer[offset + 1] ?? 0
+
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        offset += 2
+        continue
+      }
+
+      const length = buffer.readUInt16BE(offset + 2)
+      const isFrame =
+        (marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb)
+
+      if (isFrame) {
+        return {
+          height: buffer.readUInt16BE(offset + 5),
+          width: buffer.readUInt16BE(offset + 7),
+        }
+      }
+
+      if (length <= 0) break
+      offset += 2 + length
+    }
+  }
+
+  return null
+}
+
+/** Размер картинки по URL (null, если не удалось получить) */
+async function fetchImageSize(url: string): Promise<ImageSize | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OG_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 Chrome/120', Accept: 'image/*' },
+      signal: controller.signal,
+    })
+
+    if (!response.ok) return null
+    const buffer = Buffer.from(await response.arrayBuffer())
+    return readImageSize(buffer)
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 async function isUsableImage(url: string): Promise<boolean> {
   const controller = new AbortController()
@@ -702,6 +809,33 @@ async function isUsableImage(url: string): Promise<boolean> {
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Выбирает лучшую обложку между текущей (например, enclosure из ленты)
+ * и og:image со страницы статьи. Сравниваем по площади: так 720×480
+ * со страницы побеждает квадратное превью 95×95 из RSS.
+ */
+async function pickBetterCover(
+  pageUrl: string,
+  currentUrl: string | null,
+): Promise<string | null> {
+  const better = await fetchOgImage(pageUrl)
+  if (!better) return null
+  if (!currentUrl) return better
+  if (better === currentUrl) return null
+
+  const [current, candidate] = await Promise.all([
+    fetchImageSize(currentUrl),
+    fetchImageSize(better),
+  ])
+
+  if (!candidate) return null
+  if (!current) return better
+
+  return candidate.width * candidate.height > current.width * current.height
+    ? better
+    : null
 }
 
 /** Первая картинка со страницы: og:image → twitter:image → первый содержательный <img> */
@@ -759,11 +893,19 @@ async function fetchOgImage(pageUrl: string): Promise<string | null> {
   }
 }
 
-/** Дозаполняет cover_url для записей без картинки. Возвращает число находок. */
-async function enrichCovers(rows: NewRow[]): Promise<number> {
-  const targets = rows.filter(row => !row.cover_url)
+/**
+ * Подбирает обложки для новых записей: ставит картинку тем, у кого её нет,
+ * и меняет мелкое превью из ленты на крупный og:image со страницы статьи
+ * (Эксмо в RSS отдаёт 95×95 — в карточке это мыло).
+ * Возвращает { filled, upgraded }.
+ */
+async function enrichCovers(
+  rows: NewRow[],
+): Promise<{ filled: number; upgraded: number }> {
+  const targets = rows.slice()
   let cursor = 0
-  let found = 0
+  let filled = 0
+  let upgraded = 0
 
   async function worker(): Promise<void> {
     while (cursor < targets.length) {
@@ -771,11 +913,13 @@ async function enrichCovers(rows: NewRow[]): Promise<number> {
       cursor++
       if (!row) continue
 
-      const image = await fetchOgImage(row.url)
-      if (image) {
-        row.cover_url = image
-        found++
-      }
+      const hadCover = Boolean(row.cover_url)
+      const better = await pickBetterCover(row.url, row.cover_url)
+      if (!better) continue
+
+      row.cover_url = better
+      if (hadCover) upgraded++
+      else filled++
     }
   }
 
@@ -785,7 +929,7 @@ async function enrichCovers(rows: NewRow[]): Promise<number> {
   )
   await Promise.all(workers)
 
-  return found
+  return { filled, upgraded }
 }
 
 /** Нормализует сырые items в строки таблицы и чистит дубли внутри пачки */
@@ -1334,19 +1478,25 @@ async function refreshNewsMeta(): Promise<void> {
     if (feedTitle && feedTitle !== normalizeTitle(row.title)) {
       patch.title = feedTitle
     }
-    if (fromFeed?.cover_url && !row.cover_url) {
-      patch.cover_url = fromFeed.cover_url
-    }
-    if (fromFeed?.news_type && !row.news_type) {
-      patch.news_type = fromFeed.news_type
+    // Стартовая обложка: то, что уже в базе, иначе — из ленты
+    let cover = row.cover_url ?? fromFeed?.cover_url ?? null
+
+    // 2. Сравниваем с og:image страницы: если там крупнее — берём её.
+    //    Так лечится квадратное превью 95×95, которое Эксмо отдаёт в RSS.
+    //    Ограничиваем число запросов, чтобы прогон не растягивался.
+    if (ogRequests < OG_REFRESH_LIMIT) {
+      ogRequests++
+      const better = await pickBetterCover(row.url, cover)
+      if (better) cover = better
     }
 
-    // 2. Лента не дала картинку — последняя попытка: og:image со страницы.
-    //    Ограничиваем число запросов, чтобы прогон не растягивался.
-    if (!row.cover_url && !patch.cover_url && ogRequests < OG_REFRESH_LIMIT) {
-      ogRequests++
-      const image = await fetchOgImage(row.url)
-      if (image) patch.cover_url = image
+    if (cover && cover !== row.cover_url) {
+      patch.cover_url = cover
+    }
+
+    // Тип материала: заполняем, только если в базе его ещё нет
+    if (fromFeed?.news_type && !row.news_type) {
+      patch.news_type = fromFeed.news_type
     }
 
     if (!patch.title && !patch.cover_url && !patch.news_type) continue
@@ -1447,13 +1597,11 @@ async function main(): Promise<void> {
     return
   }
 
-  // Догоняем обложки со страниц статей: у «Литературной карты» картинок в RSS нет
-  const withoutCover = baseRows.filter(row => !row.cover_url).length
-  if (withoutCover > 0) {
-    log(`ищем og:image для ${withoutCover} записей без картинки…`)
-    const found = await enrichCovers(baseRows)
-    log(`og:image найдено у ${found} из ${withoutCover}`)
-  }
+  // Обложки со страниц статей: у «Литературной карты» картинок в RSS нет,
+  // а у Эксмо в ленте только квадратное превью 95×95 — берём og:image крупнее.
+  log(`подбираем обложки для ${baseRows.length} записей (og:image со страниц)…`)
+  const covers = await enrichCovers(baseRows)
+  log(`обложки: добавлено ${covers.filled}, улучшено ${covers.upgraded}`)
 
   log(
     `обогащаем первые ${Math.min(baseRows.length, ENRICH_LIMIT)} записей (Open Library)…`,
