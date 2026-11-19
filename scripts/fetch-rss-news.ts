@@ -20,16 +20,113 @@
  * Переменные окружения:
  *   SUPABASE_URL                — адрес проекта (или NEXT_PUBLIC_SUPABASE_URL)
  *   SUPABASE_SERVICE_ROLE_KEY   — service_role ключ (bypass RLS, только в CI!)
- *   RSS_FEED_URL                — опционально, по умолчанию https://www.litres.ru/rss/
+ *   RSS_FEED_URLS               — свои ленты через запятую (переопределяют список)
  *   ENRICH_LIMIT                — сколько записей обогащать за прогон (по умолчанию 10)
  */
 import Parser from 'rss-parser'
+import iconv from 'iconv-lite'
 import { createClient } from '@supabase/supabase-js'
 
-const FEED_URL = process.env.RSS_FEED_URL ?? 'https://www.litres.ru/rss/'
-const SOURCE = 'Литрес'
+/* ------------------------------------------------------------------ */
+/* Источники                                                           */
+/* ------------------------------------------------------------------ */
+
+type FeedSource = {
+  url: string
+  /** Подпись источника — попадает в колонку source */
+  label: string
+  /** Куда вести, если в ленте внезапно оказалась ссылка на магазин */
+  siteUrl: string
+}
+
+/**
+ * Качественные русскоязычные ленты.
+ * Литрес убран: он отдавал карточки товаров и главные страницы вместо новостей.
+ *
+ * museumbook.ru отдаём по http: у него битая цепочка TLS-сертификата,
+ * на https обычный fetch падает с ошибкой защищённого канала.
+ */
+const DEFAULT_FEEDS: FeedSource[] = [
+  {
+    url: 'http://www.museumbook.ru/rss2.php?feed=news',
+    label: 'Музей книги',
+    siteUrl: 'http://www.museumbook.ru/',
+  },
+  {
+    url: 'http://www.museumbook.ru/rss2.php?feed=new_products&limit=10',
+    label: 'Музей книги',
+    siteUrl: 'http://www.museumbook.ru/',
+  },
+  {
+    url: 'http://www.litkarta.ru/rss/channel_news/',
+    label: 'Новая карта русской литературы',
+    siteUrl: 'http://www.litkarta.ru/',
+  },
+  {
+    url: 'http://www.litkarta.ru/rss/channel_afisha/',
+    label: 'Афиша литературных событий',
+    siteUrl: 'http://www.litkarta.ru/',
+  },
+  {
+    url: 'https://www.eksmo.ru/feed/',
+    label: 'Эксмо',
+    siteUrl: 'https://eksmo.ru/',
+  },
+]
+
+/** Своя лента из RSS_FEED_URLS: подпись и сайт выводим из домена */
+function feedFromUrl(url: string): FeedSource {
+  const parsed = new URL(url)
+  return {
+    url,
+    label: parsed.hostname.replace(/^www\./, ''),
+    siteUrl: `${parsed.protocol}//${parsed.host}/`,
+  }
+}
+
+const FEEDS: FeedSource[] = (() => {
+  const custom = (process.env.RSS_FEED_URLS ?? '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+
+  if (custom.length === 0) return DEFAULT_FEEDS
+
+  const parsed: FeedSource[] = []
+  for (const url of custom) {
+    try {
+      parsed.push(feedFromUrl(url))
+    } catch {
+      logWarn(`пропущен некорректный адрес из RSS_FEED_URLS: ${url}`)
+    }
+  }
+
+  return parsed
+})()
+
 const MAX_ITEMS_PER_RUN = 30
 const FETCH_TIMEOUT_MS = 30_000
+
+/** Сколько записей берём из одной ленты: один источник не должен забить всю выдачу */
+const MAX_ITEMS_PER_FEED = 10
+
+/**
+ * Чередует записи из лент (по одной с каждой), чтобы в топе была не только
+ * одна лента. Музей книги, например, отдаёт 10 альбомов подряд.
+ */
+function interleave(groups: NewRow[][]): NewRow[] {
+  const result: NewRow[] = []
+  const longest = groups.reduce((max, group) => Math.max(max, group.length), 0)
+
+  for (let index = 0; index < longest; index++) {
+    for (const group of groups) {
+      const row = group[index]
+      if (row) result.push(row)
+    }
+  }
+
+  return result
+}
 
 const TITLE_MAX = 200
 const SUMMARY_MAX = 300
@@ -146,15 +243,6 @@ function truncate(value: string, max: number): string {
   return value.slice(0, max - 1).trimEnd() + '…'
 }
 
-function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
 /** Дата публикации из RSS: isoDate приоритетнее pubDate, иначе «сейчас» */
 function itemDate(item: FeedItemLike): string {
   const raw = item.isoDate ?? item.pubDate
@@ -254,20 +342,20 @@ async function openLibraryLookup(
 /* Загрузка и парсинг                                                  */
 /* ------------------------------------------------------------------ */
 
-async function loadFeed(): Promise<{ feedTitle: string; items: FeedItemLike[] }> {
+async function loadFeed(
+  feed: FeedSource,
+): Promise<{ feedTitle: string; items: FeedItemLike[] }> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
   try {
-    const response = await fetch(FEED_URL, {
-      // Заголовки обычного браузера: Литрес отдаёт 403 на «ботоподобные»
-      // запросы из датацентров (GitHub Actions). Referer + Accept-Language
-      // заметно снижают шанс попасть под фильтр.
+    const response = await fetch(feed.url, {
+      // Заголовки обычного браузера: часть сайтов режет «ботоподобные» запросы
+      // из датацентров (GitHub Actions).
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Referer': 'https://www.litres.ru/',
+        'Accept': 'application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
         'Cache-Control': 'no-cache',
       },
       signal: controller.signal,
@@ -278,7 +366,16 @@ async function loadFeed(): Promise<{ feedTitle: string; items: FeedItemLike[] }>
       throw new Error(`HTTP ${response.status} ${response.statusText}`)
     }
 
-    const xml = await response.text()
+    // Ленты бывают в windows-1251 (litkarta.ru): без декодирования кириллица
+    // превращается в кракозябры и фильтр «русского заголовка» отбрасывает всё.
+    const buffer = Buffer.from(await response.arrayBuffer())
+    const contentType = response.headers.get('content-type') ?? ''
+    const charset =
+      /charset=([\w-]+)/i.exec(contentType)?.[1]?.toLowerCase() ?? 'utf-8'
+
+    const xml = /1251|cp1251|win-1251/.test(charset)
+      ? iconv.decode(buffer, 'win1251')
+      : buffer.toString('utf8')
 
     // Быстрая проверка, что нам отдали именно ленту, а не HTML-заглушку
     if (!xml.includes('<rss') && !xml.includes('<feed')) {
@@ -297,28 +394,98 @@ async function loadFeed(): Promise<{ feedTitle: string; items: FeedItemLike[] }>
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Фильтры записей                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Коммерческий мусор: такие заголовки в ленте новостей не нужны */
+const STOP_WORDS = [
+  'купить',
+  'акция',
+  'скидка',
+  'распродажа',
+  'промокод',
+  'доставка',
+  'заказать',
+  'цена',
+  'товар',
+]
+
+/** Домены магазинов: если лента ведёт туда, подменяем ссылку на сайт источника */
+const SHOP_HOSTS = ['litres.ru', 'chitai-gorod.ru']
+
+function hasStopWord(title: string): boolean {
+  const lower = title.toLowerCase()
+  return STOP_WORDS.some(word => lower.includes(word))
+}
+
+/**
+ * Ссылка на материал или null, если запись бесполезна.
+ * - пустая ссылка или главная страница сайта → пропуск;
+ * - ссылка на магазин (Литрес, Читай-город) → ссылка на сайт источника.
+ */
+function resolveItemLink(rawLink: string, feed: FeedSource): string | null {
+  const link = rawLink.trim()
+  if (!link) return null
+
+  let parsed: URL
+  try {
+    parsed = new URL(link)
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+
+  if (SHOP_HOSTS.some(host => parsed.hostname.endsWith(host))) {
+    return feed.siteUrl
+  }
+
+  // «http://site.ru/» и «http://site.ru» — это главная, а не статья
+  if (parsed.pathname === '/' || parsed.pathname === '') return null
+
+  return link
+}
+
 /** Нормализует сырые items в строки таблицы и чистит дубли внутри пачки */
-function buildRows(items: FeedItemLike[]): {
+function buildRows(
+  items: FeedItemLike[],
+  feed: FeedSource,
+): {
   rows: NewRow[]
   skippedForeign: number
+  skippedStopWords: number
+  skippedLinks: number
 } {
   const seen = new Set<string>()
   const rows: NewRow[] = []
   let skippedForeign = 0
+  let skippedStopWords = 0
+  let skippedLinks = 0
 
   for (const item of items) {
     const rawTitle = (item.title ?? '').trim()
-    const url = (item.link ?? '').trim()
-
-    if (!rawTitle || !url) continue
-    if (!isHttpUrl(url)) continue
-    if (seen.has(url)) continue
+    if (!rawTitle) continue
 
     // Иностранные новинки в русскую ленту не берём
     if (!looksRussian(stripHtml(rawTitle))) {
       skippedForeign++
       continue
     }
+
+    // Коммерческий мусор: «купить», «скидка», «доставка» и т.п.
+    if (hasStopWord(stripHtml(rawTitle))) {
+      skippedStopWords++
+      continue
+    }
+
+    // Ссылка: магазины → сайт источника, главные страницы → пропуск
+    const url = resolveItemLink(item.link ?? '', feed)
+    if (!url) {
+      skippedLinks++
+      continue
+    }
+    if (seen.has(url)) continue
 
     seen.add(url)
 
@@ -337,7 +504,7 @@ function buildRows(items: FeedItemLike[]): {
     rows.push({
       title: truncate(title, TITLE_MAX),
       url,
-      source: SOURCE,
+      source: feed.label,
       summary: rawSummary ? truncate(stripHtml(rawSummary), SUMMARY_MAX) : null,
       // В таблице нет отдельного published_at: created_at = дата публикации,
       // чтобы лента на сайте сортировалась по свежести книг, а не по времени импорта.
@@ -349,7 +516,7 @@ function buildRows(items: FeedItemLike[]): {
     })
   }
 
-  return { rows, skippedForeign }
+  return { rows, skippedForeign, skippedStopWords, skippedLinks }
 }
 
 /* ------------------------------------------------------------------ */
@@ -692,19 +859,49 @@ async function main(): Promise<void> {
     return
   }
 
-  log(`источник: ${FEED_URL}${DRY_RUN ? ' (dry-run)' : ''}`)
+  log(`источников: ${FEEDS.length}${DRY_RUN ? ' (dry-run)' : ''}`)
 
-  const { feedTitle, items } = await loadFeed()
-  log(`лента: «${feedTitle}», записей в фиде: ${items.length}`)
+  const groups: NewRow[][] = []
+  let skippedForeign = 0
+  let skippedStopWords = 0
+  let skippedLinks = 0
 
-  const { rows: builtRows, skippedForeign } = buildRows(items)
-  if (skippedForeign > 0) {
-    log(`пропущено иностранных (в заголовке нет русских букв): ${skippedForeign}`)
+  for (const feed of FEEDS) {
+    try {
+      const { feedTitle, items } = await loadFeed(feed)
+      const result = buildRows(items, feed)
+      const limited = result.rows.slice(0, MAX_ITEMS_PER_FEED)
+
+      groups.push(limited)
+      skippedForeign += result.skippedForeign
+      skippedStopWords += result.skippedStopWords
+      skippedLinks += result.skippedLinks
+
+      log(
+        `«${feedTitle}» (${feed.label}): записей ${items.length}, принято ${limited.length}`,
+      )
+    } catch (error) {
+      // Одна упавшая лента не должна ломать весь импорт
+      logWarn(
+        `источник ${feed.url} пропущен: ${error instanceof Error ? error.message : error}`,
+      )
+    }
   }
 
-  const baseRows = builtRows.slice(0, MAX_ITEMS_PER_RUN)
+  log(
+    `отфильтровано: иностранных ${skippedForeign}, стоп-слов ${skippedStopWords}, ` +
+      `пустых/главных ссылок ${skippedLinks}`,
+  )
+
+  // Дубли между лентами (одна новость может прийти из news и afisha)
+  const uniqueByUrl = new Map<string, NewRow>()
+  for (const row of interleave(groups)) {
+    if (!uniqueByUrl.has(row.url)) uniqueByUrl.set(row.url, row)
+  }
+
+  const baseRows = [...uniqueByUrl.values()].slice(0, MAX_ITEMS_PER_RUN)
   if (baseRows.length === 0) {
-    log('в ленте нет пригодных записей — выходим без изменений')
+    log('в лентах нет пригодных записей — выходим без изменений')
     return
   }
 
@@ -715,10 +912,10 @@ async function main(): Promise<void> {
 
   if (DRY_RUN) {
     log(`dry-run: распознано ${rows.length} записей, в базу не пишем`)
-    for (const row of rows.slice(0, 5)) {
+    for (const row of rows.slice(0, 10)) {
       log(
         `  • ${row.title}\n` +
-          `    автор: ${row.author ?? '—'} | год: ${row.published_year ?? '—'} | тип: ${row.content_type}` +
+          `    источник: ${row.source} | автор: ${row.author ?? '—'} | тип: ${row.content_type}` +
           `${row.cover_url ? '\n    обложка: ' + row.cover_url : ''}` +
           `${row.summary ? '\n    ' + truncate(row.summary, 110) : ''}` +
           `\n    ${row.url}`,

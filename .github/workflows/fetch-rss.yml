@@ -37,5 +37,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          RSS_FEED_URL: https://www.litres.ru/rss/
+          # Источники заданы в скрипте (музей книги, «Литературная карта», Эксмо).
+          # Свой список можно передать через переменную репозитория RSS_FEED_URLS.
+          RSS_FEED_URLS: ${{ vars.RSS_FEED_URLS }}
         run: npx tsx scripts/fetch-rss-news.ts
