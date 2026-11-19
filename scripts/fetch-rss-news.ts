@@ -9,9 +9,13 @@
  * поэтому его падение ничего не ломает.
  *
  * Запуск:
- *   npx tsx scripts/fetch-rss-news.ts            # боевой режим (нужны env)
- *   npx tsx scripts/fetch-rss-news.ts --dry-run  # распарсить + обогатить, без записи
- *   npx tsx scripts/fetch-rss-news.ts --backfill # обогатить уже сохранённые записи
+ *   npx tsx scripts/fetch-rss-news.ts                 # боевой режим (нужны env)
+ *   npx tsx scripts/fetch-rss-news.ts --dry-run       # распарсить + обогатить, без записи
+ *   npx tsx scripts/fetch-rss-news.ts --backfill      # обогатить уже сохранённые записи
+ *   npx tsx scripts/fetch-rss-news.ts --purge-foreign # удалить новости без кириллицы
+ *
+ * Заголовки без кириллицы («Soy un gato», «Japanisch magisch einfach») не
+ * импортируются вовсе: лента сайта — русскоязычная.
  *
  * Переменные окружения:
  *   SUPABASE_URL                — адрес проекта (или NEXT_PUBLIC_SUPABASE_URL)
@@ -41,6 +45,30 @@ const DRY_RUN = process.argv.includes('--dry-run')
 
 /** --backfill: не тянем ленту, а обогащаем уже сохранённые записи */
 const BACKFILL = process.argv.includes('--backfill')
+
+/** --purge-foreign: удалить из базы записи, в заголовке которых нет кириллицы */
+const PURGE_FOREIGN = process.argv.includes('--purge-foreign')
+
+/**
+ * Блог русскоязычный: заголовки без кириллицы (Soy un gato, Japanisch magisch
+ * einfach) в русской ленте выглядят мусором. Фильтруем и при импорте,
+ * и при очистке базы.
+ */
+const CYRILLIC_RE = /[а-яё]/gi
+const LATIN_RE = /[a-z]/gi
+
+/**
+ * «Русский» заголовок: кириллицы минимум 3 буквы и не меньше, чем латиницы.
+ * Простое «есть хоть одна кириллическая буква» пропускает немецкие книги,
+ * у которых в названии встречается «и др.».
+ */
+function looksRussian(title: string): boolean {
+  const cyrillic = (title.match(CYRILLIC_RE) ?? []).length
+  if (cyrillic < 3) return false
+
+  const latin = (title.match(LATIN_RE) ?? []).length
+  return cyrillic >= latin
+}
 
 /* ------------------------------------------------------------------ */
 /* Типы                                                                */
@@ -270,9 +298,13 @@ async function loadFeed(): Promise<{ feedTitle: string; items: FeedItemLike[] }>
 }
 
 /** Нормализует сырые items в строки таблицы и чистит дубли внутри пачки */
-function buildRows(items: FeedItemLike[]): NewRow[] {
+function buildRows(items: FeedItemLike[]): {
+  rows: NewRow[]
+  skippedForeign: number
+} {
   const seen = new Set<string>()
   const rows: NewRow[] = []
+  let skippedForeign = 0
 
   for (const item of items) {
     const rawTitle = (item.title ?? '').trim()
@@ -281,6 +313,13 @@ function buildRows(items: FeedItemLike[]): NewRow[] {
     if (!rawTitle || !url) continue
     if (!isHttpUrl(url)) continue
     if (seen.has(url)) continue
+
+    // Иностранные новинки в русскую ленту не берём
+    if (!looksRussian(stripHtml(rawTitle))) {
+      skippedForeign++
+      continue
+    }
+
     seen.add(url)
 
     const rawSummary = stripHtml(
@@ -310,7 +349,7 @@ function buildRows(items: FeedItemLike[]): NewRow[] {
     })
   }
 
-  return rows
+  return { rows, skippedForeign }
 }
 
 /* ------------------------------------------------------------------ */
@@ -553,10 +592,100 @@ async function backfill(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Очистка базы от иностранных новостей                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Удаляет записи, в заголовке которых нет ни одной буквы кириллицы.
+ * Требует SUPABASE_SERVICE_ROLE_KEY: с anon-ключом RLS «молча» удалит
+ * 0 строк (PostgREST вернёт 200 и пустой список).
+ */
+async function purgeForeignNews(): Promise<void> {
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error(
+      'не заданы SUPABASE_URL (или NEXT_PUBLIC_SUPABASE_URL) и SUPABASE_SERVICE_ROLE_KEY',
+    )
+  }
+
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const { data, error } = await supabase
+    .from('external_news')
+    .select('id, title')
+    .limit(1000)
+
+  if (error) {
+    throw new Error(`не удалось прочитать external_news: ${error.message}`)
+  }
+
+  const rows = (data ?? []) as { id: string; title: string | null }[]
+  const foreign = rows.filter(row => !looksRussian(row.title ?? ''))
+
+  log(
+    `записей всего: ${rows.length}, без кириллицы в заголовке: ${foreign.length}`,
+  )
+
+  if (foreign.length === 0) {
+    log('нечего удалять')
+    return
+  }
+
+  for (const row of foreign.slice(0, 5)) {
+    log(`  • ${row.title ?? '(без названия)'}`)
+  }
+  if (foreign.length > 5) log(`  … и ещё ${foreign.length - 5}`)
+
+  if (DRY_RUN) {
+    log('dry-run: ничего не удалено')
+    return
+  }
+
+  let deleted = 0
+  const BATCH = 50
+
+  for (let i = 0; i < foreign.length; i += BATCH) {
+    const ids = foreign.slice(i, i + BATCH).map(row => row.id)
+
+    const { data: removed, error: deleteError } = await supabase
+      .from('external_news')
+      .delete()
+      .in('id', ids)
+      .select('id')
+
+    if (deleteError) {
+      logWarn(`ошибка удаления пачки: ${deleteError.message}`)
+      continue
+    }
+
+    deleted += (removed ?? []).length
+  }
+
+  log(`удалено записей: ${deleted} из ${foreign.length}`)
+
+  if (deleted === 0) {
+    logWarn(
+      '0 удалённых строк: обычно это RLS — нужен ключ service_role, а не anon',
+    )
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Entry point                                                         */
 /* ------------------------------------------------------------------ */
 
 async function main(): Promise<void> {
+  if (PURGE_FOREIGN) {
+    log(`режим: purge-foreign${DRY_RUN ? ' (dry-run)' : ''}`)
+    await purgeForeignNews()
+    return
+  }
+
   if (BACKFILL) {
     log(`режим: backfill${DRY_RUN ? ' (dry-run)' : ''}`)
     await backfill()
@@ -568,7 +697,12 @@ async function main(): Promise<void> {
   const { feedTitle, items } = await loadFeed()
   log(`лента: «${feedTitle}», записей в фиде: ${items.length}`)
 
-  const baseRows = buildRows(items).slice(0, MAX_ITEMS_PER_RUN)
+  const { rows: builtRows, skippedForeign } = buildRows(items)
+  if (skippedForeign > 0) {
+    log(`пропущено иностранных (в заголовке нет русских букв): ${skippedForeign}`)
+  }
+
+  const baseRows = builtRows.slice(0, MAX_ITEMS_PER_RUN)
   if (baseRows.length === 0) {
     log('в ленте нет пригодных записей — выходим без изменений')
     return
