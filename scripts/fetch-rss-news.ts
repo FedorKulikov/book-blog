@@ -34,6 +34,12 @@ import { createClient } from '@supabase/supabase-js'
 /** Тип материала на карточке: бейдж рядом с источником */
 type NewsType = 'Новость' | 'Анонс' | 'Статья'
 
+/**
+ * Рубрика книжного портала. Совпадает с фильтрами страницы /news.
+ * «Конкурсов» здесь нет осознанно: их не автоматизируем.
+ */
+type NewsCategoryValue = 'news' | 'new_book' | 'event' | 'publisher'
+
 type FeedSource = {
   url: string
   /** Подпись источника — попадает в колонку source */
@@ -42,6 +48,8 @@ type FeedSource = {
   siteUrl: string
   /** Тип по умолчанию: в этих лентах категорий нет вообще */
   defaultType: NewsType
+  /** Рубрика по умолчанию, если правила не сработали */
+  category: NewsCategoryValue
   /**
    * Лента книжных новинок: там заголовки вида «Автор: Название»
    * и их полезно разделять. У новостных лент двоеточие — часть заголовка.
@@ -53,6 +61,10 @@ type FeedSource = {
  * Качественные русскоязычные ленты — только статьи и анонсы.
  * Литрес и «Музей книги» убраны: они отдавали карточки товаров
  * и главные страницы вместо новостей.
+ *
+ * Отдельных RSS «новых книг» у российских издательств нет (проверены
+ * Альпина, МИФ, АСТ /new, Лабиринт, Читай-город — 404 или не RSS),
+ * поэтому рубрика «Новинки» выводится правилами по словам в заголовке.
  */
 const DEFAULT_FEEDS: FeedSource[] = [
   {
@@ -60,18 +72,35 @@ const DEFAULT_FEEDS: FeedSource[] = [
     label: 'Новая карта русской литературы',
     siteUrl: 'http://www.litkarta.ru/',
     defaultType: 'Новость',
+    category: 'news',
   },
   {
     url: 'http://www.litkarta.ru/rss/channel_afisha/',
     label: 'Афиша литературных событий',
     siteUrl: 'http://www.litkarta.ru/',
     defaultType: 'Анонс',
+    category: 'event',
   },
   {
-    url: 'https://www.eksmo.ru/feed/',
+    url: 'https://eksmo.ru/feed/',
     label: 'Эксмо',
     siteUrl: 'https://eksmo.ru/',
     defaultType: 'Статья',
+    category: 'news',
+  },
+  {
+    url: 'https://ast.ru/news/rss/',
+    label: 'Издательство АСТ',
+    siteUrl: 'https://ast.ru/',
+    defaultType: 'Новость',
+    category: 'publisher',
+  },
+  {
+    url: 'https://lgz.ru/rss/',
+    label: 'Литературная газета',
+    siteUrl: 'https://lgz.ru/',
+    defaultType: 'Новость',
+    category: 'news',
   },
 ]
 
@@ -83,6 +112,8 @@ function feedFromUrl(url: string): FeedSource {
     label: parsed.hostname.replace(/^www\./, ''),
     siteUrl: `${parsed.protocol}//${parsed.host}/`,
     defaultType: 'Статья',
+    // Свои ленты раскладываем по рубрикам теми же правилами, что и остальные
+    category: 'news',
   }
 }
 
@@ -207,6 +238,7 @@ type NewRow = {
   content_type: 'book' | 'article'
   published_year: number | null
   news_type: NewsType
+  news_category: NewsCategoryValue
 }
 
 type OpenLibraryHit = {
@@ -580,6 +612,41 @@ function detectNewsType(item: FeedItemLike, feed: FeedSource): NewsType {
   }
 
   return feed.defaultType
+}
+
+/**
+ * Рубрика портала: сначала правила по <category> и заголовку,
+ * потом рубрика по умолчанию для ленты.
+ *
+ * Порядок правил важен: «Постанонсы встреч» у Эксмо начинаются
+ * со слова «постанов», а не «анонс», и должны попадать в «События».
+ */
+const CATEGORY_RULES: { re: RegExp; category: NewsCategoryValue }[] = [
+  {
+    re: /(анонс|афиш|встреч|постанов|презентац|лекци|фестивал|ярмарк|выставк|концерт)/i,
+    category: 'event',
+  },
+  {
+    re: /(новост[а-я]*\s+эксмо|издательств|издател|тираж|выпустил)/i,
+    category: 'publisher',
+  },
+  {
+    re: /(новинк|новая книга|новые книги|новый роман|вышел|вышла|вышло|издан)/i,
+    category: 'new_book',
+  },
+]
+
+function detectNewsCategory(
+  item: FeedItemLike,
+  feed: FeedSource,
+): NewsCategoryValue {
+  const haystack = `${(item.categories ?? []).join(' ')} ${item.title ?? ''}`
+
+  for (const rule of CATEGORY_RULES) {
+    if (rule.re.test(haystack)) return rule.category
+  }
+
+  return feed.category
 }
 
 /* ------------------------------------------------------------------ */
@@ -1004,6 +1071,7 @@ function buildRows(
       content_type: isBook ? 'book' : 'article',
       published_year: null,
       news_type: detectNewsType(item, feed),
+      news_category: detectNewsCategory(item, feed),
     })
   }
 
@@ -1090,7 +1158,7 @@ function toLegacyRow(row: NewRow) {
   }
 }
 
-/** То же, но без news_type: колонку добавляют отдельной миграцией */
+/** То же, но без колонок портала: их добавляют отдельными миграциями */
 function withoutNewsType(row: NewRow) {
   return {
     title: row.title,
@@ -1409,23 +1477,52 @@ async function refreshNewsMeta(): Promise<void> {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  const { data, error } = await supabase
+  // Колонку news_category добавляют отдельной миграцией: если её ещё нет,
+  // работаем без рубрик, но остальные метаданные всё равно догоняем.
+  let categoryAvailable = true
+
+  const full = await supabase
     .from('external_news')
-    .select('id, url, title, cover_url, news_type')
+    .select('id, url, title, cover_url, news_type, news_category')
     .order('created_at', { ascending: false })
     .limit(META_REFRESH_LIMIT)
+
+  let data: unknown[] | null = (full.data ?? null) as unknown[] | null
+  let error = full.error
+
+  const missingCategory =
+    error !== null &&
+    (error.code === '42703' || /column .* does not exist/i.test(error.message))
+
+  if (missingCategory) {
+    categoryAvailable = false
+    logWarn(
+      'в external_news нет колонки news_category — догоняем без рубрик ' +
+        '(выполни supabase/migrations/20261122_external_news_category.sql)',
+    )
+
+    const retry = await supabase
+      .from('external_news')
+      .select('id, url, title, cover_url, news_type')
+      .order('created_at', { ascending: false })
+      .limit(META_REFRESH_LIMIT)
+
+    data = (retry.data ?? null) as unknown[] | null
+    error = retry.error
+  }
 
   if (error) {
     logWarn(`метаданные: не удалось прочитать записи (${error.message})`)
     return
   }
 
-  const rows = (data ?? []) as {
+  const rows = (data ?? []) as unknown as {
     id: string
     url: string
     title: string
     cover_url: string | null
     news_type: string | null
+    news_category?: string | null
   }[]
 
   if (rows.length === 0) {
@@ -1440,7 +1537,12 @@ async function refreshNewsMeta(): Promise<void> {
   //    обрезанными (баг разбиения «Автор: Название» до фикса).
   const fromFeeds = new Map<
     string,
-    { title: string; cover_url: string | null; news_type: NewsType }
+    {
+      title: string
+      cover_url: string | null
+      news_type: NewsType
+      news_category: NewsCategoryValue
+    }
   >()
 
   for (const feed of FEEDS) {
@@ -1453,6 +1555,7 @@ async function refreshNewsMeta(): Promise<void> {
           title: row.title,
           cover_url: row.cover_url,
           news_type: row.news_type,
+          news_category: row.news_category,
         })
       }
     } catch (feedError) {
@@ -1465,10 +1568,16 @@ async function refreshNewsMeta(): Promise<void> {
   let updatedTitles = 0
   let updatedCovers = 0
   let updatedTypes = 0
+  let updatedCategories = 0
   let ogRequests = 0
 
   for (const row of rows) {
-    const patch: { title?: string; cover_url?: string; news_type?: string } = {}
+    const patch: {
+      title?: string
+      cover_url?: string
+      news_type?: string
+      news_category?: string
+    } = {}
     const fromFeed = fromFeeds.get(row.url)
 
     // Заголовок отличается от ленты → значит сохранён обрезанный, правим.
@@ -1499,15 +1608,28 @@ async function refreshNewsMeta(): Promise<void> {
       patch.news_type = fromFeed.news_type
     }
 
-    if (!patch.title && !patch.cover_url && !patch.news_type) continue
+    // Рубрика портала: нужна, чтобы запись попала в ленту /news
+    if (categoryAvailable && fromFeed?.news_category && !row.news_category) {
+      patch.news_category = fromFeed.news_category
+    }
+
+    if (
+      !patch.title &&
+      !patch.cover_url &&
+      !patch.news_type &&
+      !patch.news_category
+    ) {
+      continue
+    }
 
     if (DRY_RUN) {
       log(
-        `  [dry] заголовок: ${patch.title ?? '—'} | обложка: ${patch.cover_url ?? '—'} | тип: ${patch.news_type ?? '—'} ← ${row.url}`,
+        `  [dry] заголовок: ${patch.title ?? '—'} | обложка: ${patch.cover_url ?? '—'} | тип: ${patch.news_type ?? '—'} | рубрика: ${patch.news_category ?? '—'} ← ${row.url}`,
       )
       if (patch.title) updatedTitles++
       if (patch.cover_url) updatedCovers++
       if (patch.news_type) updatedTypes++
+      if (patch.news_category) updatedCategories++
       continue
     }
 
@@ -1527,10 +1649,11 @@ async function refreshNewsMeta(): Promise<void> {
     if (patch.title) updatedTitles++
     if (patch.cover_url) updatedCovers++
     if (patch.news_type) updatedTypes++
+    if (patch.news_category) updatedCategories++
   }
 
   log(
-    `метаданные: заголовков обновлено ${updatedTitles}, обложек ${updatedCovers}, типов ${updatedTypes} из ${rows.length}`,
+    `метаданные: заголовков ${updatedTitles}, обложек ${updatedCovers}, типов ${updatedTypes}, рубрик ${updatedCategories} из ${rows.length}`,
   )
 }
 
@@ -1612,6 +1735,17 @@ async function main(): Promise<void> {
   const withCover = rows.filter(row => row.cover_url).length
   log(`найдено обложек в лентах: ${withCover} из ${rows.length}`)
 
+  // Раскладка по рубрикам портала: видно, чем наполнится /news
+  const byCategory = new Map<string, number>()
+  for (const row of rows) {
+    byCategory.set(row.news_category, (byCategory.get(row.news_category) ?? 0) + 1)
+  }
+  log(
+    `рубрики: ${[...byCategory.entries()]
+      .map(([category, count]) => `${category}=${count}`)
+      .join(', ')}`,
+  )
+
   // Дозаполняем обложки и типы у старых записей: импорт их не трогает
   await refreshNewsMeta()
 
@@ -1620,7 +1754,7 @@ async function main(): Promise<void> {
     for (const row of rows.slice(0, 10)) {
       log(
         `  • ${row.title}\n` +
-          `    источник: ${row.source} | тип: ${row.news_type} | автор: ${row.author ?? '—'} | content: ${row.content_type}` +
+          `    источник: ${row.source} | рубрика: ${row.news_category} | тип: ${row.news_type} | автор: ${row.author ?? '—'} | content: ${row.content_type}` +
           `${row.cover_url ? '\n    обложка: ' + row.cover_url : '\n    обложка: нет (заглушка)'}` +
           `${row.summary ? '\n    ' + truncate(row.summary, 110) : ''}` +
           `\n    ${row.url}`,

@@ -7,7 +7,13 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { PenLine } from '@/app/components/icons'
 import NewsCard from './NewsCard'
 import NewsFilterBar from './NewsFilterBar'
-import { NEWS_FILTERS, fetchNewsFeed, parseNewsFilter } from './newsQuery'
+import {
+  NEWS_FILTERS,
+  buildPortalFeed,
+  fetchExternalNewsFeed,
+  fetchNewsFeed,
+  parseNewsFilter,
+} from './newsQuery'
 
 // Новости должны быть свежими: кеш страницы отключаем, SSR — на каждый запрос.
 export const dynamic = 'force-dynamic'
@@ -43,7 +49,16 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
   const filter = parseNewsFilter(params.category)
 
   const supabase = await createSupabaseServerClient()
-  const { hero, posts, error } = await fetchNewsFeed(supabase, filter)
+
+  // Две ленты параллельно: посты пользователей и автоматические новости из медиа.
+  // Внешние приходят из external_news с проставленной рубрикой (см. импорт RSS).
+  const [userFeed, externalFeed] = await Promise.all([
+    fetchNewsFeed(supabase, filter),
+    fetchExternalNewsFeed(supabase, filter),
+  ])
+
+  const { hero, items } = buildPortalFeed(userFeed.posts, externalFeed.items)
+  const error = userFeed.error ?? externalFeed.error
 
   const activeLabel =
     NEWS_FILTERS.find(item => item.value === filter)?.label ?? 'Все новости'
@@ -125,11 +140,11 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
           >
             Главное сегодня
           </h2>
-          <NewsCard post={hero} variant="hero" />
+          <NewsCard item={hero} variant="hero" />
         </section>
       )}
 
-      {posts.length > 0 && (
+      {items.length > 0 && (
         <section className="mt-12" aria-labelledby="news-latest-heading">
           <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
             <h2
@@ -149,8 +164,8 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {posts.map(post => (
-              <NewsCard key={post.id} post={post} />
+            {items.map(item => (
+              <NewsCard key={item.key} item={item} />
             ))}
           </div>
         </section>
