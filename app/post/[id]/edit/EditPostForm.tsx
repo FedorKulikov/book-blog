@@ -6,7 +6,21 @@ import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import ImageUploader from '@/app/components/ImageUploader'
 import BookSelect from '@/app/components/BookSelect'
+import NewsFields, {
+  SOURCE_URL_RE,
+  deadlineDateToIso,
+  hasDeadline,
+  isoToDeadlineDate,
+} from '@/app/components/NewsFields'
+import { NEWS_CATEGORIES, type NewsCategory } from '@/app/news/newsQuery'
 import type { PostDetail } from '../getPost'
+
+/** В базе категория может быть null (старые новости) — тогда считаем «Новость». */
+function initialCategory(value: string | null): NewsCategory {
+  return (NEWS_CATEGORIES as readonly string[]).includes(value ?? '')
+    ? (value as NewsCategory)
+    : 'news'
+}
 
 /**
  * Ошибки прилетают из триггеров БД (стоп-слова, бан) и из RLS.
@@ -47,6 +61,12 @@ export default function EditPostForm({ post }: { post: PostDetail }) {
   const [bookId, setBookId] = useState<string | null>(post.books?.id ?? null)
   const [tagsInput, setTagsInput] = useState('')
   const [newImages, setNewImages] = useState<string[]>([])
+  // Поля книжного портала
+  const [newsCategory, setNewsCategory] = useState<NewsCategory>(
+    initialCategory(post.news_category),
+  )
+  const [deadline, setDeadline] = useState(isoToDeadlineDate(post.deadline_at))
+  const [sourceUrl, setSourceUrl] = useState(post.source_url ?? '')
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -129,6 +149,19 @@ export default function EditPostForm({ post }: { post: PostDetail }) {
       return
     }
 
+    const cleanSourceUrl = sourceUrl.trim()
+    const needsDeadline = hasDeadline(newsCategory)
+
+    if (type === 'news' && cleanSourceUrl && !SOURCE_URL_RE.test(cleanSourceUrl)) {
+      setError('Ссылка на источник должна начинаться с http:// или https://')
+      return
+    }
+
+    if (type === 'news' && needsDeadline && !deadline) {
+      setError('Укажите дату дедлайна для конкурса или мероприятия.')
+      return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -140,6 +173,10 @@ export default function EditPostForm({ post }: { post: PostDetail }) {
         content: cleanContent,
         type,
         book_id: bookId,
+        news_category: type === 'news' ? newsCategory : null,
+        deadline_at:
+          type === 'news' && needsDeadline ? deadlineDateToIso(deadline) : null,
+        source_url: type === 'news' && cleanSourceUrl ? cleanSourceUrl : null,
       })
       .eq('id', post.id)
 
@@ -217,6 +254,17 @@ export default function EditPostForm({ post }: { post: PostDetail }) {
           <option value="discussion">Обсуждение</option>
         </select>
       </div>
+
+      {type === 'news' && (
+        <NewsFields
+          category={newsCategory}
+          onCategoryChange={setNewsCategory}
+          deadline={deadline}
+          onDeadlineChange={setDeadline}
+          sourceUrl={sourceUrl}
+          onSourceUrlChange={setSourceUrl}
+        />
+      )}
 
       <div>
         <label className="block text-sm font-medium mb-1 text-brown-dark">

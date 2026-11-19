@@ -7,6 +7,12 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import ImageUploader from '../../components/ImageUploader'
 import BookSelect from '../../components/BookSelect'
+import NewsFields, {
+  SOURCE_URL_RE,
+  deadlineDateToIso,
+  hasDeadline,
+} from '../../components/NewsFields'
+import type { NewsCategory } from '../newsQuery'
 import { humanizeError } from '@/lib/errors'
 import { ChevronLeft } from '../../components/icons'
 
@@ -39,6 +45,10 @@ function NewPostContent() {
   const [tagsInput, setTagsInput] = useState('')
   const [bookId, setBookId] = useState<string | null>(preselectedBookId)
   const [images, setImages] = useState<string[]>([])
+  // Поля новостного портала (актуальны только для type === 'news')
+  const [newsCategory, setNewsCategory] = useState<NewsCategory>('news')
+  const [deadline, setDeadline] = useState('')
+  const [sourceUrl, setSourceUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Профиль больше не грузим: бан, стоп-слова и статус проверяет БД (триггер).
@@ -109,6 +119,20 @@ function NewPostContent() {
       return
     }
 
+    // Поля портала проверяем только для новостей: у творчества/обсуждений их нет
+    const cleanSourceUrl = sourceUrl.trim()
+    const needsDeadline = hasDeadline(newsCategory)
+
+    if (type === 'news' && cleanSourceUrl && !SOURCE_URL_RE.test(cleanSourceUrl)) {
+      setError('Ссылка на источник должна начинаться с http:// или https://')
+      return
+    }
+
+    if (type === 'news' && needsDeadline && !deadline) {
+      setError('Укажите дату дедлайна — без неё карточка конкурса неинформативна.')
+      return
+    }
+
     // Rate limit: это RPC в БД, из консоли его не обойти
     const { data: limitCheck } = await supabase.rpc('check_and_log_action', {
       action_input: 'post',
@@ -140,6 +164,12 @@ function NewPostContent() {
         content: cleanContent,
         type,
         book_id: bookId,
+        // Для остальных типов постов поля портала остаются пустыми
+        news_category: type === 'news' ? newsCategory : null,
+        deadline_at:
+          type === 'news' && needsDeadline ? deadlineDateToIso(deadline) : null,
+        source_url:
+          type === 'news' && cleanSourceUrl ? cleanSourceUrl : null,
       })
       .select('id, status')
       .single()
@@ -221,6 +251,17 @@ function NewPostContent() {
             <option value="discussion">Обсуждение</option>
           </select>
         </div>
+
+        {type === 'news' && (
+          <NewsFields
+            category={newsCategory}
+            onCategoryChange={setNewsCategory}
+            deadline={deadline}
+            onDeadlineChange={setDeadline}
+            sourceUrl={sourceUrl}
+            onSourceUrlChange={setSourceUrl}
+          />
+        )}
 
         <div>
           <label className="block text-sm font-medium mb-1 text-brown-dark">

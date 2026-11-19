@@ -43,6 +43,10 @@ export type PostDetail = {
   status: string
   created_at: string
   views_count: number | null
+  // Поля книжного портала (заполняются только у type = 'news')
+  news_category: string | null
+  deadline_at: string | null
+  source_url: string | null
   post_images: PostImage[]
   books: PostBook | null
   profiles: PostAuthor | null
@@ -70,7 +74,7 @@ type RawPostRow = Omit<PostDetail, 'post_images' | 'books' | 'profiles'> & {
 // ВАЖНО: строка должна быть ОДНИМ литералом. Если склеивать её из частей через `+`,
 // supabase-js теряет вывод типов и возвращает GenericStringError вместо строки поста.
 const POST_SELECT =
-  'id, user_id, title, content, type, status, created_at, views_count, profiles!posts_user_id_fkey(username, avatar_url), post_images(url, sort_order), books(id, title, author, year, cover_url)'
+  'id, user_id, title, content, type, status, created_at, views_count, news_category, deadline_at, source_url, profiles!posts_user_id_fkey(username, avatar_url), post_images(url, sort_order), books(id, title, author, year, cover_url)'
 
 // Отсекаем мусорные URL (/post/abc) до запроса: Postgres упал бы на касте к uuid.
 const UUID_RE =
@@ -112,6 +116,9 @@ export const getPost = cache(async (id: string): Promise<PostDetail | null> => {
     status: row.status,
     created_at: row.created_at,
     views_count: row.views_count,
+    news_category: row.news_category,
+    deadline_at: row.deadline_at,
+    source_url: row.source_url,
     // Пустые url (если такие остались в базе) выкидываем — иначе получим битую картинку.
     post_images: (row.post_images ?? []).filter(
       (img): img is PostImage =>

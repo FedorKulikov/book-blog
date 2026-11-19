@@ -16,6 +16,10 @@ export type PostCardData = {
   status?: string
   created_at: string
   views_count?: number | null
+  // Поля книжного портала (есть только у новостей)
+  news_category?: string | null
+  deadline_at?: string | null
+  source_url?: string | null
   profiles?: { username: string; avatar_url?: string | null } | null
   post_images?: { url: string }[] | null
   comments?: { count: number }[] | null
