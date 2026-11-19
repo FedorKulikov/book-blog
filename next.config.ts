@@ -16,15 +16,15 @@ const nextConfig: NextConfig = {
     // идут через оптимизатор Next: он качает их на сервере и отдаёт
     // уже по https, без предупреждений браузера.
     remotePatterns: [
-      { protocol: 'https', hostname: 'www.litkarta.ru' },
-      { protocol: 'http', hostname: 'www.litkarta.ru' },
-      { protocol: 'https', hostname: 'litkarta.ru' },
-      { protocol: 'http', hostname: 'litkarta.ru' },
-      { protocol: 'https', hostname: 'eksmo.ru' },
-      { protocol: 'https', hostname: 'www.eksmo.ru' },
-      { protocol: 'http', hostname: 'www.museumbook.ru' },
-      { protocol: 'https', hostname: 'www.museumbook.ru' },
-      { protocol: 'https', hostname: 'covers.openlibrary.org' },
+      { protocol: 'https', hostname: 'www.litkarta.ru', pathname: '/**' },
+      { protocol: 'http', hostname: 'www.litkarta.ru', pathname: '/**' },
+      { protocol: 'https', hostname: 'litkarta.ru', pathname: '/**' },
+      { protocol: 'http', hostname: 'litkarta.ru', pathname: '/**' },
+      { protocol: 'https', hostname: 'eksmo.ru', pathname: '/**' },
+      { protocol: 'https', hostname: 'www.eksmo.ru', pathname: '/**' },
+      { protocol: 'http', hostname: 'www.museumbook.ru', pathname: '/**' },
+      { protocol: 'https', hostname: 'www.museumbook.ru', pathname: '/**' },
+      { protocol: 'https', hostname: 'covers.openlibrary.org', pathname: '/**' },
     ],
   },
 };

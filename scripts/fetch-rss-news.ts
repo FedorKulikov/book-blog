@@ -1194,13 +1194,23 @@ async function purgeForeignNews(): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 /**
- * Сколько записей без обложки обрабатываем за один прогон.
+ * Сколько записей догоняем за прогон.
  * Импорт только вставляет новые url, поэтому старые строки сами
  * не обновятся — дозаполняем их при каждом обычном запуске.
  */
-const COVERS_REFRESH_LIMIT = 20
+const META_REFRESH_LIMIT = 200
+/** Сколько страниц статей максимум открываем ради og:image */
+const OG_REFRESH_LIMIT = 20
 
-async function refreshMissingCovers(): Promise<void> {
+/**
+ * Догоняет cover_url и news_type у старых записей.
+ *
+ * Порядок важен: сначала берём данные из самих RSS-лент (там есть
+ * enclosure/media:content — то есть ровно то, что нужно для Эксмо),
+ * и только потом идём на страницы статей. Страницы Эксмо с IP
+ * GitHub Actions отвечают 403, поэтому опираться только на og:image нельзя.
+ */
+async function refreshNewsMeta(): Promise<void> {
   const supabaseUrl =
     process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -1214,40 +1224,91 @@ async function refreshMissingCovers(): Promise<void> {
 
   const { data, error } = await supabase
     .from('external_news')
-    .select('id, url, created_at')
-    .is('cover_url', null)
+    .select('id, url, cover_url, news_type')
+    .or('cover_url.is.null,news_type.is.null')
     .order('created_at', { ascending: false })
-    .limit(COVERS_REFRESH_LIMIT)
+    .limit(META_REFRESH_LIMIT)
 
   if (error) {
-    logWarn(`обложки: не удалось прочитать записи (${error.message})`)
+    logWarn(`метаданные: не удалось прочитать записи (${error.message})`)
     return
   }
 
-  const rows = (data ?? []) as { id: string; url: string }[]
+  const rows = (data ?? []) as {
+    id: string
+    url: string
+    cover_url: string | null
+    news_type: string | null
+  }[]
 
   if (rows.length === 0) {
-    log('обложки: у всех записей уже есть картинки')
+    log('метаданные: у всех записей есть обложка и тип')
     return
   }
 
-  log(`обложки: догоняем для ${rows.length} записей без картинки…`)
+  log(`метаданные: догоняем для ${rows.length} записей…`)
 
-  let updated = 0
+  // 1. Собираем обложки и типы из актуальных лент: url → данные
+  const fromFeeds = new Map<
+    string,
+    { cover_url: string | null; news_type: NewsType }
+  >()
+
+  for (const feed of FEEDS) {
+    try {
+      const { items } = await loadFeed(feed)
+      const built = buildRows(items, feed)
+
+      for (const row of built.rows) {
+        fromFeeds.set(row.url, {
+          cover_url: row.cover_url,
+          news_type: row.news_type,
+        })
+      }
+    } catch (feedError) {
+      logWarn(
+        `метаданные: лента ${feed.url} недоступна (${feedError instanceof Error ? feedError.message : feedError})`,
+      )
+    }
+  }
+
+  let updatedCovers = 0
+  let updatedTypes = 0
+  let ogRequests = 0
 
   for (const row of rows) {
-    const image = await fetchOgImage(row.url)
-    if (!image) continue
+    const patch: { cover_url?: string; news_type?: string } = {}
+    const fromFeed = fromFeeds.get(row.url)
+
+    if (fromFeed?.cover_url && !row.cover_url) {
+      patch.cover_url = fromFeed.cover_url
+    }
+    if (fromFeed?.news_type && !row.news_type) {
+      patch.news_type = fromFeed.news_type
+    }
+
+    // 2. Лента не дала картинку — последняя попытка: og:image со страницы.
+    //    Ограничиваем число запросов, чтобы прогон не растягивался.
+    if (!row.cover_url && !patch.cover_url && ogRequests < OG_REFRESH_LIMIT) {
+      ogRequests++
+      const image = await fetchOgImage(row.url)
+      if (image) patch.cover_url = image
+    }
+
+    if (!patch.cover_url && !patch.news_type) continue
 
     if (DRY_RUN) {
-      log(`  [dry] ${row.url} → ${image}`)
-      updated++
+      log(
+        `  [dry] обложка: ${patch.cover_url ?? '—'} | тип: ${patch.news_type ?? '—'} ← ${row.url}`,
+      )
+      if (patch.cover_url) updatedCovers++
+      if (patch.news_type) updatedTypes++
       continue
     }
 
-    const { data: updatedRows, error: updateError } = await supabase
+    const { data: changed, error: updateError } = await supabase
       .from('external_news')
-      .update({ cover_url: image })
+      .update(patch)
       .eq('id', row.id)
       .select('id')
 
@@ -1256,13 +1317,15 @@ async function refreshMissingCovers(): Promise<void> {
       continue
     }
 
-    if (!updatedRows || updatedRows.length === 0) continue
+    if (!changed || changed.length === 0) continue
 
-    updated++
-    log(`  ✓ ${image}`)
+    if (patch.cover_url) updatedCovers++
+    if (patch.news_type) updatedTypes++
   }
 
-  log(`обложки: обновлено ${updated} из ${rows.length}`)
+  log(
+    `метаданные: обложек обновлено ${updatedCovers}, типов ${updatedTypes} из ${rows.length}`,
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -1341,8 +1404,12 @@ async function main(): Promise<void> {
   )
   const rows = await enrichRows(baseRows)
 
-  // Дозаполняем обложки у старых записей: импорт их не трогает (только вставка)
-  await refreshMissingCovers()
+  // Сразу видно в логах CI, сколько картинок нашли в лентах
+  const withCover = rows.filter(row => row.cover_url).length
+  log(`найдено обложек в лентах: ${withCover} из ${rows.length}`)
+
+  // Дозаполняем обложки и типы у старых записей: импорт их не трогает
+  await refreshNewsMeta()
 
   if (DRY_RUN) {
     log(`dry-run: распознано ${rows.length} записей, в базу не пишем`)

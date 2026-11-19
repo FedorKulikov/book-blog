@@ -21,15 +21,35 @@ export default function ExternalNewsCover({
   alt: string
   iconSize?: number
 }) {
-  const [failed, setFailed] = useState(false)
+  // Две независимые «ступени» деградации:
+  //   next/image → обычный <img referrerPolicy="no-referrer"> → заглушка
+  const [optimizerFailed, setOptimizerFailed] = useState(false)
+  const [plainFailed, setPlainFailed] = useState(false)
 
-  if (!url || failed) {
+  if (!url || plainFailed) {
     return (
       <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#014b32] to-[#0E2931]">
         <BookOpen
           size={iconSize}
           strokeWidth={1.2}
           className="text-[#E2E2E0]/35"
+        />
+      </span>
+    )
+  }
+
+  // Оптимизатор не смог отдать картинку (403 от источника или таймаут):
+  // показываем обычный <img> без referrer — часть сайтов режет именно его
+  if (optimizerFailed) {
+    return (
+      <span className="relative block h-full w-full overflow-hidden">
+        <img
+          src={url}
+          alt={alt}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setPlainFailed(true)}
+          className="h-full w-full object-cover"
         />
       </span>
     )
@@ -43,7 +63,7 @@ export default function ExternalNewsCover({
         fill
         // Карточки шириной примерно в половину экрана на десктопе
         sizes="(max-width: 768px) 100vw, 50vw"
-        onError={() => setFailed(true)}
+        onError={() => setOptimizerFailed(true)}
         className="object-cover"
       />
     </span>
