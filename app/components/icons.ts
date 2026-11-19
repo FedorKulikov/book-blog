@@ -8,6 +8,7 @@ export {
   Home,
   Search,
   Bell,
+  Radar,
   BellOff,
   Mail,
   Settings,

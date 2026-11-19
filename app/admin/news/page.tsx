@@ -4,6 +4,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import ExternalNewsManager from './ExternalNewsManager'
+import ForeignTitleEditor from './ForeignTitleEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +32,8 @@ export default function AdminNewsPage() {
       </p>
 
       <ExternalNewsManager />
+
+      <ForeignTitleEditor />
     </main>
   )
 }

@@ -50,6 +50,8 @@ type FeedSource = {
   defaultType: NewsType
   /** Рубрика по умолчанию, если правила не сработали */
   category: NewsCategoryValue
+  /** Язык ленты: русские проверяем на кириллицу, английские — нет */
+  lang: 'ru' | 'en'
   /**
    * Лента книжных новинок: там заголовки вида «Автор: Название»
    * и их полезно разделять. У новостных лент двоеточие — часть заголовка.
@@ -73,6 +75,7 @@ const DEFAULT_FEEDS: FeedSource[] = [
     siteUrl: 'http://www.litkarta.ru/',
     defaultType: 'Новость',
     category: 'news',
+    lang: 'ru',
   },
   {
     url: 'http://www.litkarta.ru/rss/channel_afisha/',
@@ -80,6 +83,7 @@ const DEFAULT_FEEDS: FeedSource[] = [
     siteUrl: 'http://www.litkarta.ru/',
     defaultType: 'Анонс',
     category: 'event',
+    lang: 'ru',
   },
   {
     url: 'https://eksmo.ru/feed/',
@@ -87,6 +91,7 @@ const DEFAULT_FEEDS: FeedSource[] = [
     siteUrl: 'https://eksmo.ru/',
     defaultType: 'Статья',
     category: 'news',
+    lang: 'ru',
   },
   {
     url: 'https://ast.ru/news/rss/',
@@ -94,6 +99,7 @@ const DEFAULT_FEEDS: FeedSource[] = [
     siteUrl: 'https://ast.ru/',
     defaultType: 'Новость',
     category: 'publisher',
+    lang: 'ru',
   },
   {
     url: 'https://lgz.ru/rss/',
@@ -101,6 +107,43 @@ const DEFAULT_FEEDS: FeedSource[] = [
     siteUrl: 'https://lgz.ru/',
     defaultType: 'Новость',
     category: 'news',
+    lang: 'ru',
+  },
+
+  // ---- Зарубежные ленты: мировая полка «Книжного радара» ----
+  // Заголовки остаются на языке оригинала, русский вариант редактор
+  // вписывает вручную в /admin/news (машинный перевод не используем).
+  {
+    url: 'https://lithub.com/feed/',
+    label: 'Literary Hub',
+    siteUrl: 'https://lithub.com/',
+    defaultType: 'Новость',
+    category: 'news',
+    lang: 'en',
+  },
+  {
+    url: 'https://bookriot.com/feed/',
+    label: 'Book Riot',
+    siteUrl: 'https://bookriot.com/',
+    defaultType: 'Новость',
+    category: 'news',
+    lang: 'en',
+  },
+  {
+    url: 'https://themillions.com/feed',
+    label: 'The Millions',
+    siteUrl: 'https://themillions.com/',
+    defaultType: 'Новость',
+    category: 'news',
+    lang: 'en',
+  },
+  {
+    url: 'https://electricliterature.com/feed/',
+    label: 'Electric Literature',
+    siteUrl: 'https://electricliterature.com/',
+    defaultType: 'Новость',
+    category: 'news',
+    lang: 'en',
   },
 ]
 
@@ -114,6 +157,7 @@ function feedFromUrl(url: string): FeedSource {
     defaultType: 'Статья',
     // Свои ленты раскладываем по рубрикам теми же правилами, что и остальные
     category: 'news',
+    lang: 'ru',
   }
 }
 
@@ -239,6 +283,7 @@ type NewRow = {
   published_year: number | null
   news_type: NewsType
   news_category: NewsCategoryValue
+  lang: 'ru' | 'en'
 }
 
 type OpenLibraryHit = {
@@ -1019,8 +1064,9 @@ function buildRows(
     const rawTitle = (item.title ?? '').trim()
     if (!rawTitle) continue
 
-    // Иностранные новинки в русскую ленту не берём
-    if (!looksRussian(stripHtml(rawTitle))) {
+    // Русские ленты чистим от иностранных заголовков, английские — нет:
+    // у них латиница и есть норма
+    if (feed.lang === 'ru' && !looksRussian(stripHtml(rawTitle))) {
       skippedForeign++
       continue
     }
@@ -1072,6 +1118,7 @@ function buildRows(
       published_year: null,
       news_type: detectNewsType(item, feed),
       news_category: detectNewsCategory(item, feed),
+      lang: feed.lang,
     })
   }
 
@@ -1658,6 +1705,204 @@ async function refreshNewsMeta(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Книжный радар: тренды недели                                        */
+/* ------------------------------------------------------------------ */
+
+const TREND_PERIOD_DAYS = 7
+const TREND_LIMIT = 40
+
+/** Темы, которые ищем в заголовках прямым совпадением */
+const THEME_PATTERNS: { re: RegExp; topic: string }[] = [
+  { re: /букер/i, topic: 'Букеровская премия' },
+  { re: /нобел/i, topic: 'Нобелевская премия' },
+  { re: /пулитцер/i, topic: 'Пулитцеровская премия' },
+  { re: /экранизац|сериал|фильм по книге/i, topic: 'Экранизации' },
+  { re: /перевод/i, topic: 'Переводы' },
+  { re: /ярмарк|фестивал/i, topic: 'Ярмарки и фестивали' },
+  { re: /аудиокниг/i, topic: 'Аудиокниги' },
+  { re: /библиотек/i, topic: 'Библиотеки' },
+  { re: /новинк|новые книги/i, topic: 'Новинки' },
+  { re: /запрет|цензур|изъят/i, topic: 'Запреты и цензура' },
+  { re: /нейросет|искусственн\w+ интеллект|\bAI\b/i, topic: 'ИИ и книги' },
+  { re: /тираж/i, topic: 'Тиражи' },
+  { re: /электронн\w+ книг/i, topic: 'Электронные книги' },
+  { re: /букинист|антикварн/i, topic: 'Букинистика' },
+  { re: /поэзи|стих/i, topic: 'Поэзия' },
+  { re: /детск\w+ книг|подростков/i, topic: 'Детские книги' },
+]
+
+/** Слова, которые не могут быть «именем в тренде» */
+const NAME_STOPWORDS = new Set([
+  'новости', 'новость', 'книга', 'книги', 'книг', 'издательство', 'издательства',
+  'литература', 'литературная', 'литературный', 'роман', 'романа', 'автор',
+  'авторы', 'читатели', 'читатель', 'обзор', 'рецензия', 'лучшие', 'главные',
+  'почему', 'как', 'что', 'когда', 'новая', 'новый', 'новое', 'большой',
+  'первый', 'первая', 'самые', 'самый', 'итоги', 'неделя', 'недели', 'год',
+  'года', 'день', 'дня', 'время', 'место', 'история', 'жизнь', 'мир',
+  'the', 'book', 'books', 'new', 'why', 'how', 'best', 'review', 'reviews',
+  'literary', 'literature', 'author', 'authors', 'reader', 'readers',
+  'novel', 'novels', 'story', 'stories', 'week', 'year', 'day', 'time',
+])
+
+/** Что ищем в одном заголовке: темы + имена собственные */
+function extractTrends(
+  title: string,
+): { topic: string; kind: 'theme' | 'name' }[] {
+  const found: { topic: string; kind: 'theme' | 'name' }[] = []
+  const seen = new Set<string>()
+
+  for (const pattern of THEME_PATTERNS) {
+    if (pattern.re.test(title) && !seen.has(pattern.topic)) {
+      seen.add(pattern.topic)
+      found.push({ topic: pattern.topic, kind: 'theme' })
+    }
+  }
+
+  // Имена: последовательности слов с заглавной буквы («Хван Согён», «Sally Rooney»)
+  const names = title.match(
+    /[A-ZА-ЯЁ][a-zа-яё'-]{3,}(?:\s+[A-ZА-ЯЁ][a-zа-яё'-]{3,}){0,2}/g,
+  )
+
+  for (const name of names ?? []) {
+    const clean = name.trim()
+    const firstWord = clean.split(/\s+/)[0]?.toLowerCase() ?? ''
+
+    if (NAME_STOPWORDS.has(firstWord)) continue
+    if (clean.length < 5) continue
+    if (seen.has(clean)) continue
+
+    seen.add(clean)
+    found.push({ topic: clean, kind: 'name' })
+
+    // Больше двух имён из одного заголовка не берём: это уже шум
+    if (found.filter(item => item.kind === 'name').length >= 2) break
+  }
+
+  return found
+}
+
+/** Начало текущей недели (понедельник, UTC) — ключ периода трендов */
+function weekStart(): Date {
+  const now = new Date()
+  const dayFromMonday = (now.getUTCDay() + 6) % 7
+
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayFromMonday),
+  )
+}
+
+/**
+ * Пересчитывает тренды недели по заголовкам всех новостей (РФ + зарубежные).
+ * Пишем через service_role: читателям таблица доступна только на чтение.
+ */
+async function updateTrends(): Promise<void> {
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+
+  if (!supabaseUrl || !serviceKey) return
+
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const since = new Date(
+    Date.now() - TREND_PERIOD_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString()
+
+  const { data, error } = await supabase
+    .from('external_news')
+    .select('title, title_ru')
+    .gte('created_at', since)
+    .limit(1000)
+
+  if (error) {
+    // Колонки title_ru может ещё не быть — тогда считаем по оригиналу
+    if (error.code === '42703' || /column .* does not exist/i.test(error.message)) {
+      logWarn('тренды: нет колонки title_ru — считаем по оригинальным заголовкам')
+      return
+    }
+
+    logWarn(`тренды: не удалось прочитать новости (${error.message})`)
+    return
+  }
+
+  const rows = (data ?? []) as unknown as {
+    title: string
+    title_ru: string | null
+  }[]
+
+  const counters = new Map<
+    string,
+    { topic: string; kind: 'theme' | 'name'; mentions: number }
+  >()
+
+  for (const row of rows) {
+    const text = `${row.title_ru ?? ''} ${row.title}`
+
+    for (const { topic, kind } of extractTrends(text)) {
+      const key = `${kind}:${topic.toLowerCase()}`
+      const existing = counters.get(key)
+
+      if (existing) existing.mentions++
+      else counters.set(key, { topic, kind, mentions: 1 })
+    }
+  }
+
+  const top = [...counters.values()]
+    .filter(item => item.mentions >= 2)
+    .sort((a, b) => b.mentions - a.mentions)
+    .slice(0, TREND_LIMIT)
+
+  if (top.length === 0) {
+    log(`тренды: за ${TREND_PERIOD_DAYS} дней повторяющихся тем не нашлось`)
+    return
+  }
+
+  const periodStart = weekStart().toISOString()
+
+  if (DRY_RUN) {
+    log(`тренды (dry-run): рассчитано ${top.length} тем`)
+    for (const item of top.slice(0, 5)) {
+      log(`  ${item.topic} ×${item.mentions} (${item.kind})`)
+    }
+    return
+  }
+
+  const { error: deleteError } = await supabase
+    .from('news_trends')
+    .delete()
+    .eq('period_start', periodStart)
+
+  if (deleteError) {
+    logWarn(`тренды: не удалось очистить период (${deleteError.message})`)
+    return
+  }
+
+  const { error: insertError } = await supabase.from('news_trends').insert(
+    top.map(item => ({
+      topic: item.topic,
+      kind: item.kind,
+      mentions: item.mentions,
+      period_start: periodStart,
+    })),
+  )
+
+  if (insertError) {
+    logWarn(`тренды: не удалось сохранить (${insertError.message})`)
+    return
+  }
+
+  const themes = top.filter(item => item.kind === 'theme').length
+  log(
+    `тренды: сохранено ${top.length} (тем ${themes}, имён ${top.length - themes}), топ: ${top
+      .slice(0, 3)
+      .map(item => `${item.topic} ×${item.mentions}`)
+      .join(', ')}`,
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* Entry point                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -1746,8 +1991,11 @@ async function main(): Promise<void> {
       .join(', ')}`,
   )
 
-  // Дозаполняем обложки и типы у старых записей: импорт их не трогает
+  // Дозаполняем обложки, заголовки и рубрики у старых записей
   await refreshNewsMeta()
+
+  // И пересчитываем тренды недели для «Книжного радара»
+  await updateTrends()
 
   if (DRY_RUN) {
     log(`dry-run: распознано ${rows.length} записей, в базу не пишем`)
