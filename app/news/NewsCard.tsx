@@ -7,32 +7,27 @@ import Link from 'next/link'
 import { toPlainText, truncate } from '@/lib/text'
 import { ExternalLink } from '@/app/components/icons'
 import {
+  NEWS_CATEGORY_BADGE,
   NEWS_CATEGORY_LABEL,
   coverOf,
   formatDeadline,
   formatNewsDate,
   isDeadlinePassed,
+  isNewsCategory,
   showsDeadline,
-  type NewsCategory,
   type NewsPost,
 } from './newsQuery'
 
-const BADGE_BY_CATEGORY: Record<NewsCategory, string> = {
-  news: 'bg-[#014b32] text-[#E2E2E0]',
-  contest: 'bg-[#681F2D] text-[#E2E2E0]',
-  event: 'bg-[#681F2D] text-[#E2E2E0]',
-  new_book: 'bg-[#014b32] text-[#E2E2E0]',
-  publisher: 'bg-[#493344] text-[#E2E2E0]',
-}
-
 function categoryLabel(post: NewsPost): string {
-  const category = post.news_category as NewsCategory | null
-  return category ? NEWS_CATEGORY_LABEL[category] : 'Новость'
+  return isNewsCategory(post.news_category)
+    ? NEWS_CATEGORY_LABEL[post.news_category]
+    : 'Новость'
 }
 
 function badgeClass(post: NewsPost): string {
-  const category = post.news_category as NewsCategory | null
-  return category ? BADGE_BY_CATEGORY[category] : BADGE_BY_CATEGORY.news
+  return isNewsCategory(post.news_category)
+    ? NEWS_CATEGORY_BADGE[post.news_category]
+    : NEWS_CATEGORY_BADGE.news
 }
 
 /** Дата + дедлайн: общий подвал для обоих вариантов карточки. */

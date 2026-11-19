@@ -22,7 +22,16 @@ import {
   BookOpen,
   Share2,
   Check,
+  Clock,
+  ExternalLink,
 } from '@/app/components/icons'
+import {
+  NEWS_CATEGORY_BADGE,
+  NEWS_CATEGORY_LABEL,
+  formatDeadlineDay,
+  isDeadlinePassed,
+  isNewsCategory,
+} from '@/app/news/newsQuery'
 import type { PostDetail } from './getPost'
 
 export default function PostView({ post }: { post: PostDetail }) {
@@ -178,6 +187,43 @@ export default function PostView({ post }: { post: PostDetail }) {
                 </>
               )}
             </Link>
+          )}
+
+          {/* Новостной портал: категория, дедлайн конкурса и первоисточник */}
+          {post.type === 'news' && (
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                  isNewsCategory(post.news_category)
+                    ? NEWS_CATEGORY_BADGE[post.news_category]
+                    : NEWS_CATEGORY_BADGE.news
+                }`}
+              >
+                {isNewsCategory(post.news_category)
+                  ? NEWS_CATEGORY_LABEL[post.news_category]
+                  : 'Новость'}
+              </span>
+
+              {post.deadline_at && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#681F2D] px-3 py-1 text-xs font-semibold text-[#E2E2E0]">
+                  <Clock size={13} strokeWidth={1.8} />
+                  Дедлайн: {formatDeadlineDay(post.deadline_at)}
+                  {isDeadlinePassed(post.deadline_at) && ' (прошёл)'}
+                </span>
+              )}
+
+              {post.source_url && (
+                <a
+                  href={post.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-dark/20 px-3 py-1 text-xs font-medium text-emerald-mid transition-colors hover:border-emerald-mid hover:text-emerald-dark"
+                >
+                  Читать первоисточник
+                  <ExternalLink size={12} strokeWidth={1.8} />
+                </a>
+              )}
+            </div>
           )}
 
           <h1 className="font-playfair text-2xl md:text-4xl font-bold text-emerald-dark mb-4 leading-tight">

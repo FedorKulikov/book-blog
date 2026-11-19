@@ -36,6 +36,28 @@ export const NEWS_FILTERS: { value: NewsFilter; label: string }[] = [
 
 export const NEWS_LIMIT = 13
 
+/**
+ * Цвета бейджей категорий. Один источник правды для ленты (/news)
+ * и для страницы поста, чтобы они не разъезжались.
+ */
+export const NEWS_CATEGORY_BADGE: Record<NewsCategory, string> = {
+  news: 'bg-[#014b32] text-[#E2E2E0]',
+  contest: 'bg-[#681F2D] text-[#E2E2E0]',
+  event: 'bg-[#681F2D] text-[#E2E2E0]',
+  new_book: 'bg-[#014b32] text-[#E2E2E0]',
+  publisher: 'bg-[#493344] text-[#E2E2E0]',
+}
+
+/** Строка из базы — это категория портала? */
+export function isNewsCategory(
+  value: string | null | undefined,
+): value is NewsCategory {
+  return (
+    typeof value === 'string' &&
+    (NEWS_CATEGORIES as readonly string[]).includes(value)
+  )
+}
+
 export const NEWS_SELECT =
   'id, title, content, created_at, news_category, deadline_at, source_url, views_count, profiles!posts_user_id_fkey(username, avatar_url), post_images(url), comments(count), likes(count)'
 
@@ -146,6 +168,13 @@ export function formatDeadline(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
   return `До ${deadlineFormatter.format(date)}`
+}
+
+/** «15 декабря» — для блока «Дедлайн: …» на странице поста. */
+export function formatDeadlineDay(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return deadlineFormatter.format(date)
 }
 
 export function isDeadlinePassed(iso: string): boolean {
