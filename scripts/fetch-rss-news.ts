@@ -308,6 +308,24 @@ function logError(...args: unknown[]): void {
   console.error('[fetch-rss]', ...args)
 }
 
+/**
+ * «Колонки нет» PostgREST сообщает двумя способами:
+ *   • 42703 / «column … does not exist» — при чтении;
+ *   • PGRST204 / «Could not find the 'x' column … in the schema cache» — при записи.
+ * Для нас это одно и то же: миграция ещё не применена, деградируем.
+ */
+function isMissingColumnError(
+  error: { message: string; code?: string } | null,
+): boolean {
+  if (!error) return false
+  if (error.code === '42703' || error.code === 'PGRST204') return true
+
+  return (
+    /column .* does not exist/i.test(error.message) ||
+    /could not find the '.*' column/i.test(error.message)
+  )
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -1262,11 +1280,9 @@ async function saveRows(rows: NewRow[]): Promise<void> {
     .insert(fresh)
 
   if (insertError) {
-    // 42703 = undefined_column: миграция ещё не применена.
-    // Деградируем постепенно: сначала теряем только news_type, потом — legacy.
-    const isMissingColumn =
-      insertError.code === '42703' ||
-      /column .* does not exist/i.test(insertError.message)
+    // Миграция ещё не применена — деградируем постепенно:
+    // сначала теряем только новые колонки, потом пишем базовый набор.
+    const isMissingColumn = isMissingColumnError(insertError)
 
     if (!isMissingColumn) {
       throw new Error(`не удалось вставить записи: ${insertError.message}`)
@@ -1288,10 +1304,7 @@ async function saveRows(rows: NewRow[]): Promise<void> {
       return
     }
 
-    if (
-      typedError.code !== '42703' &&
-      !/column .* does not exist/i.test(typedError.message)
-    ) {
+    if (!isMissingColumnError(typedError)) {
       throw new Error(
         `не удалось вставить записи: ${typedError.message}`,
       )
@@ -1537,9 +1550,7 @@ async function refreshNewsMeta(): Promise<void> {
   let data: unknown[] | null = (full.data ?? null) as unknown[] | null
   let error = full.error
 
-  const missingCategory =
-    error !== null &&
-    (error.code === '42703' || /column .* does not exist/i.test(error.message))
+  const missingCategory = isMissingColumnError(error)
 
   if (missingCategory) {
     categoryAvailable = false
@@ -1818,7 +1829,7 @@ async function updateTrends(): Promise<void> {
 
   if (error) {
     // Колонки title_ru может ещё не быть — тогда считаем по оригиналу
-    if (error.code === '42703' || /column .* does not exist/i.test(error.message)) {
+    if (isMissingColumnError(error)) {
       logWarn('тренды: нет колонки title_ru — считаем по оригинальным заголовкам')
       return
     }
