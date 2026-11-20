@@ -16,10 +16,13 @@ export default function ExternalNewsCover({
   url,
   alt,
   iconSize = 36,
+  sizes = '(max-width: 768px) 100vw, 50vw',
 }: {
   url: string | null
   alt: string
   iconSize?: number
+  /** Подсказка оптимизатору: какую ширину занимает картинка */
+  sizes?: string
 }) {
   // Две независимые «ступени» деградации:
   //   next/image → обычный <img referrerPolicy="no-referrer"> → заглушка
@@ -61,8 +64,7 @@ export default function ExternalNewsCover({
         src={url}
         alt={alt}
         fill
-        // Карточки шириной примерно в половину экрана на десктопе
-        sizes="(max-width: 768px) 100vw, 50vw"
+        sizes={sizes}
         onError={() => setOptimizerFailed(true)}
         className="object-cover"
       />
