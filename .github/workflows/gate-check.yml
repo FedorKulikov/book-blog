@@ -1,0 +1,54 @@
+name: Gate check
+
+# Временный read-only гейт перед переносом Recovery/Hook в Edge Functions.
+# Ничего не создаёт и не меняет: только читает список функций, имена
+# секретов и текущую конфигурацию Send Email Hook.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      REF: tbqjyaxbymntdqzldrjz
+      T: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+    steps:
+      - name: Edge Functions
+        run: |
+          set -uo pipefail
+          echo "== GET /functions =="
+          curl -sS -w '\nHTTP:%{http_code}\n' -H "Authorization: Bearer $T" \
+            "https://api.supabase.com/v1/projects/$REF/functions"
+
+      - name: Function Secrets (только имена)
+        run: |
+          set -uo pipefail
+          echo "== GET /secrets =="
+          curl -sS -H "Authorization: Bearer $T" \
+            "https://api.supabase.com/v1/projects/$REF/secrets" \
+            | python3 -c "import json,sys
+try:
+    d=json.load(sys.stdin)
+    if isinstance(d,dict):
+        print('ERROR:', d.get('message'))
+    else:
+        print('names:', [x.get('name') for x in d])
+except Exception as e:
+    print('parse error:', e)"
+
+      - name: Auth Hook config (без значений)
+        run: |
+          set -uo pipefail
+          echo "== GET /config/auth (hook) =="
+          curl -sS -H "Authorization: Bearer $T" \
+            "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            | python3 -c "import json,sys
+d=json.load(sys.stdin)
+print('hook_send_email_enabled:', d.get('hook_send_email_enabled'))
+print('hook_send_email_uri:', d.get('hook_send_email_uri'))
+print('hook_secret_set:', bool(d.get('hook_send_email_secrets')))
+print('mailer_autoconfirm:', d.get('mailer_autoconfirm'))"
