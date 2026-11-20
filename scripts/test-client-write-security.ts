@@ -241,18 +241,24 @@ async function main() {
     if (post.data?.id) postId = post.data.id
 
     if (postId) {
-      const like = await client.from('likes').insert({
-        post_id: postId,
-        user_id: alice.id,
-      }).select('user_id, post_id').single()
-      check('owner can like a post', !like.error && like.data?.user_id === alice.id, safeError(like.error))
-      if (like.data) {
-        const otherDeleteLike = await otherClient.from('likes')
-          .delete().eq('post_id', postId).eq('user_id', alice.id).select('user_id')
-        check('another user cannot remove an owned like', !otherDeleteLike.error && (otherDeleteLike.data?.length ?? 0) === 0, safeError(otherDeleteLike.error))
-        const ownerDeleteLike = await client.from('likes')
-          .delete().eq('post_id', postId).eq('user_id', alice.id).select('user_id')
-        check('owner can remove their own like', !ownerDeleteLike.error && ownerDeleteLike.data?.length === 1, safeError(ownerDeleteLike.error))
+      // Likes are intentionally allowed only on published posts.
+      const publishedPost = await anonymous.from('posts')
+        .select('id').eq('status', 'approved').limit(1).maybeSingle()
+      check('a public approved post is available for like flow', !publishedPost.error && Boolean(publishedPost.data?.id), safeError(publishedPost.error))
+      if (publishedPost.data?.id) {
+        const like = await client.from('likes').insert({
+          post_id: publishedPost.data.id,
+          user_id: alice.id,
+        }).select('user_id, post_id').single()
+        check('owner can like an approved public post', !like.error && like.data?.user_id === alice.id, safeError(like.error))
+        if (like.data) {
+          const otherDeleteLike = await otherClient.from('likes')
+            .delete().eq('post_id', publishedPost.data.id).eq('user_id', alice.id).select('user_id')
+          check('another user cannot remove an owned like', !otherDeleteLike.error && (otherDeleteLike.data?.length ?? 0) === 0, safeError(otherDeleteLike.error))
+          const ownerDeleteLike = await client.from('likes')
+            .delete().eq('post_id', publishedPost.data.id).eq('user_id', alice.id).select('user_id')
+          check('owner can remove their own like', !ownerDeleteLike.error && ownerDeleteLike.data?.length === 1, safeError(ownerDeleteLike.error))
+        }
       }
 
       const bookmark = await client.from('bookmarks').insert({
