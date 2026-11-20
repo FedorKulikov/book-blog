@@ -1,0 +1,68 @@
+name: Promote to production
+
+# Выкатывает текущее состояние main в ветку production.
+#
+# Схема:
+#   main        → превью-среда (старый домен). Сюда летит каждый пуш,
+#                 здесь смотрим, что получилось.
+#   production  → боевая среда (новый/кастомный домен). Обновляется только
+#                 вручную, когда превью понравилось.
+#
+# Запускать только осознанно: это и есть «кнопка выпуска».
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Введи yes, чтобы подтвердить выкат main → production'
+        required: true
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    name: main → production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Проверка подтверждения
+        run: |
+          if [ "${{ inputs.confirm }}" != "yes" ]; then
+            echo "::error::нужно передать confirm=yes — иначе ничего не выкатываем"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Что именно выкатываем
+        run: |
+          echo "### Сравнение веток" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if git rev-parse --verify origin/production >/dev/null 2>&1; then
+            echo "production сейчас: \`$(git rev-parse --short origin/production)\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            git log --oneline origin/production..origin/main >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ветки production ещё нет — создадим с текущего main" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fast-forward production → main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # production всегда равен main в момент выпуска: никаких слияний
+          # и расхождений, только перенос указателя вперёд
+          git checkout -B production origin/main
+          git push origin production
+
+          echo "production = $(git rev-parse --short HEAD)"
