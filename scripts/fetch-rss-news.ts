@@ -686,15 +686,17 @@ function detectNewsType(item: FeedItemLike, feed: FeedSource): NewsType {
  */
 const CATEGORY_RULES: { re: RegExp; category: NewsCategoryValue }[] = [
   {
-    re: /(анонс|афиш|встреч|постанов|презентац|лекци|фестивал|ярмарк|выставк|концерт)/i,
+    re: /(анонс|афиш|встреч|постанов|презентац|лекци|фестивал|ярмарк|выставк|концерт|чтен)/i,
     category: 'event',
   },
   {
-    re: /(новост[а-я]*\s+эксмо|издательств|издател|тираж|выпустил)/i,
+    re: /(новост[а-я]*\s+эксмо|издательств|издател|типографи|тираж|выпустил)/i,
     category: 'publisher',
   },
   {
-    re: /(новинк|новая книга|новые книги|новый роман|вышел|вышла|вышло|издан)/i,
+    // «Новинки»: релизы, переиздания, премьеры книг. Набор расширен —
+    // прежний почти не срабатывал, и рубрика стояла пустой.
+    re: /(новинк|нов(ая|ый|ые|ого|ой)\s+(книг|роман|повест|сборник|издани)|вышл[аи]|вышел|вышло|издан|переиздан|поступ(ил|ила|или)\s+в\s+продажу|премьер[аы]\s+книг|новые произведени)/i,
     category: 'new_book',
   },
 ]
@@ -703,10 +705,17 @@ function detectNewsCategory(
   item: FeedItemLike,
   feed: FeedSource,
 ): NewsCategoryValue {
-  const haystack = `${(item.categories ?? []).join(' ')} ${item.title ?? ''}`
+  // Сначала <category> из ленты: он точнее заголовка, где слово может
+  // стоять случайно. Заголовок проверяем только если теги молчат.
+  const tags = (item.categories ?? []).join(' ')
 
   for (const rule of CATEGORY_RULES) {
-    if (rule.re.test(haystack)) return rule.category
+    if (rule.re.test(tags)) return rule.category
+  }
+
+  const title = item.title ?? ''
+  for (const rule of CATEGORY_RULES) {
+    if (rule.re.test(title)) return rule.category
   }
 
   return feed.category
@@ -748,9 +757,13 @@ function toAbsoluteUrl(raw: string, base: string): string | null {
 /**
  * Пути, где обычно лежат настоящие иллюстрации статей.
  * У литкары это /images/doc/..., у Эксмо — /upload/iblock/...
+ *
+ * `/images/` добавлен отдельно: у афиши литкары фотографии событий лежат
+ * прямо в /images/, а не в /images/doc/, и без этого они не находились.
+ * Служебные gif-бейджи всё равно отсекаются по расширению и по CHROME_IMAGE_RE.
  */
 const CONTENT_IMAGE_RE =
-  /(\/doc\/|\/upload|\/media\/|\/photo|\/content|\/files\/|article_images?)/i
+  /(\/doc\/|\/upload|\/media\/|\/photo|\/content|\/files\/|\/images\/|article_images?)/i
 
 /**
  * Первая осмысленная картинка страницы: og:image → twitter:image → <img>.
@@ -1062,6 +1075,13 @@ async function enrichCovers(
   return { filled, upgraded }
 }
 
+/**
+ * Насколько старую запись ещё пускаем в ленту.
+ * Афиша литкары отдаёт архив событий 2015–2025 годов, и без ограничения
+ * в «Главное сейчас» и на радаре всплывают анонсы десятилетней давности.
+ */
+const MAX_ITEM_AGE_MS = 365 * 24 * 60 * 60 * 1000
+
 /** Нормализует сырые items в строки таблицы и чистит дубли внутри пачки */
 function buildRows(
   items: FeedItemLike[],
@@ -1071,16 +1091,25 @@ function buildRows(
   skippedForeign: number
   skippedStopWords: number
   skippedLinks: number
+  skippedArchive: number
 } {
   const seen = new Set<string>()
   const rows: NewRow[] = []
   let skippedForeign = 0
   let skippedStopWords = 0
   let skippedLinks = 0
+  let skippedArchive = 0
 
   for (const item of items) {
     const rawTitle = (item.title ?? '').trim()
     if (!rawTitle) continue
+
+    // Архив: событие годичной давности в ленте новостей — это мусор
+    const publishedMs = new Date(itemDate(item)).getTime()
+    if (Number.isFinite(publishedMs) && publishedMs < Date.now() - MAX_ITEM_AGE_MS) {
+      skippedArchive++
+      continue
+    }
 
     // Русские ленты чистим от иностранных заголовков, английские — нет:
     // у них латиница и есть норма
@@ -1140,7 +1169,7 @@ function buildRows(
     })
   }
 
-  return { rows, skippedForeign, skippedStopWords, skippedLinks }
+  return { rows, skippedForeign, skippedStopWords, skippedLinks, skippedArchive }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1671,8 +1700,14 @@ async function refreshNewsMeta(): Promise<void> {
       patch.news_type = fromFeed.news_type
     }
 
-    // Рубрика портала: нужна, чтобы запись попала в ленту /news
-    if (categoryAvailable && fromFeed?.news_category && !row.news_category) {
+    // Рубрика портала: держим в согласии с правилами ленты. Раньше писали
+    // только в пустую колонку — из-за этого «Новинки» не наполнялись:
+    // у старых записей стояла рубрика по умолчанию, и правило её не меняло.
+    if (
+      categoryAvailable &&
+      fromFeed?.news_category &&
+      fromFeed.news_category !== row.news_category
+    ) {
       patch.news_category = fromFeed.news_category
     }
 
@@ -2028,6 +2063,7 @@ async function main(): Promise<void> {
   let skippedForeign = 0
   let skippedStopWords = 0
   let skippedLinks = 0
+  let skippedArchive = 0
 
   for (const feed of FEEDS) {
     try {
@@ -2039,6 +2075,7 @@ async function main(): Promise<void> {
       skippedForeign += result.skippedForeign
       skippedStopWords += result.skippedStopWords
       skippedLinks += result.skippedLinks
+      skippedArchive += result.skippedArchive
 
       log(
         `«${feedTitle}» (${feed.label}): записей ${items.length}, принято ${limited.length}`,
@@ -2053,7 +2090,7 @@ async function main(): Promise<void> {
 
   log(
     `отфильтровано: иностранных ${skippedForeign}, стоп-слов ${skippedStopWords}, ` +
-      `пустых/главных ссылок ${skippedLinks}`,
+      `пустых/главных ссылок ${skippedLinks}, архив ${skippedArchive}`,
   )
 
   // Дубли между лентами (одна новость может прийти из news и afisha)
