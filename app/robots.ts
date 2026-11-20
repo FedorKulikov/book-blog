@@ -1,9 +1,7 @@
 import { MetadataRoute } from 'next'
 
 // Тот же источник домена, что в layout.tsx и sitemap.ts (никакого хардкода)
-const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL || 'https://bukleb.ru'
-).replace(/\/+$/, '')
+import { SITE_URL } from '@/lib/site'
 
 export default function robots(): MetadataRoute.Robots {
   return {
