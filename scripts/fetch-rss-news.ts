@@ -2225,7 +2225,7 @@ async function reclassify(): Promise<void> {
 
   const { data, error } = await supabase
     .from('external_news')
-    .select('id, title, source, news_category')
+    .select('id, title, source, news_category, lang')
     .limit(1000)
 
   if (error) {
@@ -2238,6 +2238,7 @@ async function reclassify(): Promise<void> {
     title: string | null
     source: string | null
     news_category: string | null
+    lang: string | null
   }[]
 
   // Рубрика по умолчанию зависит от источника: у афиши это события,
@@ -2263,6 +2264,23 @@ async function reclassify(): Promise<void> {
     if (hasStopWord(title)) {
       if (DRY_RUN) {
         log(`  [dry] удалил бы рекламу: ${title.slice(0, 70)}`)
+        removed++
+        continue
+      }
+      const { error: deleteError } = await supabase
+        .from('external_news')
+        .delete()
+        .eq('id', row.id)
+
+      if (!deleteError) removed++
+      continue
+    }
+
+    // Англоязычные ленты широкие: записи без книжной лексики (музыка,
+    // видеоигры) удаляем — они попали в базу до появления фильтра
+    if (row.lang === 'en' && !EN_TOPIC_RE.test(title)) {
+      if (DRY_RUN) {
+        log(`  [dry] удалил бы не по теме: ${title.slice(0, 70)}`)
         removed++
         continue
       }
