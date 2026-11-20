@@ -2,7 +2,7 @@ import { MetadataRoute } from 'next'
 
 // Тот же источник домена, что в layout.tsx и sitemap.ts (никакого хардкода)
 const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL || 'https://book-blog-main.layero.app'
+  process.env.NEXT_PUBLIC_SITE_URL || 'https://bukleb.ru'
 ).replace(/\/+$/, '')
 
 export default function robots(): MetadataRoute.Robots {
