@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'scripts/test-chat-security.ts'
+      - 'scripts/test-client-write-security.ts'
       - '.github/workflows/chat-security-smoke.yml'
       - 'supabase/migrations/**'
       - 'app/signup/page.tsx'
@@ -77,3 +78,10 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: npx tsx scripts/test-chat-security.ts
+
+      - name: Verify client column privileges and data integrity
+        env:
+          SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: npx tsx scripts/test-client-write-security.ts
