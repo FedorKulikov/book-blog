@@ -176,10 +176,17 @@ async function main() {
       })
       check('report cannot be created already resolved', Boolean(forgedReport.error), safeError(forgedReport.error))
 
+      const reportReason = `Temporary report fixture ${stamp}.`
       const report = await client.from('reports').insert({
-        reporter_id: alice.id, post_id: postId, reason: 'Temporary report fixture.',
-      }).select('id, status').single()
-      check('normal report starts in open state', !report.error && report.data?.status === 'open', safeError(report.error))
+        reporter_id: alice.id, post_id: postId, reason: reportReason,
+      })
+      const reportCheck = await admin.from('reports').select('status')
+        .eq('reporter_id', alice.id).eq('post_id', postId).eq('reason', reportReason).single()
+      check(
+        'normal report submission works and starts open',
+        !report.error && !reportCheck.error && reportCheck.data?.status === 'open',
+        safeError(report.error ?? reportCheck.error),
+      )
     }
 
     // Notifications can only be marked read, not impersonated or made unread again.
