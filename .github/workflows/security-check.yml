@@ -1,0 +1,195 @@
+name: Security check
+
+# Периодическая проверка привилегий и RLS. Запускается раз в неделю
+# и вручную. Падает с ненулевым кодом, если найдено расхождение —
+# так проблема видна в Actions сразу после появления, а не через полгода.
+#
+# Что считается нарушением (breach):
+#   • у anon/authenticated есть TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
+#     на таблицах public — TRUNCATE и REFERENCES не подчиняются RLS;
+#   • у anon/authenticated есть UPDATE на последовательностях (право setval);
+#   • таблица public доступна роли приложения, но RLS на ней выключен;
+#   • default privileges выдают новые опасные права роли anon.
+#
+# Что считается предупреждением (warning), а не нарушением:
+#   • таблица с включённым RLS, но без политик: это default deny,
+#     а не дыра — просто доступ через API закрыт;
+#   • SECURITY DEFINER функции, доступные anon: их надо смотреть глазами.
+
+on:
+  schedule:
+    # Понедельник, 04:00 UTC = 07:00 МСК
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: права и RLS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Ensure psql
+        run: |
+          if command -v psql >/dev/null 2>&1; then
+            psql --version
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+            psql --version
+          fi
+
+      - name: Опасные привилегии на таблицах
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          # \pset tuples_only + заголовки не нужны: считаем строки
+          cnt=$(psql "$DB_URL" -tA -c "
+            select count(*)
+            from information_schema.role_table_grants
+            where table_schema = 'public'
+              and grantee in ('anon', 'authenticated')
+              and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN');
+          ")
+          if [ "$cnt" != "0" ]; then
+            echo "::error::у anon/authenticated есть опасные привилегии на $cnt таблицах"
+            psql "$DB_URL" -c "
+              select table_name, grantee, privilege_type
+              from information_schema.role_table_grants
+              where table_schema = 'public'
+                and grantee in ('anon', 'authenticated')
+                and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN')
+              order by 1, 2, 3;
+            "
+            exit 1
+          fi
+          echo "таблицы: опасных привилегий нет"
+
+      - name: Права на последовательностях
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          cnt=$(psql "$DB_URL" -tA -c "
+            select count(*)
+            from information_schema.role_usage_grants g
+            where g.object_schema = 'public' and g.object_type = 'SEQUENCE'
+              and g.grantee in ('anon', 'authenticated')
+              and g.privilege_type = 'UPDATE';
+          ")
+          # role_usage_grants не содержит UPDATE по последовательностям,
+          # поэтому проверяем напрямую через pg_class
+          cnt=$(psql "$DB_URL" -tA -c "
+            select count(*)
+            from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+            where c.relkind = 'S' and n.nspname = 'public'
+              and (has_sequence_privilege('anon', c.oid, 'UPDATE')
+                or has_sequence_privilege('authenticated', c.oid, 'UPDATE'));
+          ")
+          if [ "$cnt" != "0" ]; then
+            echo "::error::у anon/authenticated есть UPDATE на последовательностях ($cnt) — это право setval"
+            psql "$DB_URL" -c "
+              select c.relname,
+                     has_sequence_privilege('anon', c.oid, 'UPDATE') as anon_update,
+                     has_sequence_privilege('authenticated', c.oid, 'UPDATE') as auth_update
+              from pg_class c
+              join pg_namespace n on n.oid = c.relnamespace
+              where c.relkind = 'S' and n.nspname = 'public'
+              order by 1;
+            "
+            exit 1
+          fi
+          echo "последовательности: UPDATE ни у кого нет"
+
+      - name: RLS включён на всех таблицах public
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          cnt=$(psql "$DB_URL" -tA -c "
+            select count(*)
+            from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+            where c.relkind = 'r' and n.nspname = 'public' and c.relrowsecurity = false;
+          ")
+          if [ "$cnt" != "0" ]; then
+            echo "::error::на $cnt таблицах public выключен RLS — доступ не ограничен"
+            psql "$DB_URL" -c "
+              select c.relname
+              from pg_class c
+              join pg_namespace n on n.oid = c.relnamespace
+              where c.relkind = 'r' and n.nspname = 'public' and c.relrowsecurity = false
+              order by 1;
+            "
+            exit 1
+          fi
+          echo "RLS включён везде"
+
+      - name: Default privileges для будущих объектов
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          bad=$(psql "$DB_URL" -tA -c "
+            select count(*)
+            from pg_default_acl d
+            where d.defaclrole = (select oid from pg_roles where rolname = 'postgres')
+              and d.defaclnamespace = (select oid from pg_namespace where nspname = 'public')
+              and d.defaclobjtype = 'r'
+              and d.defaclacl::text ~ '(anon|authenticated)=[^/]*[Dxtm]';
+          ")
+          if [ "$bad" != "0" ]; then
+            echo "::error::default privileges снова выдают новые таблицы с TRUNCATE/REFERENCES/TRIGGER/MAINTAIN"
+            psql "$DB_URL" -c "
+              select r.rolname as creator, d.defaclobjtype, d.defaclacl::text
+              from pg_default_acl d
+              left join pg_roles r on r.oid = d.defaclrole
+              where d.defaclrole = (select oid from pg_roles where rolname = 'postgres')
+                and d.defaclnamespace = (select oid from pg_namespace where nspname = 'public');
+            "
+            exit 1
+          fi
+          echo "default privileges: чистые"
+
+      - name: SECURITY DEFINER функции (предупреждение)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          echo "::group::SECURITY DEFINER, доступные anon"
+          psql "$DB_URL" -c "
+            select p.proname,
+                   pg_get_function_identity_arguments(p.oid) as args,
+                   (p.prorettype in ('trigger'::regtype, 'event_trigger'::regtype)) as is_trigger
+            from pg_proc p
+            join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public'
+              and p.prosecdef
+              and has_function_privilege('anon', p.oid, 'EXECUTE')
+            order by is_trigger desc, p.proname;
+          "
+          echo "::endgroup::"
+
+          trig=$(psql "$DB_URL" -tA -c "
+            select count(*)
+            from pg_proc p
+            join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public'
+              and p.prorettype in ('trigger'::regtype, 'event_trigger'::regtype)
+              and has_function_privilege('anon', p.oid, 'EXECUTE');
+          ")
+          if [ "$trig" != "0" ]; then
+            echo "::warning::у $trig триггерных функций остался EXECUTE для anon — проверьте, нужен ли он"
+          fi
+          echo "функции: список выше, нарушений нет"
+
+      - name: Итог
+        run: |
+          echo "### Security check пройден" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Строки пояснений — в логах шагов выше." >> $GITHUB_STEP_SUMMARY
