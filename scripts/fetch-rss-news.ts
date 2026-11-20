@@ -1543,7 +1543,7 @@ async function refreshNewsMeta(): Promise<void> {
 
   const full = await supabase
     .from('external_news')
-    .select('id, url, title, cover_url, news_type, news_category')
+    .select('id, url, title, cover_url, news_type, news_category, lang')
     .order('created_at', { ascending: false })
     .limit(META_REFRESH_LIMIT)
 
@@ -1581,6 +1581,7 @@ async function refreshNewsMeta(): Promise<void> {
     cover_url: string | null
     news_type: string | null
     news_category?: string | null
+    lang?: string | null
   }[]
 
   if (rows.length === 0) {
@@ -1600,6 +1601,7 @@ async function refreshNewsMeta(): Promise<void> {
       cover_url: string | null
       news_type: NewsType
       news_category: NewsCategoryValue
+      lang: 'ru' | 'en'
     }
   >()
 
@@ -1614,6 +1616,7 @@ async function refreshNewsMeta(): Promise<void> {
           cover_url: row.cover_url,
           news_type: row.news_type,
           news_category: row.news_category,
+          lang: row.lang,
         })
       }
     } catch (feedError) {
@@ -1627,6 +1630,7 @@ async function refreshNewsMeta(): Promise<void> {
   let updatedCovers = 0
   let updatedTypes = 0
   let updatedCategories = 0
+  let updatedLangs = 0
   let ogRequests = 0
 
   for (const row of rows) {
@@ -1635,6 +1639,7 @@ async function refreshNewsMeta(): Promise<void> {
       cover_url?: string
       news_type?: string
       news_category?: string
+      lang?: string
     } = {}
     const fromFeed = fromFeeds.get(row.url)
 
@@ -1671,23 +1676,31 @@ async function refreshNewsMeta(): Promise<void> {
       patch.news_category = fromFeed.news_category
     }
 
+    // Язык: записи, вставленные до миграции, получили дефолт 'ru',
+    // поэтому английские материалы не попадали в «Мировую полку»
+    if (fromFeed?.lang === 'en' && row.lang !== 'en') {
+      patch.lang = 'en'
+    }
+
     if (
       !patch.title &&
       !patch.cover_url &&
       !patch.news_type &&
-      !patch.news_category
+      !patch.news_category &&
+      !patch.lang
     ) {
       continue
     }
 
     if (DRY_RUN) {
       log(
-        `  [dry] заголовок: ${patch.title ?? '—'} | обложка: ${patch.cover_url ?? '—'} | тип: ${patch.news_type ?? '—'} | рубрика: ${patch.news_category ?? '—'} ← ${row.url}`,
+        `  [dry] заголовок: ${patch.title ?? '—'} | обложка: ${patch.cover_url ?? '—'} | тип: ${patch.news_type ?? '—'} | рубрика: ${patch.news_category ?? '—'} | язык: ${patch.lang ?? '—'} ← ${row.url}`,
       )
       if (patch.title) updatedTitles++
       if (patch.cover_url) updatedCovers++
       if (patch.news_type) updatedTypes++
       if (patch.news_category) updatedCategories++
+      if (patch.lang) updatedLangs++
       continue
     }
 
@@ -1708,10 +1721,11 @@ async function refreshNewsMeta(): Promise<void> {
     if (patch.cover_url) updatedCovers++
     if (patch.news_type) updatedTypes++
     if (patch.news_category) updatedCategories++
+    if (patch.lang) updatedLangs++
   }
 
   log(
-    `метаданные: заголовков ${updatedTitles}, обложек ${updatedCovers}, типов ${updatedTypes}, рубрик ${updatedCategories} из ${rows.length}`,
+    `метаданные: заголовков ${updatedTitles}, обложек ${updatedCovers}, типов ${updatedTypes}, рубрик ${updatedCategories}, языков ${updatedLangs} из ${rows.length}`,
   )
 }
 
