@@ -15,11 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       files:
-        description: 'Файлы миграций через пробел'
+        description: 'Файлы миграций через пробел или ALL — все из supabase/migrations'
         required: false
-        default: >-
-          supabase/migrations/20261122_external_news_category.sql
-          supabase/migrations/20261123_radar_foreign_and_trends.sql
+        default: 'ALL'
 
 permissions:
   contents: read
@@ -58,15 +56,68 @@ jobs:
             echo "::error::секрет SUPABASE_DB_URL не задан"
             exit 1
           fi
+
+          if [ "${FILES}" = "ALL" ]; then
+            FILES=$(ls supabase/migrations/*.sql | sort)
+          fi
+
+          # Реестр применённых миграций: создаётся здесь же, чтобы первый
+          # запуск на чистой базе не падал
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "
+            create schema if not exists ops;
+            create table if not exists ops.applied_migrations (
+              filename   text primary key,
+              checksum   text,
+              applied_at timestamptz not null default now(),
+              applied_by text default current_user
+            );
+          "
+
+          applied=0
+          skipped=0
+
           for f in $FILES; do
             if [ ! -f "$f" ]; then
               echo "::error::нет файла $f"
               exit 1
             fi
+
+            sum=$(sha256sum "$f" | cut -d' ' -f1)
+            prev=$(psql "$DB_URL" -tA -c "select checksum from ops.applied_migrations where filename = '$f'")
+
+            if [ -n "$prev" ]; then
+              if [ "$prev" = "$sum" ]; then
+                echo "пропускаю $f — уже применена"
+                skipped=$((skipped + 1))
+                continue
+              fi
+              echo "::warning::$f уже применена, но файл изменился — применяю повторно"
+            fi
+
             echo "::group::применяю $f"
             psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "
+              insert into ops.applied_migrations (filename, checksum)
+              values ('$f', '$sum')
+              on conflict (filename) do update
+                set checksum = excluded.checksum, applied_at = now();
+            "
             echo "::endgroup::"
+            applied=$((applied + 1))
           done
+
+          echo "### Миграции: применено $applied, пропущено $skipped" >> $GITHUB_STEP_SUMMARY
+
+      - name: История миграций
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DB_URL" -c "
+            select filename, left(checksum, 12) as checksum, applied_at::timestamp(0), applied_by
+            from ops.applied_migrations
+            order by filename;
+          "
 
       - name: Verify schema
         env:
