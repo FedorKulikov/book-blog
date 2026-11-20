@@ -20,6 +20,7 @@ for (const code of codes) {
   const hashes = [
     hashCode(code, secret),
     hashCode(normalized, secret),
+    hashCode(code.replace(/-/g, ''), secret),
     hashCode(code.toLowerCase(), secret),
   ]
 
