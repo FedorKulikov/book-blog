@@ -176,17 +176,20 @@ async function main() {
       headers: { apikey: ANON, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     })
+    // Сырой ответ GoTrue кладёт сессию на верхний уровень (access_token),
+    // а не в поле session — та обёртка есть только в supabase-js.
     const signupBody = (await signupRes.json().catch(() => ({}))) as {
-      session?: unknown
+      access_token?: string
       user?: { id?: string }
     }
 
     createdId = signupBody.user?.id ?? null
+    const hasSession = Boolean(signupBody.access_token)
 
     check(
       'регистрация без подтверждения почты работает',
-      signupRes.status === 200 && Boolean(signupBody.session),
-      `статус ${signupRes.status}, сессия ${Boolean(signupBody.session)}`,
+      signupRes.status === 200 && hasSession,
+      `статус ${signupRes.status}, сессия ${hasSession}, поля: ${Object.keys(signupBody).join(',')}`,
     )
 
     const loginRes = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
