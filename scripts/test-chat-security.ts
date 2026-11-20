@@ -105,6 +105,56 @@ async function main() {
       signedInClient(bob),
     ])
 
+    // These helpers must work as ordinary authenticated calls, with RLS applied.
+    const staffCheck = await aliceClient.rpc('is_staff')
+    check('is_staff works as invoker for a regular account', !staffCheck.error && staffCheck.data === false, safeError(staffCheck.error))
+
+    const baseUnread = await bobClient.rpc('count_unread_messages')
+    check('count_unread_messages works under recipient RLS', !baseUnread.error && typeof baseUnread.data === 'number', safeError(baseUnread.error))
+
+    const actionName = `chat-smoke-${stamp}`
+    const firstRateCheck = await aliceClient.rpc('check_and_log_action', {
+      action_input: actionName,
+      max_per_hour: 10,
+      max_per_minute: 1,
+    })
+    check('check_and_log_action inserts own rate-limit row under RLS', !firstRateCheck.error && firstRateCheck.data?.ok === true, safeError(firstRateCheck.error))
+
+    const secondRateCheck = await aliceClient.rpc('check_and_log_action', {
+      action_input: actionName,
+      max_per_hour: 10,
+      max_per_minute: 1,
+    })
+    check('check_and_log_action reads own rows and enforces the limit', !secondRateCheck.error && secondRateCheck.data?.ok === false && secondRateCheck.data?.reason === 'minute_limit', safeError(secondRateCheck.error))
+
+    const ticket = await aliceClient.rpc('create_ticket', {
+      p_subject: `Temporary smoke ticket ${stamp}`,
+      p_category: 'other',
+      p_message: 'Temporary ticket created by the chat security smoke test.',
+    })
+    check('create_ticket writes through authenticated RLS', !ticket.error && Boolean(ticket.data), safeError(ticket.error))
+
+    if (ticket.data) {
+      const ticketRow = await aliceClient
+        .from('tickets')
+        .select('id, user_id')
+        .eq('id', ticket.data)
+        .single()
+      check('ticket is visible only to its owner under RLS', !ticketRow.error && ticketRow.data?.user_id === alice.id, safeError(ticketRow.error))
+
+      const ticketMessages = await aliceClient
+        .from('ticket_messages')
+        .select('id, sender_id, is_staff_reply')
+        .eq('ticket_id', ticket.data)
+      check(
+        'initial ticket message is inserted under participant RLS',
+        !ticketMessages.error && ticketMessages.data?.length === 1 &&
+          ticketMessages.data[0]?.sender_id === alice.id &&
+          ticketMessages.data[0]?.is_staff_reply === false,
+        safeError(ticketMessages.error),
+      )
+    }
+
     const conversation = await aliceClient.rpc('get_or_create_conversation', {
       other_user_id: bob.id,
     })
@@ -129,6 +179,13 @@ async function main() {
 
     const originalText = `temporary access-control smoke test ${stamp}`
 
+    const unreadWithMessage = await bobClient.rpc('count_unread_messages')
+    check(
+      'count_unread_messages sees the recipient own unread row',
+      !unreadWithMessage.error && unreadWithMessage.data === (baseUnread.data ?? 0) + 1,
+      safeError(unreadWithMessage.error),
+    )
+
     // Recipient can mark an incoming message read.
     const readTimestamp = new Date().toISOString()
     const markRead = await bobClient
@@ -143,6 +200,26 @@ async function main() {
       !markRead.error && Boolean(markRead.data?.read_at),
       safeError(markRead.error),
     )
+
+    const unreadAfterRead = await bobClient.rpc('count_unread_messages')
+    check(
+      'count_unread_messages stops counting after read_at is set',
+      !unreadAfterRead.error && unreadAfterRead.data === (baseUnread.data ?? 0),
+      safeError(unreadAfterRead.error),
+    )
+
+    // Blocking helpers operate under the caller's RLS visibility.
+    const block = await aliceClient.from('user_blocks').insert({
+      blocker_id: alice.id,
+      blocked_id: bob.id,
+    })
+    check('authenticated user can create own block row', !block.error, safeError(block.error))
+
+    const isBlocking = await aliceClient.rpc('is_blocking', { other_user_id: bob.id })
+    check('is_blocking reads own block rows under RLS', !isBlocking.error && isBlocking.data === true, safeError(isBlocking.error))
+
+    const isBlockedByOther = await bobClient.rpc('is_blocked_by_other', { other_user_id: alice.id })
+    check('is_blocked_by_other reads own blocked row under RLS', !isBlockedByOther.error && isBlockedByOther.data === true, safeError(isBlockedByOther.error))
 
     // Participant cannot alter message content or identity fields.
     const editText = await bobClient
@@ -291,6 +368,12 @@ async function main() {
       await client.auth.signOut().catch(() => undefined)
     }
 
+    for (const user of users) {
+      await admin.from('action_log').delete().eq('user_id', user.id)
+      await admin.from('tickets').delete().eq('user_id', user.id)
+      await admin.from('user_blocks').delete().eq('blocker_id', user.id)
+      await admin.from('user_blocks').delete().eq('blocked_id', user.id)
+    }
     if (conversationId) {
       await admin.from('messages').delete().eq('conversation_id', conversationId)
       await admin.from('conversations').delete().eq('id', conversationId)
