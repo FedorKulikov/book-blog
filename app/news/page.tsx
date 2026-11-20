@@ -33,10 +33,16 @@ export async function generateMetadata({
   const label =
     NEWS_FILTERS.find(item => item.value === filter)?.label ?? 'Все новости'
 
+  // Канонический адрес: «все новости» живёт на /news, фильтры рубрик —
+  // на своих URL. Без явного canonical поисковик может решить, что
+  // /news и /news?category=all — разные страницы с одинаковым содержимым.
+  const canonical = filter === 'all' ? '/news' : `/news?category=${filter}`
+
   return {
     title: `${label} — новости книжного мира`,
     description:
       'Книжные новости, конкурсы, анонсы и события: что выходит, где участвовать и что обсуждают читатели.',
+    alternates: { canonical },
     openGraph: {
       title: `${label} — новости книжного мира`,
       description:
