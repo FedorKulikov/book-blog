@@ -24,7 +24,6 @@ import {
   X as XIcon,
   Library,
   Newspaper,
-  Radar,
 } from './icons'
 import UnreadMessagesBadge from './UnreadMessagesBadge'
 import ThemeToggle from './ThemeToggle'
@@ -111,7 +110,6 @@ export default function Sidebar() {
     // Ленты внешних источников в главном меню нет: раздел живёт отдельно
     // и открывается со страницы новостей, чтобы меню не засорялось.
     { href: '/news', label: 'Новости', Icon: Newspaper },
-    { href: '/radar', label: 'Радар', Icon: Radar },
     { href: '/creative', label: 'Творчество', Icon: Feather },
     { href: '/discussions', label: 'Обсуждения', Icon: MessageCircle },
     { href: '/messages', label: 'Сообщения', Icon: Mail, badge: true },
