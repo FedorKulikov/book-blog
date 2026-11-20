@@ -2,6 +2,7 @@
 
 import ReportButton from '../ReportButton'
 import { Send, Trash2 } from '../icons'
+import { formatInlineText } from '@/lib/format'
 
 export type CommentRow = {
   id: string
@@ -98,9 +99,9 @@ export default function CommentNode({
               })}
             </span>
           </div>
-          <p className="text-brown-dark mt-1 whitespace-pre-wrap text-sm leading-relaxed">
-            {comment.text}
-          </p>
+          <div className="text-brown-dark mt-1 whitespace-pre-wrap text-sm leading-relaxed">
+            {formatInlineText(comment.text)}
+          </div>
 
           <div className="flex items-center gap-3 mt-1">
             {ctx.user && (

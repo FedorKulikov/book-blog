@@ -2,6 +2,7 @@
 
 import VoiceMessage from './VoiceMessage'
 import { Trash2 } from './icons'
+import { formatInlineText } from '@/lib/format'
 
 export type ChatMessage = {
   id: string
@@ -98,9 +99,9 @@ export default function MessageBubble({
         )}
 
         {hasText && (
-          <p className="text-sm whitespace-pre-wrap break-words">
-            {message.text}
-          </p>
+          <div className="text-sm whitespace-pre-wrap break-words">
+            {formatInlineText(message.text ?? '')}
+          </div>
         )}
 
         <div
