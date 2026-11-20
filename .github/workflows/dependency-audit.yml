@@ -75,6 +75,7 @@ jobs:
 
           if (rows.length === 0) out.push('| — | — | — | — | — | No known vulnerabilities |');
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join('\n') + '\n');
+          console.log(out.join('\n'));
           NODE
 
       - name: Fail on high or critical vulnerabilities
