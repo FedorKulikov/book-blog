@@ -60,7 +60,7 @@ jobs:
 
           echo "### Supabase Auth password posture (read-only)" >> "$GITHUB_STEP_SUMMARY"
           jq '{password_min_length, password_required_characters, password_hibp_enabled}' "$tmp" \
-            >> "$GITHUB_STEP_SUMMARY"
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Verify temporary chat access-control scenarios
         env:
