@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import AvatarUploader from '@/app/components/AvatarUploader'
 import { ChevronLeft } from '@/app/components/icons'
+import RecoveryCodes from '@/app/components/RecoveryCodes'
 
 export default function EditProfilePage() {
   const router = useRouter()
@@ -143,6 +144,10 @@ export default function EditProfilePage() {
           {saving ? 'Сохраняем…' : 'Сохранить'}
         </button>
       </form>
+
+      <div className="mt-8">
+        <RecoveryCodes />
+      </div>
     </main>
   )
 }

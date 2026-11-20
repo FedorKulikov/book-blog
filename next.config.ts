@@ -55,6 +55,7 @@ const nextConfig: NextConfig = {
       { source: '/forgot-password', headers: noindex },
       { source: '/auth/confirm', headers: noindex },
       { source: '/auth/reset', headers: noindex },
+      { source: '/recover-account', headers: noindex },
       { source: '/welcome', headers: noindex },
       { source: '/profile/edit', headers: noindex },
       { source: '/messages/:path*', headers: noindex },

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
+import CodesReveal from '@/app/components/CodesReveal'
 
 type UsernameStatus = 'idle' | 'checking' | 'free' | 'taken'
 
@@ -33,6 +34,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [codes, setCodes] = useState<string[] | null>(null)
 
   // Живая проверка занятости имени (с дебаунсом, чтобы не дёргать БД на каждый символ)
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle')
@@ -131,14 +133,60 @@ export default function SignupPage() {
     if (signInError) {
       setError('Регистрация прошла, но войти не удалось. ' + humanizeError(signInError.message))
       setLoading(false)
-    } else {
-      router.push('/welcome')
-      router.refresh()
+      return
     }
+
+    // Почта в проекте не подтверждается, поэтому резервные коды — единственный
+    // способ вернуть доступ. Выдаём их сразу; если сервер восстановления не
+    // настроен, регистрация всё равно завершается успешно.
+    try {
+      const res = await fetch('/api/recovery/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { codes?: string[] }
+
+      if (res.ok && Array.isArray(data.codes)) {
+        setCodes(data.codes)
+        setLoading(false)
+        return
+      }
+    } catch {
+      // не блокируем регистрацию из-за кодов
+    }
+
+    router.push('/welcome')
+    router.refresh()
   }
 
   const submitDisabled =
     loading || usernameStatus === 'taken' || usernameStatus === 'checking'
+
+  if (codes) {
+    return (
+      <main className="p-4 md:p-8 flex justify-center">
+        <div className="w-full max-w-md">
+          <h1 className="text-2xl font-bold mb-2 text-emerald-dark">
+            Аккаунт создан
+          </h1>
+          <p className="text-sm text-brown/70 mb-4">
+            Это единственный момент, когда резервные коды видны. Если потеряете
+            пароль, доступ можно будет вернуть по имени пользователя и одному
+            из этих кодов — почта для этого не нужна.
+          </p>
+          <CodesReveal
+            codes={codes}
+            doneLabel="Продолжить"
+            onDone={() => {
+              router.push('/welcome')
+              router.refresh()
+            }}
+          />
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="p-4 md:p-8 flex justify-center">

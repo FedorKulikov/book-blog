@@ -1,0 +1,62 @@
+name: Test recovery flow
+
+# Сквозная проверка восстановления пароля по резервным кодам.
+# Поднимает реальный next start и настоящую базу, меняет пароль тестового
+# пользователя и проверяет вход с новым паролем. Тестовые пользователи
+# удаляются в конце прогона.
+#
+# Запуск: Actions → Test recovery flow → Run workflow.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SITE_URL: https://bukleb.ru
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      # Секрет живёт только в рамках прогона: в проде используется свой,
+      # и тестовый прогон не может повлиять на боевые коды.
+      - name: Сгенерировать секрет для прогона
+        run: echo "RECOVERY_CODE_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Сборка
+        run: npm run build
+
+      - name: Поднять сервер
+        run: |
+          nohup npx next start -p 3000 > /tmp/next.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -sf -o /dev/null http://127.0.0.1:3000/login; then
+              echo "сервер поднялся"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::сервер не поднялся"
+          tail -80 /tmp/next.log
+          exit 1
+
+      - name: Сценарии восстановления
+        run: npx tsx scripts/test-recovery.ts
+
+      - name: Лог сервера
+        if: always()
+        run: tail -120 /tmp/next.log
