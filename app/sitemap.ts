@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 // чтобы при отсутствии переменной карта не начала указывать на localhost.
 // Регулярка убирает случайный слэш в конце значения.
 const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL || 'https://book-blog-main.layero.app'
+  process.env.NEXT_PUBLIC_SITE_URL || 'https://bukleb.ru'
 ).replace(/\/+$/, '')
 
 type ProfileRow = {
