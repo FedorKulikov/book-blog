@@ -124,10 +124,13 @@ async function canSignIn(email: string, password: string): Promise<boolean> {
 }
 
 async function main() {
-  const a = await createUser('rec_a')
-  const b = await createUser('rec_b')
+  const created: string[] = []
 
   try {
+    const a = await createUser('rec_a')
+    created.push(a.id)
+    const b = await createUser('rec_b')
+    created.push(b.id)
     // ---------------------------------------------------------------- //
     // 1. Генерация                                                   //
     // ---------------------------------------------------------------- //
@@ -143,7 +146,7 @@ async function main() {
     check(
       'формат кода: 8 групп по 4',
       codesA.every(c => /^[0-9A-Z]{4}(-[0-9A-Z]{4}){7}$/.test(c)),
-      codesA[0],
+      `длина ${codesA[0].length}`,
     )
 
     // ---------------------------------------------------------------- //
@@ -250,9 +253,10 @@ async function main() {
 
     check('посты пользователя не тронуты', (postCount ?? 0) === 0, `постов ${postCount ?? 0}`)
   } finally {
-    // Чистим тестовых пользователей вместе с кодами (ON DELETE CASCADE)
-    await admin.auth.admin.deleteUser(a.id).catch(() => undefined)
-    await admin.auth.admin.deleteUser(b.id).catch(() => undefined)
+    // Чистим тестовых пользователей; коды уходят каскадом (ON DELETE CASCADE)
+    for (const id of created) {
+      await admin.auth.admin.deleteUser(id).catch(() => undefined)
+    }
   }
 
   console.log('')

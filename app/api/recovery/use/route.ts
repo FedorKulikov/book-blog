@@ -41,10 +41,27 @@ function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: NO_STORE })
 }
 
+/**
+ * IP клиента для лимитов.
+ *
+ * Берём ПОСЛЕДНИЙ адрес из X-Forwarded-For, а не первый: прокси дописывает
+ * в конец адрес, который видит сам, поэтому первое значение клиент может
+ * подделать своим заголовком, а последнее — то, что добавил доверенный прокси.
+ * x-real-ip — запасной вариант для платформ, которые его выставляют.
+ */
 function clientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) return forwarded.split(',')[0].trim()
-  return request.headers.get('x-real-ip') ?? 'unknown'
+
+  if (forwarded) {
+    const parts = forwarded
+      .split(',')
+      .map(part => part.trim())
+      .filter(Boolean)
+
+    if (parts.length > 0) return parts[parts.length - 1]
+  }
+
+  return request.headers.get('x-real-ip')?.trim() || 'unknown'
 }
 
 type FailuresRow = { ip_failures: number; user_failures: number }
