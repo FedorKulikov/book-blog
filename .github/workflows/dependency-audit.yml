@@ -13,11 +13,11 @@ on:
     - cron: '17 5 * * 2'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: dependency-audit-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   audit:
@@ -25,9 +25,26 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          persist-credentials: true
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Apply compatible dependency security fixes
+        if: github.event_name == 'pull_request' && github.head_ref == 'audit/npm-vulnerabilities' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          npm audit fix --ignore-scripts
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "security: update vulnerable dependency lockfile"
+            git push origin "HEAD:$GITHUB_HEAD_REF"
+          else
+            echo "No lockfile changes required."
+          fi
 
       - name: npm audit
         id: audit
@@ -61,8 +78,9 @@ jobs:
             a.name.localeCompare(b.name)
           )) {
             const advisories = (item.via ?? [])
-              .filter(v => typeof v === 'object')
-              .map(v => v.url ? `[${v.title ?? 'advisory'}](${v.url})` : (v.title ?? 'advisory'));
+              .map(v => typeof v === 'object'
+              ? (v.url ? `[${v.title ?? 'advisory'}](${v.url})` : (v.title ?? 'advisory'))
+              : String(v));
             const fix = item.fixAvailable === true ? 'yes (non-breaking)' :
               item.fixAvailable === false ? 'no automatic fix' :
               item.fixAvailable ? 'yes (may be breaking)' : 'unknown';
