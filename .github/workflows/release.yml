@@ -1,0 +1,60 @@
+name: Release to production
+
+# Выпуск: dev → main.
+#
+# Layero: у проекта ОДИН основной адрес (book-blog.layero.app) и по превью
+# на каждую ветку (<проект>-<ветка>.layero.app).
+#   • пуш в dev  → собирается превью book-blog-dev.layero.app, боевой адрес
+#                  не трогается — там смотрим, что получилось;
+#   • пуш в main → обновляется боевой адрес.
+# Поэтому рабочие правки идут в dev, а этот workflow — «кнопка выпуска».
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Введи yes, чтобы выпустить dev → main (обновит боевой адрес)'
+        required: true
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: dev → main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Проверка подтверждения
+        run: |
+          if [ "${{ inputs.confirm }}" != "yes" ]; then
+            echo "::error::нужно передать confirm=yes — иначе ничего не выпускаем"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Что именно выпускаем
+        run: |
+          echo "### dev → main" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          git log --oneline origin/main..origin/dev >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Merge dev → main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B main origin/main
+          git merge --no-ff origin/dev -m "release: dev → main ($(git rev-parse --short origin/dev))"
+          git push origin main
+
+          echo "main = $(git rev-parse --short HEAD)"
