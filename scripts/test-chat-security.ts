@@ -177,7 +177,7 @@ async function main() {
       throw new Error(`could not insert temporary message (${inserted.error?.code ?? 'unknown'})`)
     }
     const testMessageId = inserted.data.id
-    testMessageId = testMessageId
+    messageId = testMessageId
 
     const originalText = `temporary access-control smoke test ${stamp}`
 
