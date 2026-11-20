@@ -1,0 +1,50 @@
+name: Recovery verification
+
+on:
+  pull_request:
+    branches:
+      - ops/supabase-edge-deploy
+    paths:
+      - 'supabase/functions/**'
+      - 'lib/recovery.ts'
+      - 'scripts/test-recovery-hash.ts'
+      - '.github/workflows/recovery-verify.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: 2.9.8
+          cache: true
+
+      - name: Deno tests
+        run: deno test --allow-env supabase/functions/
+
+      - name: Deno type check
+        run: deno check supabase/functions/recovery/index.ts supabase/functions/auth-email-hook/index.ts
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Node recovery hash regression
+        run: npx tsx scripts/test-recovery-hash.ts
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
