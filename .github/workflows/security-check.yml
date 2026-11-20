@@ -207,6 +207,26 @@ jobs:
           if [ "$trig" != "0" ]; then
             echo "::warning::у $trig триггерных функций остался EXECUTE для anon — проверьте, нужен ли он"
           fi
+
+          # SECURITY DEFINER без фиксированного search_path: вызывающий может
+          # подсунуть свою схему и подменить объект, к которому функция
+          # обращается с правами владельца
+          nopath=$(psql "$DB_URL" -tA -c "
+            select count(*)
+            from pg_proc p
+            join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public' and p.prosecdef and p.proconfig is null;
+          ")
+          if [ "$nopath" != "0" ]; then
+            echo "::warning::у $nopath SECURITY DEFINER функций не задан search_path"
+            psql "$DB_URL" -c "
+              select p.proname, pg_get_function_identity_arguments(p.oid) as args
+              from pg_proc p
+              join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.prosecdef and p.proconfig is null
+              order by 1;
+            "
+          fi
           echo "функции: список выше, нарушений нет"
 
       - name: Итог
