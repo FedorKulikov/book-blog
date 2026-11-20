@@ -2,6 +2,7 @@
 // Данные и словари «Книжного портала». Один модуль на страницу и на фильтры,
 // чтобы серверный рендер и ссылки фильтра не разъехались.
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { parseTopicTerms } from '@/lib/trends'
 import { toPlainText, truncate } from '@/lib/text'
 
 /** Категории новостей. 'publisher' — витрина «Издательства». */
@@ -107,23 +108,37 @@ export function newsHref(filter: NewsFilter): string {
 }
 
 /**
- * Тема из URL (переход с чипса «Книжного радара»): «?topic=Букер».
+ * Тема из URL (переход с чипса «Книжного радара»).
  *
- * Значение уходит в SQL как часть `ilike`-шаблона, поэтому вырезаем всё,
- * что может сломать запрос или подменить шаблон: `%`, `_`, запятые, скобки,
- * кавычки и обратный слэш. Длину ограничиваем.
+ * Чипс приносит не ярлык, а список реальных подстрок: «букер|booker».
+ * Разбор и чистку делает общий модуль lib/trends.ts — там же лежит словарь
+ * «тема → подстроки», чтобы скрипт импорта и страницы не разъезжались.
  */
-export function parseNewsTopic(value: string | string[] | undefined): string | null {
+export function parseNewsTopics(value: string | string[] | undefined): string[] {
+  return parseTopicTerms(value)
+}
+
+/** Подпись темы для баннера: ярлык чипса («Книжные премии») */
+export function parseTopicLabel(
+  value: string | string[] | undefined,
+): string | null {
   const raw = Array.isArray(value) ? value[0] : value
   if (!raw) return null
 
   const cleaned = raw
-    .replace(/[%_,()"'`\\<>*]/g, ' ')
+    .replace(/[<>"'`\\]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 60)
 
   return cleaned.length >= 2 ? cleaned : null
+}
+
+/** Условие OR по нескольким подстрокам и полям (для `.or()` в PostgREST) */
+function topicExpression(terms: string[], fields: string[]): string {
+  return fields
+    .flatMap(field => terms.map(term => `${field}.ilike.%${term}%`))
+    .join(',')
 }
 
 /**
@@ -133,7 +148,7 @@ export function parseNewsTopic(value: string | string[] | undefined): string | n
 export async function fetchNewsFeed(
   supabase: SupabaseClient,
   filter: NewsFilter,
-  topic: string | null = null,
+  topics: string[] = [],
 ): Promise<NewsFeed> {
   let query = supabase
     .from('posts')
@@ -148,8 +163,8 @@ export async function fetchNewsFeed(
   }
 
   // Тема с радара: ищем по заголовку и тексту поста
-  if (topic) {
-    query = query.or(`title.ilike.%${topic}%,content.ilike.%${topic}%`)
+  if (topics.length > 0) {
+    query = query.or(topicExpression(topics, ['title', 'content']))
   }
 
   const { data, error } = await query
@@ -344,7 +359,7 @@ function deriveCategory(row: ExternalRow): NewsCategory {
 export async function fetchExternalNewsFeed(
   supabase: SupabaseClient,
   filter: NewsFilter,
-  topic: string | null = null,
+  topics: string[] = [],
   limit: number = NEWS_LIMIT * 3,
 ): Promise<{ items: PortalNewsItem[]; error: string | null }> {
   function buildQuery(select: string, useSqlFilter: boolean) {
@@ -359,8 +374,8 @@ export async function fetchExternalNewsFeed(
     }
 
     // Тема с радара: заголовок или краткое описание
-    if (topic) {
-      request = request.or(`title.ilike.%${topic}%,summary.ilike.%${topic}%`)
+    if (topics.length > 0) {
+      request = request.or(topicExpression(topics, ['title', 'summary']))
     }
 
     return request

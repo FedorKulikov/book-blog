@@ -3,12 +3,19 @@
 // и афиша. Всё на серверных запросах, с деградацией: если колонки или таблицы
 // ещё нет (миграция не применена) — блок просто не показывается.
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { trendSearchTerms, type TrendKind } from '@/lib/trends'
 
 /** Одна тема, имя или книжное название из трендов радара */
 export type TrendItem = {
   topic: string
-  kind: 'theme' | 'name' | 'book'
+  kind: TrendKind
   mentions: number
+  /**
+   * Чем искать эту тему в ленте. У книги и имени — само название,
+   * у темы — её реальные подстроки («Книжные премии» → award, prize, преми…),
+   * иначе поиск по ярлыку не находит ничего.
+   */
+  terms: string[]
 }
 
 /** Новость для блоков радара */
@@ -99,7 +106,7 @@ async function selectRows(
   return { rows: (first.data ?? []) as RadarRow[], error: null, degraded: false }
 }
 
-/** Тренды недели: темы и имена, которые чаще всего упоминались */
+/** Тренды: темы, книги и имена, которые чаще всего упоминались */
 export async function fetchTrends(
   supabase: SupabaseClient,
 ): Promise<TrendItem[]> {
@@ -114,7 +121,20 @@ export async function fetchTrends(
     return []
   }
 
-  return (data ?? []) as unknown as TrendItem[]
+  const rows = (data ?? []) as unknown as {
+    topic: string
+    kind: TrendKind
+    mentions: number
+  }[]
+
+  // Термины для поиска добавляем здесь: в базе лежит только ярлык,
+  // а по ярлыку лента ничего не найдёт (см. lib/trends.ts)
+  return rows.map(row => ({
+    topic: row.topic,
+    kind: row.kind,
+    mentions: row.mentions,
+    terms: trendSearchTerms(row.topic, row.kind),
+  }))
 }
 
 /** «Главное сейчас»: свежие новости за последние двое суток */

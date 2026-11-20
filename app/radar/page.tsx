@@ -1,7 +1,7 @@
-// app/radar/page.tsx
-// «Книжный радар» — дашборд книжного мира: тренды недели, главное сейчас,
-// мировая полка и афиша. Полностью серверная страница: данные приходят
-// готовыми в HTML, поисковики видят контент.
+﻿// app/radar/page.tsx
+// В«РљРЅРёР¶РЅС‹Р№ СЂР°РґР°СЂВ» вЂ” РґР°С€Р±РѕСЂРґ РєРЅРёР¶РЅРѕРіРѕ РјРёСЂР°: С‚СЂРµРЅРґС‹ РЅРµРґРµР»Рё, РіР»Р°РІРЅРѕРµ СЃРµР№С‡Р°СЃ,
+// РјРёСЂРѕРІР°СЏ РїРѕР»РєР° Рё Р°С„РёС€Р°. РџРѕР»РЅРѕСЃС‚СЊСЋ СЃРµСЂРІРµСЂРЅР°СЏ СЃС‚СЂР°РЅРёС†Р°: РґР°РЅРЅС‹Рµ РїСЂРёС…РѕРґСЏС‚
+// РіРѕС‚РѕРІС‹РјРё РІ HTML, РїРѕРёСЃРєРѕРІРёРєРё РІРёРґСЏС‚ РєРѕРЅС‚РµРЅС‚.
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
@@ -19,12 +19,12 @@ import {
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Книжный радар — что происходит в книжном мире',
+  title: 'РљРЅРёР¶РЅС‹Р№ СЂР°РґР°СЂ вЂ” С‡С‚Рѕ РїСЂРѕРёСЃС…РѕРґРёС‚ РІ РєРЅРёР¶РЅРѕРј РјРёСЂРµ',
   description:
-    'Тренды недели, главные книжные новости России и мира, афиша литературных событий.',
+    'РўСЂРµРЅРґС‹ РЅРµРґРµР»Рё, РіР»Р°РІРЅС‹Рµ РєРЅРёР¶РЅС‹Рµ РЅРѕРІРѕСЃС‚Рё Р РѕСЃСЃРёРё Рё РјРёСЂР°, Р°С„РёС€Р° Р»РёС‚РµСЂР°С‚СѓСЂРЅС‹С… СЃРѕР±С‹С‚РёР№.',
 }
 
-/** Заголовок для показа: русский, если редактор его вписал */
+/** Р—Р°РіРѕР»РѕРІРѕРє РґР»СЏ РїРѕРєР°Р·Р°: СЂСѓСЃСЃРєРёР№, РµСЃР»Рё СЂРµРґР°РєС‚РѕСЂ РµРіРѕ РІРїРёСЃР°Р» */
 function displayTitle(item: RadarNewsItem): string {
   return item.titleRu?.trim() ? item.titleRu : item.title
 }
@@ -48,8 +48,8 @@ function NewsRow({ item }: { item: RadarNewsItem }) {
               EN
             </span>
           )}
-          <span>{item.source ?? 'Медиа'}</span>
-          <span className="text-[#E2E2E0]/25">·</span>
+          <span>{item.source ?? 'РњРµРґРёР°'}</span>
+          <span className="text-[#E2E2E0]/25">В·</span>
           <span>{formatNewsDate(item.createdAt)}</span>
         </span>
 
@@ -96,37 +96,37 @@ export default async function RadarPage() {
     <main className="mx-auto w-full max-w-7xl px-4 py-8 md:px-8 md:py-12">
       <header className="mb-10">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#014b32] dark:text-[#E2E2E0]/60">
-          Книжный радар
+          РљРЅРёР¶РЅС‹Р№ СЂР°РґР°СЂ
         </p>
         <h1 className="font-playfair text-3xl font-bold leading-tight text-[#0E2931] dark:text-[#E2E2E0] md:text-5xl">
-          Что происходит в книжном мире
+          Р§С‚Рѕ РїСЂРѕРёСЃС…РѕРґРёС‚ РІ РєРЅРёР¶РЅРѕРј РјРёСЂРµ
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#4A2E27]/80 dark:text-[#E2E2E0]/70">
-          Автоматическая сводка: о чём пишут российские и зарубежные издания,
-          что случилось за последние сутки и куда пойти.
+          РђРІС‚РѕРјР°С‚РёС‡РµСЃРєР°СЏ СЃРІРѕРґРєР°: Рѕ С‡С‘Рј РїРёС€СѓС‚ СЂРѕСЃСЃРёР№СЃРєРёРµ Рё Р·Р°СЂСѓР±РµР¶РЅС‹Рµ РёР·РґР°РЅРёСЏ,
+          С‡С‚Рѕ СЃР»СѓС‡РёР»РѕСЃСЊ Р·Р° РїРѕСЃР»РµРґРЅРёРµ СЃСѓС‚РєРё Рё РєСѓРґР° РїРѕР№С‚Рё.
         </p>
       </header>
 
       {trends.length > 0 && (
         <section aria-labelledby="radar-trends" className="mb-12">
           <h2 id="radar-trends" className="sr-only">
-            О чём пишут
+            Рћ С‡С‘Рј РїРёС€СѓС‚
           </h2>
           <BlockHead
-            title="О чём пишут"
-            hint="темы, книги и имена по упоминаниям за месяц"
+            title="Рћ С‡С‘Рј РїРёС€СѓС‚"
+            hint="С‚РµРјС‹, РєРЅРёРіРё Рё РёРјРµРЅР° РїРѕ СѓРїРѕРјРёРЅР°РЅРёСЏРј Р·Р° РјРµСЃСЏС†"
           />
 
           <div className="flex flex-wrap gap-2">
             {themes.map(item => (
               <Link
                 key={`theme-${item.topic}`}
-                href={`/news?topic=${encodeURIComponent(item.topic)}`}
+                href={`/news?topic=${encodeURIComponent(item.terms.join('|'))}&label=${encodeURIComponent(item.topic)}`}
                 className="inline-flex items-baseline gap-2 rounded-full bg-[#014b32] px-4 py-2 text-sm font-medium text-[#E2E2E0] transition-colors hover:bg-[#0E2931]"
               >
                 {item.topic}
                 {item.mentions > 1 && (
-                  <span className="text-xs text-[#E2E2E0]/60">×{item.mentions}</span>
+                  <span className="text-xs text-[#E2E2E0]/60">Г—{item.mentions}</span>
                 )}
               </Link>
             ))}
@@ -134,13 +134,13 @@ export default async function RadarPage() {
             {books.map(item => (
               <Link
                 key={`book-${item.topic}`}
-                href={`/news?topic=${encodeURIComponent(item.topic)}`}
+                href={`/news?topic=${encodeURIComponent(item.terms.join('|'))}&label=${encodeURIComponent(item.topic)}`}
                 className="inline-flex items-baseline gap-2 rounded-full bg-[#681F2D] px-4 py-2 text-sm font-medium text-[#E2E2E0] transition-colors hover:bg-[#4A1520]"
-                title="Название книги"
+                title="РќР°Р·РІР°РЅРёРµ РєРЅРёРіРё"
               >
                 {item.topic}
                 {item.mentions > 1 && (
-                  <span className="text-xs text-[#E2E2E0]/60">×{item.mentions}</span>
+                  <span className="text-xs text-[#E2E2E0]/60">Г—{item.mentions}</span>
                 )}
               </Link>
             ))}
@@ -148,12 +148,12 @@ export default async function RadarPage() {
             {names.map(item => (
               <Link
                 key={`name-${item.topic}`}
-                href={`/news?topic=${encodeURIComponent(item.topic)}`}
+                href={`/news?topic=${encodeURIComponent(item.terms.join('|'))}&label=${encodeURIComponent(item.topic)}`}
                 className="inline-flex items-baseline gap-2 rounded-full border border-[#493344] bg-[#0E2931] px-4 py-2 text-sm text-[#E2E2E0] transition-colors hover:border-[#681F2D]"
               >
                 {item.topic}
                 {item.mentions > 1 && (
-                  <span className="text-xs text-[#E2E2E0]/50">×{item.mentions}</span>
+                  <span className="text-xs text-[#E2E2E0]/50">Г—{item.mentions}</span>
                 )}
               </Link>
             ))}
@@ -164,9 +164,9 @@ export default async function RadarPage() {
       {topNow.length > 0 && (
         <section aria-labelledby="radar-top" className="mb-12">
           <h2 id="radar-top" className="sr-only">
-            Главное сейчас
+            Р“Р»Р°РІРЅРѕРµ СЃРµР№С‡Р°СЃ
           </h2>
-          <BlockHead title="Главное сейчас" hint="свежее за двое суток" />
+          <BlockHead title="Р“Р»Р°РІРЅРѕРµ СЃРµР№С‡Р°СЃ" hint="СЃРІРµР¶РµРµ Р·Р° РґРІРѕРµ СЃСѓС‚РѕРє" />
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {topNow.map(item => (
@@ -179,11 +179,11 @@ export default async function RadarPage() {
       {world.length > 0 && (
         <section aria-labelledby="radar-world" className="mb-12">
           <h2 id="radar-world" className="sr-only">
-            Мировая полка
+            РњРёСЂРѕРІР°СЏ РїРѕР»РєР°
           </h2>
           <BlockHead
-            title="Мировая полка"
-            hint="зарубежные издания, перевод — редакторский"
+            title="РњРёСЂРѕРІР°СЏ РїРѕР»РєР°"
+            hint="Р·Р°СЂСѓР±РµР¶РЅС‹Рµ РёР·РґР°РЅРёСЏ, РїРµСЂРµРІРѕРґ вЂ” СЂРµРґР°РєС‚РѕСЂСЃРєРёР№"
           />
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -214,7 +214,7 @@ export default async function RadarPage() {
                   )}
 
                   <span className="mt-auto flex items-center justify-between gap-2 text-[11px] text-[#E2E2E0]/50">
-                    <span className="truncate">{item.source ?? 'Медиа'}</span>
+                    <span className="truncate">{item.source ?? 'РњРµРґРёР°'}</span>
                     <span className="flex items-center gap-1">
                       {formatNewsDate(item.createdAt)}
                       <ExternalLink size={11} strokeWidth={1.8} />
@@ -230,9 +230,9 @@ export default async function RadarPage() {
       {events.length > 0 && (
         <section aria-labelledby="radar-events">
           <h2 id="radar-events" className="sr-only">
-            Афиша
+            РђС„РёС€Р°
           </h2>
-          <BlockHead title="Афиша" hint="анонсы литературных событий" />
+          <BlockHead title="РђС„РёС€Р°" hint="Р°РЅРѕРЅСЃС‹ Р»РёС‚РµСЂР°С‚СѓСЂРЅС‹С… СЃРѕР±С‹С‚РёР№" />
 
           <div className="space-y-8">
             {events.map(bucket => (
@@ -254,10 +254,10 @@ export default async function RadarPage() {
       {trends.length === 0 && topNow.length === 0 && world.length === 0 && (
         <div className="rounded-3xl border border-[#493344] bg-[#0E2931] px-6 py-14 text-center">
           <h2 className="font-playfair text-2xl font-bold text-[#E2E2E0]">
-            Радар пока пуст
+            Р Р°РґР°СЂ РїРѕРєР° РїСѓСЃС‚
           </h2>
           <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[#E2E2E0]/60">
-            Данные появятся после ближайшего запуска импорта новостей.
+            Р”Р°РЅРЅС‹Рµ РїРѕСЏРІСЏС‚СЃСЏ РїРѕСЃР»Рµ Р±Р»РёР¶Р°Р№С€РµРіРѕ Р·Р°РїСѓСЃРєР° РёРјРїРѕСЂС‚Р° РЅРѕРІРѕСЃС‚РµР№.
           </p>
         </div>
       )}
@@ -267,7 +267,7 @@ export default async function RadarPage() {
           href="/news"
           className="text-sm text-[#014b32] transition-colors hover:text-[#0E2931] dark:text-[#E2E2E0]/70 dark:hover:text-[#E2E2E0]"
         >
-          Смотреть ленту новостей →
+          РЎРјРѕС‚СЂРµС‚СЊ Р»РµРЅС‚Сѓ РЅРѕРІРѕСЃС‚РµР№ в†’
         </Link>
       </div>
     </main>

@@ -13,7 +13,8 @@ import {
   fetchExternalNewsFeed,
   fetchNewsFeed,
   parseNewsFilter,
-  parseNewsTopic,
+  parseNewsTopics,
+  parseTopicLabel,
 } from './newsQuery'
 
 // Новости должны быть свежими: кеш страницы отключаем, SSR — на каждый запрос.
@@ -48,15 +49,16 @@ export async function generateMetadata({
 export default async function NewsPage({ searchParams }: NewsPageProps) {
   const params = await searchParams
   const filter = parseNewsFilter(params.category)
-  const topic = parseNewsTopic(params.topic)
+  const topics = parseNewsTopics(params.topic)
+  const topicLabel = parseTopicLabel(params.label) ?? topics[0] ?? null
 
   const supabase = await createSupabaseServerClient()
 
   // Две ленты параллельно: посты пользователей и автоматические новости из медиа.
   // Внешние приходят из external_news с проставленной рубрикой (см. импорт RSS).
   const [userFeed, externalFeed] = await Promise.all([
-    fetchNewsFeed(supabase, filter, topic),
-    fetchExternalNewsFeed(supabase, filter, topic),
+    fetchNewsFeed(supabase, filter, topics),
+    fetchExternalNewsFeed(supabase, filter, topics),
   ])
 
   const { hero, items } = buildPortalFeed(userFeed.posts, externalFeed.items)
@@ -97,11 +99,11 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
       <NewsFilterBar active={filter} />
 
       {/* Переход с чипса «Книжного радара»: показываем, по какой теме отобрали */}
-      {topic && (
+      {topicLabel && (
         <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-[#493344] bg-[#0E2931] px-4 py-3">
           <span className="text-sm text-[#E2E2E0]/70">
             Материалы по теме{' '}
-            <span className="font-medium text-[#E2E2E0]">«{topic}»</span>
+            <span className="font-medium text-[#E2E2E0]">«{topicLabel}»</span>
           </span>
 
           <Link
