@@ -21,6 +21,11 @@ on:
     # Понедельник, 04:00 UTC = 07:00 МСК
     - cron: '0 4 * * 1'
   workflow_dispatch:
+  # Сразу после каждой миграции: недельной проверки мало, если новая таблица
+  # создана с опасными правами — уязвимость проживёт до понедельника
+  workflow_run:
+    workflows: ['Apply DB migrations']
+    types: [completed]
 
 permissions:
   contents: read
@@ -135,26 +140,42 @@ jobs:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
+
+          # Таблицы: роли приложения не должны появляться в default ACL вовсе
           bad=$(psql "$DB_URL" -tA -c "
             select count(*)
             from pg_default_acl d
             where d.defaclrole = (select oid from pg_roles where rolname = 'postgres')
               and d.defaclnamespace = (select oid from pg_namespace where nspname = 'public')
               and d.defaclobjtype = 'r'
-              and d.defaclacl::text ~ '(anon|authenticated)=[^/]*[Dxtm]';
+              and d.defaclacl::text ~ '(anon|authenticated)=';
           ")
           if [ "$bad" != "0" ]; then
-            echo "::error::default privileges снова выдают новые таблицы с TRUNCATE/REFERENCES/TRIGGER/MAINTAIN"
+            echo "::error::новые таблицы по-прежнему получают права для anon/authenticated"
             psql "$DB_URL" -c "
               select r.rolname as creator, d.defaclobjtype, d.defaclacl::text
               from pg_default_acl d
               left join pg_roles r on r.oid = d.defaclrole
-              where d.defaclrole = (select oid from pg_roles where rolname = 'postgres')
-                and d.defaclnamespace = (select oid from pg_namespace where nspname = 'public');
+              where d.defaclnamespace = (select oid from pg_namespace where nspname = 'public');
             "
             exit 1
           fi
-          echo "default privileges: чистые"
+
+          # Функции: PUBLIC не должен получать EXECUTE по умолчанию
+          fn=$(psql "$DB_URL" -tA -c "
+            select count(*)
+            from pg_default_acl d
+            where d.defaclrole = (select oid from pg_roles where rolname = 'postgres')
+              and d.defaclnamespace = (select oid from pg_namespace where nspname = 'public')
+              and d.defaclobjtype = 'f'
+              and d.defaclacl::text ~ '(^|,)=X/';
+          ")
+          if [ "$fn" != "0" ]; then
+            echo "::error::новые функции получают EXECUTE роли PUBLIC по умолчанию"
+            exit 1
+          fi
+
+          echo "default privileges: таблицы закрыты, функции не уходят в PUBLIC"
 
       - name: SECURITY DEFINER функции (предупреждение)
         env:
