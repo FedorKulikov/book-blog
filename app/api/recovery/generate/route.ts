@@ -5,6 +5,7 @@
 // аннулирует все прежние коды, то есть действие по последствиям
 // сравнимо со сменой пароля.
 import { NextResponse } from 'next/server'
+import { isPreviewRequest } from '@/lib/env-guard'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import {
@@ -24,6 +25,10 @@ function json(body: unknown, status = 200) {
 }
 
 export async function POST(request: Request) {
+  if (isPreviewRequest(request)) {
+    return json({ error: 'not_available_on_preview' }, 404)
+  }
+
   const supabase = await createSupabaseServerClient()
   const {
     data: { user },

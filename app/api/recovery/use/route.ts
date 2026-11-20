@@ -13,6 +13,7 @@
 // Внешние сообщения об ошибке одинаковы для «нет такого пользователя»,
 // «неверный код» и «код уже использован» — иначе это оракул перебора.
 import { NextResponse } from 'next/server'
+import { isPreviewRequest } from '@/lib/env-guard'
 import { getAdminClient } from '@/lib/supabase/admin'
 import {
   MIN_PASSWORD_LENGTH,
@@ -67,6 +68,10 @@ function clientIp(request: Request): string {
 type FailuresRow = { ip_failures: number; user_failures: number }
 
 export async function POST(request: Request) {
+  if (isPreviewRequest(request)) {
+    return json({ error: 'Восстановление по коду доступно только на bukleb.ru' }, 404)
+  }
+
   if (!isRecoveryConfigured()) {
     return json({ error: 'Восстановление по резервному коду временно недоступно' }, 503)
   }
