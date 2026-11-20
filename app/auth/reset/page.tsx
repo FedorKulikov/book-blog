@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 
-const MIN_PASSWORD = 6
+const MIN_PASSWORD = 8
 
 export default function ResetPasswordPage() {
   const router = useRouter()

@@ -9,6 +9,8 @@ import CodesReveal from '@/app/components/CodesReveal'
 
 type UsernameStatus = 'idle' | 'checking' | 'free' | 'taken'
 
+const MIN_PASSWORD = 8
+
 /**
  * Ошибки уникальности username приходят из БД (UNIQUE-констрейнт
  * profiles_username_key) — между клиентской проверкой и вставкой имя
@@ -84,6 +86,11 @@ export default function SignupPage() {
     setError(null)
 
     const cleanUsername = username.trim()
+
+    if (password.length < MIN_PASSWORD) {
+      setError(`Пароль должен быть не короче ${MIN_PASSWORD} символов`)
+      return
+    }
 
     // Имя занято — не отправляем форму даже если пользователь нажал Enter
     if (usernameStatus === 'taken') {
@@ -274,9 +281,9 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={MIN_PASSWORD}
               className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
-              placeholder="Минимум 6 символов"
+              placeholder={`Минимум ${MIN_PASSWORD} символов`}
             />
           </div>
 

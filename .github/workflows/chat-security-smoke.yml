@@ -8,6 +8,12 @@ on:
       - 'scripts/test-chat-security.ts'
       - '.github/workflows/chat-security-smoke.yml'
       - 'supabase/migrations/**'
+      - 'app/signup/page.tsx'
+      - 'app/auth/reset/page.tsx'
+      - 'app/recover-account/page.tsx'
+      - 'app/api/recovery/redeem/route.ts'
+      - 'lib/recovery.ts'
+      - 'lib/errors.ts'
 
 permissions:
   contents: read
@@ -31,6 +37,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
 
       - name: Read-only Auth password posture
         continue-on-error: true
