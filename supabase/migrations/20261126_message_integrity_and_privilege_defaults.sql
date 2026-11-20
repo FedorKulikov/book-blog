@@ -65,14 +65,33 @@ create trigger messages_protect_fields
 alter default privileges for role postgres in schema public
   revoke truncate, references, trigger on tables from anon, authenticated;
 
-alter default privileges for role supabase_admin in schema public
-  revoke truncate, references, trigger on tables from anon, authenticated;
-
 alter default privileges for role postgres in schema public
   revoke update on sequences from anon, authenticated;
 
-alter default privileges for role supabase_admin in schema public
-  revoke update on sequences from anon, authenticated;
+-- Для роли supabase_admin изменить defaults нельзя: наш пользователь
+-- (postgres) не является её членом, а Supabase не даёт такой возможности.
+-- Поэтому пробуем и, если прав нет, продолжаем — расхождение поймает
+-- еженедельный security-check в CI, который сравнит фактические
+-- default privileges с ожидаемым набором.
+do $$
+begin
+  begin
+    execute 'alter default privileges for role supabase_admin in schema public '
+         || 'revoke truncate, references, trigger on tables from anon, authenticated';
+  exception
+    when insufficient_privilege then
+      raise notice 'нет прав менять default privileges supabase_admin (таблицы) — пропущено';
+  end;
+
+  begin
+    execute 'alter default privileges for role supabase_admin in schema public '
+         || 'revoke update on sequences from anon, authenticated';
+  exception
+    when insufficient_privilege then
+      raise notice 'нет прав менять default privileges supabase_admin (последовательности) — пропущено';
+  end;
+end;
+$$;
 
 -- ------------------------------------------------------------------ --
 -- 3. Существующие последовательности                                --
