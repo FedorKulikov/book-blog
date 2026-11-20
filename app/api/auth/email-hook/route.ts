@@ -38,9 +38,16 @@ const UNDELIVERED_ACTIONS = new Set([
   'reauthentication',
 ])
 
-/** Успех по контракту Supabase Auth Hooks: пустой HTTP 200 */
+/**
+ * Успех по контракту Supabase Auth Hooks.
+ *
+ * Тело пустое по смыслу, но с Content-Type: application/json и телом {}:
+ * клиент хуков в GoTrue отклоняет ответ без JSON Content-Type
+ * (hook_payload_invalid_content_type), и тогда recovery возвращает 400
+ * для существующего адреса — то есть появляется оракул перечисления.
+ */
 function ok() {
-  return new NextResponse(null, {
+  return NextResponse.json({}, {
     status: 200,
     headers: { 'Cache-Control': 'no-store' },
   })
