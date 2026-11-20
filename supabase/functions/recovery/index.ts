@@ -231,7 +231,7 @@ async function handleRedeem(request: Request): Promise<Response> {
       'consume_recovery_code',
       {
         p_user_id: userId,
-        p_code_hash: hashCode(normalized, secret),
+        p_code_hash: await hashCode(normalized, secret),
         p_ip_hash: ipHash,
       },
     )
