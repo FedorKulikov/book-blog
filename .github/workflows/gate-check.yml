@@ -1,11 +1,30 @@
-name: Gate check
+name: Gate check (temporary)
 
-# Временный read-only гейт перед переносом Recovery/Hook в Edge Functions.
-# Ничего не создаёт и не меняет: только читает список функций, имена
-# секретов и текущую конфигурацию Send Email Hook.
+# ВРЕМЕННЫЙ read-only гейт: единственный GET к списку Edge Functions.
+# Ничего не создаёт, не меняет и не разворачивает.
+#
+# Запускается однократно по push в dev при изменении этого файла.
+# Без actions/checkout и без сторонних Actions: на раннере нет кода
+# приложения, используются только предустановленные curl и jq.
+#
+# Токен берётся из secrets в переменную окружения и нигде не печатается.
+# Тело ответа API не выводится: печатаются только HTTP-код, записи
+# о функциях и итоговый статус.
+#
+# Запросы к /secrets и /config/auth сюда намеренно НЕ включены: эти API
+# могут отдавать реальные значения секретов, и передавать их в CI не нужно.
+# Имена Function Secrets и конфигурацию Auth Hook владелец проверяет
+# в Supabase Dashboard.
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - dev
+    paths:
+      - '.github/workflows/gate-check.yml'
+
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -17,38 +36,54 @@ jobs:
       T: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
     steps:
-      - name: Edge Functions
+      - name: Functions list (read-only)
+        shell: bash
         run: |
+          set +x
           set -uo pipefail
-          echo "== GET /functions =="
-          curl -sS -w '\nHTTP:%{http_code}\n' -H "Authorization: Bearer $T" \
-            "https://api.supabase.com/v1/projects/$REF/functions"
+          tmp=/tmp/gate_functions.json
+          trap 'rm -f "$tmp"' EXIT
 
-      - name: Function Secrets (только имена)
-        run: |
-          set -uo pipefail
-          echo "== GET /secrets =="
-          curl -sS -H "Authorization: Bearer $T" \
-            "https://api.supabase.com/v1/projects/$REF/secrets" \
-            | python3 -c "import json,sys
-try:
-    d=json.load(sys.stdin)
-    if isinstance(d,dict):
-        print('ERROR:', d.get('message'))
-    else:
-        print('names:', [x.get('name') for x in d])
-except Exception as e:
-    print('parse error:', e)"
+          if [ -z "${T:-}" ]; then
+            echo "missing_secret: SUPABASE_ACCESS_TOKEN"
+            exit 1
+          fi
 
-      - name: Auth Hook config (без значений)
-        run: |
-          set -uo pipefail
-          echo "== GET /config/auth (hook) =="
-          curl -sS -H "Authorization: Bearer $T" \
-            "https://api.supabase.com/v1/projects/$REF/config/auth" \
-            | python3 -c "import json,sys
-d=json.load(sys.stdin)
-print('hook_send_email_enabled:', d.get('hook_send_email_enabled'))
-print('hook_send_email_uri:', d.get('hook_send_email_uri'))
-print('hook_secret_set:', bool(d.get('hook_send_email_secrets')))
-print('mailer_autoconfirm:', d.get('mailer_autoconfirm'))"
+          for tool in curl jq; do
+            command -v "$tool" >/dev/null 2>&1 || { echo "missing_tool: $tool"; exit 1; }
+          done
+
+          url="https://api.supabase.com/v1/projects/$REF/functions"
+
+          code=$(curl -sS --connect-timeout 10 --max-time 30 \
+            -o "$tmp" -w '%{http_code}' \
+            -H "Authorization: Bearer $T" "$url") || {
+            echo "functions_curl_failed"
+            exit 1
+          }
+
+          echo "functions_http: $code"
+          if [ "$code" != "200" ]; then
+            exit 1
+          fi
+
+          # Строгая проверка схемы: корень — массив, каждый элемент —
+          # объект с непустым slug, строковым status и булевым verify_jwt.
+          # Любое отклонение завершает workflow с ненулевым кодом.
+          if ! jq -e '
+            type == "array" and
+            all(.[];
+              type == "object" and
+              (.slug | type == "string" and length > 0) and
+              (.status | type == "string") and
+              (.verify_jwt | type == "boolean")
+            )
+          ' "$tmp" >/dev/null 2>&1; then
+            echo "functions_schema_invalid"
+            exit 1
+          fi
+
+          jq -r '.[] | "fn: \(.slug) | verify_jwt: \(.verify_jwt) | status: \(.status)"' "$tmp" || exit 1
+          jq -r '"total_functions: \(length)"' "$tmp" || exit 1
+
+          echo "functions_read: ok; manual_review_required"
