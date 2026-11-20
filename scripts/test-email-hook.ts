@@ -180,13 +180,14 @@ async function main() {
   const unknown = await postHook(payloadFor('something_new'))
   check('неизвестное событие — 501', unknown.status === 501, `статус ${unknown.status}`)
 
-  const invalidJson = await fetch(`${BASE}/api/auth/email-hook`, {
+  const invalidJsonTimestamp = Math.floor(Date.now() / 1000)
+  const invalidJson = await fetch(HOOK_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'webhook-id': 'msg_bad_json',
-      'webhook-timestamp': String(Math.floor(Date.now() / 1000)),
-      'webhook-signature': `v1,${sign('msg_bad_json', Math.floor(Date.now() / 1000), 'not-json')}`,
+      'webhook-timestamp': String(invalidJsonTimestamp),
+      'webhook-signature': `v1,${sign('msg_bad_json', invalidJsonTimestamp, 'not-json')}`,
     },
     body: 'not-json',
   })
