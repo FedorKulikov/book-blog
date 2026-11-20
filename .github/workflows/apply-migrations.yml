@@ -1,0 +1,102 @@
+name: Apply DB migrations
+
+# Одноразовый (но переиспользуемый) воркфлоу для применения SQL-миграций.
+#
+# Зачем: DDL нельзя выполнить через PostgREST (anon/service_role ключи
+# не умеют CREATE/ALTER). А секрет SUPABASE_DB_URL уже лежит в репозитории
+# и используется в backup.yml — значит подключение к базе из CI работает.
+# Здесь тот же секрет применяется к файлам миграций, и пароль никуда
+# не выводится: он живёт только в переменной окружения шага.
+#
+# Файлы миграций написаны идемпотентно (if not exists / drop ... if exists),
+# поэтому повторный запуск безопасен.
+
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: 'Файлы миграций через пробел'
+        required: false
+        default: >-
+          supabase/migrations/20261122_external_news_category.sql
+          supabase/migrations/20261123_radar_foreign_and_trends.sql
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-migrations
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: psql → supabase
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure psql
+        run: |
+          if command -v psql >/dev/null 2>&1; then
+            psql --version
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+            psql --version
+          fi
+
+      - name: Apply migrations
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          FILES: ${{ inputs.files }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::секрет SUPABASE_DB_URL не задан"
+            exit 1
+          fi
+          for f in $FILES; do
+            if [ ! -f "$f" ]; then
+              echo "::error::нет файла $f"
+              exit 1
+            fi
+            echo "::group::применяю $f"
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
+
+      - name: Verify schema
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          FILES: ${{ inputs.files }}
+        run: |
+          set -euo pipefail
+          echo "::group::колонки external_news"
+          psql "$DB_URL" -c "
+            select column_name, data_type, is_nullable
+            from information_schema.columns
+            where table_schema = 'public' and table_name = 'external_news'
+            order by ordinal_position;
+          "
+          echo "::endgroup::"
+
+          echo "::group::распределение по рубрикам и языкам"
+          psql "$DB_URL" -c "
+            select news_category, lang, count(*)
+            from public.external_news
+            group by 1, 2
+            order by 3 desc;
+          "
+          echo "::endgroup::"
+
+          echo "::group::тренды"
+          psql "$DB_URL" -c "
+            select topic, kind, mentions
+            from public.news_trends
+            order by mentions desc
+            limit 10;
+          " || echo "таблица news_trends пока пуста — заполнится при импорте"
+          echo "::endgroup::"
