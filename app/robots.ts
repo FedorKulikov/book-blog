@@ -10,6 +10,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: [
         '/admin',
+        '/news/new',
         '/messages',
         '/profile/edit',
         '/support',

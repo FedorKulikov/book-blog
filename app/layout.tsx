@@ -104,7 +104,9 @@ export default function RootLayout({
         />
         <div className="layout-wrapper">
           <Sidebar />
-          <main className="main-content pb-16 lg:pb-0">{children}</main>
+          {/* div, а не main: каждая страница приносит свой <main>,
+              а вложенные основные области ломают landmark-навигацию */}
+          <div className="main-content pb-16 lg:pb-0">{children}</div>
           <MobileNav />
         </div>
         {/* Яндекс.Метрика: скрипт грузится после интерактива, ID из NEXT_PUBLIC_YANDEX_METRIKA_ID */}

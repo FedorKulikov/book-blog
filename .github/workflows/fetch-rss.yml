@@ -8,6 +8,11 @@ on:
     - cron: '0 15 * * *'
   # Оставляем ручной запуск: кнопка Run workflow в Actions
   workflow_dispatch:
+    inputs:
+      args:
+        description: 'Аргументы скрипта: пусто (импорт из лент) или --reclassify'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -45,4 +50,12 @@ jobs:
           # Источники заданы в скрипте («Литературная карта» и Эксмо).
           # Свой список можно передать через переменную репозитория RSS_FEED_URLS.
           RSS_FEED_URLS: ${{ vars.RSS_FEED_URLS }}
-        run: npx tsx scripts/fetch-rss-news.ts
+          ARGS: ${{ inputs.args }}
+        run: |
+          set -euo pipefail
+          # Белый список аргументов: ввод из интерфейса не должен попадать в shell как есть
+          case "${ARGS:-}" in
+            ''|--reclassify|--dry-run) ;;
+            *) echo "::error::недопустимые аргументы: ${ARGS}"; exit 1 ;;
+          esac
+          npx tsx scripts/fetch-rss-news.ts ${ARGS:-}

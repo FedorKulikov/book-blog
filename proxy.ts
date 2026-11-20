@@ -14,8 +14,22 @@ import type { User } from '@supabase/supabase-js' // только тип, в б�
 
 const ADMIN_PREFIX = '/admin'
 
+/**
+ * Страницы, которые требуют входа, но не роли.
+ * /news/new — форма создания новости: гостя надо разворачивать на /login
+ * НА СЕРВЕРЕ. Раньше это делал клиентский useEffect, и краулер без JS
+ * получал пустую страницу «Загрузка…».
+ */
+const AUTH_PREFIXES = ['/news/new']
+
 function isAdminRoute(pathname: string): boolean {
   return pathname === ADMIN_PREFIX || pathname.startsWith(`${ADMIN_PREFIX}/`)
+}
+
+function isAuthRoute(pathname: string): boolean {
+  return AUTH_PREFIXES.some(
+    prefix => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  )
 }
 
 /**
@@ -41,6 +55,7 @@ function redirectWithCookies(
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const adminRoute = isAdminRoute(pathname)
+  const authRoute = isAuthRoute(pathname)
 
   let response = NextResponse.next({ request })
 
@@ -55,7 +70,11 @@ export async function proxy(request: NextRequest) {
     // Гость на /admin уходит на логин сразу: ни клиента, ни запроса к БД.
     // (Пускать его на страницу «чтобы сработала клиентская проверка» — лишний
     // рендер админки в HTML плюс круг до Auth; редирект и безопаснее, и дешевле.)
-    if (adminRoute) return NextResponse.redirect(new URL('/login', request.url))
+    // Форма создания новости тоже требует входа — редирект на сервере,
+    // а не в клиентском useEffect: иначе краулер видит «Загрузка…».
+    if (adminRoute || authRoute) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
     return response
   }
 
@@ -109,13 +128,17 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  // ---- Защита /admin (только для этих маршрутов, чтобы не тратить запрос к БД) ----
-  if (!adminRoute) return response
+  // ---- Защита приватных маршрутов ----
+  // Роль проверяем только для /admin: остальным достаточно факта входа.
+  if (!adminRoute && !authRoute) return response
 
   if (!user) {
     // Кука есть, но токен невалиден/просрочен — как аноним
     return redirectWithCookies('/login', request, response)
   }
+
+  // Форме /news/new роль не нужна
+  if (!adminRoute) return response
 
   const { data: profile, error: roleError } = await supabase
     .from('profiles')

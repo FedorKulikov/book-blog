@@ -104,7 +104,11 @@ const DEFAULT_FEEDS: FeedSource[] = [
     label: 'Издательство АСТ',
     siteUrl: 'https://ast.ru/',
     defaultType: 'Новость',
-    category: 'publisher',
+    // Было 'publisher' — из-за этого ВСЁ из ленты АСТ («как писать ОГЭ»,
+    // «день рождения Деда Мороза») попадало в «Издательства». Рубрика
+    // по умолчанию — обычные новости, а «Издательства» ставятся правилом
+    // по заголовку.
+    category: 'news',
     lang: 'ru',
   },
   {
@@ -268,6 +272,13 @@ const BACKFILL = process.argv.includes('--backfill')
 
 /** --purge-foreign: удалить из базы записи, в заголовке которых нет кириллицы */
 const PURGE_FOREIGN = process.argv.includes('--purge-foreign')
+
+/**
+ * --reclassify: пересчитать рубрики у уже сохранённых записей по текущим
+ * правилам и удалить рекламные («скидки», «распродажа»). Нужен после правки
+ * правил: обычный импорт трогает только свежие материалы из лент.
+ */
+const RECLASSIFY = process.argv.includes('--reclassify')
 
 /**
  * Блог русскоязычный: заголовки без кириллицы (Soy un gato, Japanisch magisch
@@ -629,16 +640,25 @@ async function loadFeed(
 /* Фильтры записей                                                     */
 /* ------------------------------------------------------------------ */
 
-/** Коммерческий мусор: такие заголовки в ленте новостей не нужны */
+/**
+ * Коммерческий мусор: такие заголовки в ленте новостей не нужны.
+ *
+ * Берём основы слов, а не целые формы: раньше в списке было 'скидка',
+ * и заголовок «Скидки на книги издательства АСТ» проходил мимо фильтра,
+ * потому что в нём «скидки», а не «скидка».
+ */
 const STOP_WORDS = [
   'купить',
-  'акция',
-  'скидка',
-  'распродажа',
-  'промокод',
-  'доставка',
   'заказать',
   'товар',
+  'скидк',
+  'распродаж',
+  'промокод',
+  'доставк',
+  'дешев',
+  'акци',
+  'ценам',
+  'рубл',
 ]
 
 /** Домены магазинов: если лента ведёт туда, подменяем ссылку на сайт источника */
@@ -2132,10 +2152,118 @@ async function updateTrends(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Переклассификация сохранённых записей                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Пересчитывает рубрику у всех записей по текущим правилам и удаляет
+ * рекламные материалы. Нужен после правки CATEGORY_RULES/STOP_WORDS:
+ * обычный импорт пересобирает только свежие материалы из лент,
+ * а старые строки остаются с прежней (ошибочной) рубрикой.
+ */
+async function reclassify(): Promise<void> {
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+
+  if (!supabaseUrl || !serviceKey) {
+    logWarn('reclassify: нужны SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY')
+    return
+  }
+
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const { data, error } = await supabase
+    .from('external_news')
+    .select('id, title, source, news_category')
+    .limit(1000)
+
+  if (error) {
+    logWarn(`reclassify: не удалось прочитать записи (${error.message})`)
+    return
+  }
+
+  const rows = (data ?? []) as {
+    id: number
+    title: string | null
+    source: string | null
+    news_category: string | null
+  }[]
+
+  // Рубрика по умолчанию зависит от источника: у афиши это события,
+  // у остальных — новости. Поисковые ленты пишут в source имя издателя,
+  // для них источник не найдётся и сработает общий фолбэк.
+  const feedByLabel = new Map(FEEDS.map(feed => [feed.label, feed]))
+  const fallbackFeed: FeedSource = {
+    url: '',
+    label: 'Прочее',
+    siteUrl: '',
+    defaultType: 'Новость',
+    category: 'news',
+    lang: 'ru',
+  }
+
+  let updated = 0
+  let removed = 0
+
+  for (const row of rows) {
+    const title = (row.title ?? '').trim()
+
+    // Реклама и распродажи: такие записи не перекрашиваем, а убираем
+    if (hasStopWord(title)) {
+      if (DRY_RUN) {
+        log(`  [dry] удалил бы рекламу: ${title.slice(0, 70)}`)
+        removed++
+        continue
+      }
+      const { error: deleteError } = await supabase
+        .from('external_news')
+        .delete()
+        .eq('id', row.id)
+
+      if (!deleteError) removed++
+      continue
+    }
+
+    const item: FeedItemLike = { title }
+    const feed = feedByLabel.get(row.source ?? '') ?? fallbackFeed
+    const category = detectNewsCategory(item, feed)
+
+    if (category === row.news_category) continue
+
+    if (DRY_RUN) {
+      log(`  [dry] ${row.news_category ?? '—'} → ${category}: ${title.slice(0, 60)}`)
+      updated++
+      continue
+    }
+
+    const { error: updateError } = await supabase
+      .from('external_news')
+      .update({ news_category: category })
+      .eq('id', row.id)
+
+    if (!updateError) updated++
+  }
+
+  log(
+    `reclassify: записей ${rows.length}, рубрик изменено ${updated}, ` +
+      `рекламных удалено ${removed}${DRY_RUN ? ' (dry-run, без записи)' : ''}`,
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /* Entry point                                                         */
 /* ------------------------------------------------------------------ */
 
 async function main(): Promise<void> {
+  if (RECLASSIFY) {
+    log(`режим: reclassify${DRY_RUN ? ' (dry-run)' : ''}`)
+    await reclassify()
+    return
+  }
+
   if (PURGE_FOREIGN) {
     log(`режим: purge-foreign${DRY_RUN ? ' (dry-run)' : ''}`)
     await purgeForeignNews()
