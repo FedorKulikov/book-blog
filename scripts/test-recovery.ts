@@ -108,7 +108,7 @@ async function recover(
   payload: Record<string, unknown>,
   ip = '203.0.113.10',
 ): Promise<RecoverResult> {
-  const res = await fetch(`${BASE}/api/recovery/use`, {
+  const res = await fetch(`${BASE}/api/recovery/redeem`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
     body: JSON.stringify(payload),
