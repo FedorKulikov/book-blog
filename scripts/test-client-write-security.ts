@@ -27,6 +27,7 @@ const stamp = Date.now().toString(36)
 const password = 'DataSmoke!Pass2026'
 const users: TestUser[] = []
 const clients: Client[] = []
+const storageObjects: { bucket: string; path: string }[] = []
 let postId: string | null = null
 let bookId: string | null = null
 let commentId: string | null = null
@@ -83,6 +84,61 @@ async function main() {
     const [client, otherClient] = await Promise.all([signedIn(alice), signedIn(bob)])
     const anonymous = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } })
 
+    // Storage paths used by the UI are namespaced by the authenticated user's UUID.
+    // Probe all buckets with real JWTs; clean any unexpected successful writes.
+    const probeBlob = new Blob([`storage-smoke-${stamp}`], { type: 'image/png' })
+    async function uploadProbe(
+      target: Client,
+      bucket: 'avatars' | 'post-images' | 'chat-media',
+      path: string,
+      upsert = false,
+    ) {
+      const { error } = await target.storage.from(bucket).upload(path, probeBlob, {
+        contentType: 'image/png',
+        upsert,
+      })
+      if (!error) storageObjects.push({ bucket, path })
+      return error
+    }
+
+    const avatarPath = `${alice.id}/storage-smoke-${stamp}.png`
+    const avatarUpload = await uploadProbe(client, 'avatars', avatarPath)
+    check('owner can upload an avatar in their own folder', !avatarUpload, safeError(avatarUpload))
+    if (!avatarUpload) {
+      const avatarReplace = await uploadProbe(client, 'avatars', avatarPath, true)
+      check('owner can replace their own avatar with upsert', !avatarReplace, safeError(avatarReplace))
+    }
+
+    const postImageUpload = await uploadProbe(client, 'post-images', `${alice.id}/storage-smoke-${stamp}.png`)
+    check('owner can upload a post image in their own folder', !postImageUpload, safeError(postImageUpload))
+
+    const chatMediaUpload = await uploadProbe(client, 'chat-media', `${alice.id}/storage-smoke-${stamp}.png`)
+    check('owner can upload chat media in their own folder', !chatMediaUpload, safeError(chatMediaUpload))
+
+    for (const bucket of ['avatars', 'post-images', 'chat-media'] as const) {
+      const error = await uploadProbe(client, bucket, `${bob.id}/foreign-folder-probe-${stamp}.png`)
+      check(`authenticated user cannot upload into another user's ${bucket} folder`, Boolean(error), safeError(error))
+    }
+
+    for (const bucket of ['avatars', 'post-images', 'chat-media'] as const) {
+      const error = await uploadProbe(anonymous, bucket, `${alice.id}/anonymous-probe-${stamp}.png`)
+      check(`anonymous user cannot upload into ${bucket}`, Boolean(error), safeError(error))
+    }
+
+    const follow = await client.from('follows').insert({
+      follower_id: alice.id,
+      following_id: bob.id,
+    }).select('follower_id, following_id').single()
+    check('user can follow another profile', !follow.error && follow.data?.following_id === bob.id, safeError(follow.error))
+    if (follow.data) {
+      const otherDeleteFollow = await otherClient.from('follows')
+        .delete().eq('follower_id', alice.id).eq('following_id', bob.id).select('follower_id')
+      check('followed user cannot remove someone else’s follow', !otherDeleteFollow.error && (otherDeleteFollow.data?.length ?? 0) === 0, safeError(otherDeleteFollow.error))
+      const ownerUnfollow = await client.from('follows')
+        .delete().eq('follower_id', alice.id).eq('following_id', bob.id).select('follower_id')
+      check('follower can unfollow normally', !ownerUnfollow.error && ownerUnfollow.data?.length === 1, safeError(ownerUnfollow.error))
+    }
+
     // Consolidated public-read policy remains public, while user-owned
     // rows and writes still require an authenticated owner.
     const anonymousBooks = await anonymous.from('books').select('id').limit(1)
@@ -94,9 +150,22 @@ async function main() {
     const anonProfile = await anonymous.from('profiles').update({ bio: 'unauthorized' }).eq('id', alice.id)
     check('anon cannot update profiles', Boolean(anonProfile.error), safeError(anonProfile.error))
 
-    // Profile editing remains possible; role and system timestamps are protected.
-    const profileEdit = await client.from('profiles').update({ bio: `smoke-${stamp}` }).eq('id', alice.id)
-    check('owner can update their public bio', !profileEdit.error, safeError(profileEdit.error))
+    // Profile form writes its ordinary editable fields in one request.
+    const editedUsername = `data_edit_${stamp}`
+    const profileEdit = await client.from('profiles').update({
+      username: editedUsername,
+      bio: `smoke-${stamp}`,
+      avatar_url: null,
+      notifications_muted: true,
+    }).eq('id', alice.id).select('username, bio, avatar_url, notifications_muted').single()
+    check(
+      'owner can save the editable profile fields used by the profile form',
+      !profileEdit.error &&
+        profileEdit.data?.username === editedUsername &&
+        profileEdit.data?.bio === `smoke-${stamp}` &&
+        profileEdit.data?.notifications_muted === true,
+      safeError(profileEdit.error),
+    )
 
     const otherProfileEdit = await otherClient.from('profiles')
       .update({ bio: 'unauthorized profile change' }).eq('id', alice.id).select('id')
@@ -105,6 +174,14 @@ async function main() {
     const roleEscalation = await client.from('profiles').update({ role: 'admin' }).eq('id', alice.id)
     const roleAfter = await client.from('profiles').select('role').eq('id', alice.id).single()
     check('ordinary user cannot promote their own profile', !roleAfter.error && roleAfter.data?.role === 'user', safeError(roleEscalation.error))
+
+    const banEscalation = await client.from('profiles').update({ is_banned: true }).eq('id', alice.id)
+    const banAfter = await client.from('profiles').select('is_banned').eq('id', alice.id).single()
+    check(
+      'ordinary user cannot ban themselves through the profile API',
+      !banAfter.error && banAfter.data?.is_banned === false,
+      safeError(banEscalation.error),
+    )
 
     const profileTimestamp = await client.from('profiles').update({ created_at: '2099-01-01T00:00:00.000Z' }).eq('id', alice.id)
     check('profile created_at cannot be forged', Boolean(profileTimestamp.error), safeError(profileTimestamp.error))
@@ -164,6 +241,40 @@ async function main() {
     if (post.data?.id) postId = post.data.id
 
     if (postId) {
+      // Likes are intentionally allowed only on published posts.
+      const publishedPost = await anonymous.from('posts')
+        .select('id').eq('status', 'approved').limit(1).maybeSingle()
+      check('a public approved post is available for like flow', !publishedPost.error && Boolean(publishedPost.data?.id), safeError(publishedPost.error))
+      if (publishedPost.data?.id) {
+        const like = await client.from('likes').insert({
+          post_id: publishedPost.data.id,
+          user_id: alice.id,
+        }).select('user_id, post_id').single()
+        check('owner can like an approved public post', !like.error && like.data?.user_id === alice.id, safeError(like.error))
+        if (like.data) {
+          const otherDeleteLike = await otherClient.from('likes')
+            .delete().eq('post_id', publishedPost.data.id).eq('user_id', alice.id).select('user_id')
+          check('another user cannot remove an owned like', !otherDeleteLike.error && (otherDeleteLike.data?.length ?? 0) === 0, safeError(otherDeleteLike.error))
+          const ownerDeleteLike = await client.from('likes')
+            .delete().eq('post_id', publishedPost.data.id).eq('user_id', alice.id).select('user_id')
+          check('owner can remove their own like', !ownerDeleteLike.error && ownerDeleteLike.data?.length === 1, safeError(ownerDeleteLike.error))
+        }
+      }
+
+      const bookmark = await client.from('bookmarks').insert({
+        user_id: alice.id,
+        post_id: postId,
+      }).select('user_id, post_id').single()
+      check('owner can bookmark a post', !bookmark.error && bookmark.data?.user_id === alice.id, safeError(bookmark.error))
+      if (bookmark.data) {
+        const otherDeleteBookmark = await otherClient.from('bookmarks')
+          .delete().eq('post_id', postId).eq('user_id', alice.id).select('user_id')
+        check('another user cannot remove an owned bookmark', !otherDeleteBookmark.error && (otherDeleteBookmark.data?.length ?? 0) === 0, safeError(otherDeleteBookmark.error))
+        const ownerDeleteBookmark = await client.from('bookmarks')
+          .delete().eq('post_id', postId).eq('user_id', alice.id).select('user_id')
+        check('owner can remove their own bookmark', !ownerDeleteBookmark.error && ownerDeleteBookmark.data?.length === 1, safeError(ownerDeleteBookmark.error))
+      }
+
       const bobPrivatePost = await otherClient.from('posts').select('id').eq('id', postId)
       check('other user cannot read an owner pending post', !bobPrivatePost.error && (bobPrivatePost.data?.length ?? 0) === 0, safeError(bobPrivatePost.error))
 
@@ -309,6 +420,21 @@ async function main() {
     check('create_ticket RPC still works with column-scoped INSERT', !ticket.error && Boolean(ticket.data), safeError(ticket.error))
   } finally {
     for (const client of clients) await client.auth.signOut().catch(() => undefined)
+
+    const objectsByBucket = new Map<string, string[]>()
+    for (const object of storageObjects) {
+      const paths = objectsByBucket.get(object.bucket) ?? []
+      if (!paths.includes(object.path)) paths.push(object.path)
+      objectsByBucket.set(object.bucket, paths)
+    }
+    for (const [bucket, paths] of objectsByBucket) {
+      await admin.storage.from(bucket).remove(paths)
+    }
+
+    for (const user of users) {
+      await admin.from('notifications').delete().eq('user_id', user.id)
+      await admin.from('notifications').delete().eq('actor_id', user.id)
+    }
 
     for (const user of users) {
       await admin.from('action_log').delete().eq('user_id', user.id)

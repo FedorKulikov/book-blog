@@ -13,6 +13,7 @@ import {
   generateRecoveryCodes,
   hashCode,
   isRecoveryConfigured,
+  normalizeCode,
 } from '@/lib/recovery'
 
 export const runtime = 'nodejs'
@@ -83,7 +84,13 @@ export async function POST(request: Request) {
   }
 
   const codes = generateRecoveryCodes(CODES_PER_BATCH)
-  const hashes = codes.map(code => hashCode(code, secret))
+  const hashes = codes.map(code => {
+    const normalized = normalizeCode(code)
+    if (!normalized) {
+      throw new Error('Generated recovery code failed canonical validation')
+    }
+    return hashCode(normalized, secret)
+  })
 
   const { data, error } = await admin.rpc('replace_recovery_codes', {
     p_user_id: user.id,
