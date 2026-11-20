@@ -1772,9 +1772,12 @@ async function refreshNewsMeta(): Promise<void> {
 
     // 2. Сравниваем с og:image страницы: если там крупнее — берём её.
     //    Так лечится квадратное превью 95×95, которое Эксмо отдаёт в RSS.
-    //    Ограничиваем число запросов, чтобы прогон не растягивался.
-    if (ogRequests < OG_REFRESH_LIMIT) {
-      ogRequests++
+    //
+    //    Лимит считаем только для «улучшений»: записи БЕЗ обложки проверяем
+    //    всегда, иначе на базе из 50 записей до них очередь не доходила
+    //    (раньше счётчик тратился на первые 20 строк подряд).
+    if (!cover || ogRequests < OG_REFRESH_LIMIT) {
+      if (cover) ogRequests++
       const better = await pickBetterCover(row.url, cover)
       if (better) cover = better
     }
