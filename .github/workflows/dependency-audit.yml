@@ -1,0 +1,92 @@
+name: Dependency security audit
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/dependency-audit.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: npm audit
+        id: audit
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > "$RUNNER_TEMP/npm-audit.json"
+          audit_status=$?
+          set -e
+          echo "audit_status=$audit_status" >> "$GITHUB_OUTPUT"
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/npm-audit.json', 'utf8'));
+          const counts = report.metadata?.vulnerabilities ?? {};
+          const rows = Object.values(report.vulnerabilities ?? {});
+          const severity = ['critical', 'high', 'moderate', 'low', 'info'];
+          const out = [
+            '## npm audit',
+            '',
+            '| Severity | Count |',
+            '|---|---:|',
+            ...severity.map(level => `| ${level} | ${counts[level] ?? 0} |`),
+            '',
+            '| Package | Severity | Direct | Affected range | Fix available | Advisory |',
+            '|---|---|---:|---|---|---|',
+          ];
+
+          for (const item of rows.sort((a, b) =>
+            severity.indexOf(a.severity) - severity.indexOf(b.severity) ||
+            a.name.localeCompare(b.name)
+          )) {
+            const advisories = (item.via ?? [])
+              .filter(v => typeof v === 'object')
+              .map(v => v.url ? `[${v.title ?? 'advisory'}](${v.url})` : (v.title ?? 'advisory'));
+            const fix = item.fixAvailable === true ? 'yes (non-breaking)' :
+              item.fixAvailable === false ? 'no automatic fix' :
+              item.fixAvailable ? 'yes (may be breaking)' : 'unknown';
+            out.push(`| ${item.name} | ${item.severity} | ${item.isDirect ? 'yes' : 'no'} | ${item.range ?? '—'} | ${fix} | ${advisories.join('<br>') || '—'} |`);
+          }
+
+          if (rows.length === 0) out.push('| — | — | — | — | — | No known vulnerabilities |');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join('\n') + '\n');
+          NODE
+
+      - name: Fail on high or critical vulnerabilities
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/npm-audit.json', 'utf8'));
+          const counts = report.metadata?.vulnerabilities ?? {};
+          const high = (counts.high ?? 0) + (counts.critical ?? 0);
+          if (high > 0) {
+            console.error(`Found ${high} high/critical npm vulnerabilities.`);
+            process.exit(1);
+          }
+          console.log('No high or critical npm vulnerabilities.');
+          NODE
