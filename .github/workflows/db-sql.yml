@@ -1,0 +1,74 @@
+name: DB SQL
+
+# Произвольный SQL к базе через тот же секрет SUPABASE_DB_URL.
+#
+# Зачем: у агента нет пароля БД локально (он лежит только в секретах GitHub),
+# поэтому любые разовые запросы — проверки, правки данных, диагностика —
+# выполняются здесь. Пароль в лог не попадает.
+#
+# По умолчанию запрос выполняется в режиме «только чтение»:
+# обёртка begin + set transaction read only. Для записи нужно явно
+# передать readonly=false при запуске.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sql:
+        description: 'SQL-запрос (можно многострочный)'
+        required: true
+      readonly:
+        description: 'Только чтение (защита от случайной записи)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  query:
+    name: psql → supabase
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Ensure psql
+        run: |
+          if command -v psql >/dev/null 2>&1; then
+            psql --version
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+            psql --version
+          fi
+
+      - name: Prepare query
+        env:
+          SQL: ${{ inputs.sql }}
+          READONLY: ${{ inputs.readonly }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SQL:-}" ]; then
+            echo "::error::не передан параметр sql"
+            exit 1
+          fi
+          if [ "${READONLY}" = "true" ]; then
+            { echo 'begin;'; echo 'set transaction read only;'; printf '%s\n' "$SQL"; echo 'commit;'; } > /tmp/query.sql
+            echo "режим: только чтение"
+          else
+            printf '%s\n' "$SQL" > /tmp/query.sql
+            echo "режим: запись разрешена"
+          fi
+
+      - name: Run
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::секрет SUPABASE_DB_URL не задан"
+            exit 1
+          fi
+          echo "::group::SQL"
+          cat /tmp/query.sql
+          echo "::endgroup::"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -P pager=off -f /tmp/query.sql
