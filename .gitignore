@@ -47,3 +47,7 @@ app/.dshwolf/
 # Скриншоты проверки (dsh-browser)
 browser-screenshots/
 
+
+*.log
+.next-start.log
+
