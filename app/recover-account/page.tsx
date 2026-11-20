@@ -35,7 +35,7 @@ export default function RecoverAccountPage() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/recovery/use', {
+      const res = await fetch('/api/recovery/redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
