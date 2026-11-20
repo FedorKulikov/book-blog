@@ -1,132 +1,64 @@
 'use client'
 
 // app/forgot-password/page.tsx
-// Запрос ссылки на восстановление пароля.
 //
-// Письмо формирует Supabase. Ссылка в шаблоне должна вести на наш
-// /auth/confirm с типом recovery и параметром next — тогда после проверки
-// токена пользователь попадёт на форму нового пароля:
-//   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/auth/reset
-import { useState } from 'react'
+// Восстановление пароля по email отключено.
+//
+// Причина: подтверждение почты в проекте выключено, поэтому Supabase
+// помечает любой адрес подтверждённым автоматически. Владелец чужого
+// ящика мог запросить ссылку сброса и захватить чужой аккаунт.
+// Пока владение адресом не проверяется независимо, ссылка сброса —
+// это дыра, а не функция.
+//
+// Рабочий способ — одноразовые резервные коды: /recover-account.
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
-import { humanizeError } from '@/lib/errors'
-import { SITE_URL } from '@/lib/site'
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [error, setError] = useState('')
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      { redirectTo: `${SITE_URL}/auth/confirm?next=/auth/reset` },
-    )
-
-    setLoading(false)
-
-    if (resetError) {
-      setError(humanizeError(resetError.message))
-      return
-    }
-
-    // Всегда показываем одинаковый результат: иначе по ответу можно узнать,
-    // зарегистрирован ли такой адрес
-    setSent(true)
-  }
-
   return (
     <main className="p-4 md:p-8 flex justify-center">
       <div className="w-full max-w-md">
-        <h1 className="text-3xl font-bold mb-6 text-emerald-dark">
+        <h1 className="text-3xl font-bold mb-4 text-emerald-dark">
           🔑 Восстановление пароля
         </h1>
 
-        {sent ? (
-          <>
-            <p className="text-brown-dark/80 mb-4">
-              Если адрес <span className="font-medium">{email.trim()}</span>{' '}
-              зарегистрирован, письмо со ссылкой уже отправлено. Проверьте почту
-              и папку «Спам».
-            </p>
-            <p className="text-sm text-brown/60 mb-6">
-              Ссылка действует ограниченное время. Не пришло — запросите новое
-              письмо.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setSent(false)}
-                className="rounded-full border border-emerald-dark/20 px-5 py-2 text-sm text-brown-dark hover:border-emerald-mid transition-colors"
-              >
-                Отправить ещё раз
-              </button>
-              <Link
-                href="/login"
-                className="rounded-full bg-emerald-mid px-5 py-2 text-sm text-cream hover:bg-emerald-dark transition-colors"
-              >
-                Ко входу
-              </Link>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-brown/70 mb-6">
-              Укажите адрес, на который зарегистрирован аккаунт. Пришлём ссылку
-              для установки нового пароля.
-            </p>
+        <div className="rounded-xl border border-wine/25 bg-wine/5 p-4 mb-6">
+          <p className="text-sm text-brown-dark">
+            Восстановление по ссылке из письма <strong>отключено</strong>:
+            адреса при регистрации не подтверждаются, поэтому письмо могло бы
+            уйти владельцу чужого ящика.
+          </p>
+        </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="forgot-email"
-                  className="block text-sm font-medium mb-1 text-brown-dark"
-                >
-                  Email
-                </label>
-                <input
-                  id="forgot-email"
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
-                  placeholder="fedor@test.com"
-                />
-              </div>
+        <p className="text-brown-dark/80 mb-4">
+          Пароль восстанавливается по резервному коду — тому набору, который вы
+          сохранили при регистрации или создали в настройках профиля.
+        </p>
 
-              {error && <p className="text-wine text-sm">Ошибка: {error}</p>}
+        <ul className="text-sm text-brown/70 space-y-1 mb-6">
+          <li>• Имя пользователя</li>
+          <li>• Один резервный код</li>
+          <li>• Новый пароль</li>
+        </ul>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-emerald-mid text-cream py-2 rounded hover:bg-emerald-dark disabled:opacity-50 transition-colors"
-              >
-                {loading ? 'Отправляем…' : 'Отправить ссылку'}
-              </button>
-            </form>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/recover-account"
+            className="rounded-full bg-emerald-mid px-5 py-2.5 text-sm text-cream hover:bg-emerald-dark transition-colors"
+          >
+            Восстановить по резервному коду
+          </Link>
+          <Link
+            href="/login"
+            className="rounded-full border border-emerald-dark/20 px-5 py-2.5 text-sm text-brown-dark hover:border-emerald-mid transition-colors"
+          >
+            Ко входу
+          </Link>
+        </div>
 
-            <p className="mt-4 text-sm text-brown/70">
-              Вспомнили пароль?{' '}
-              <Link href="/login" className="text-wine hover:underline">
-                Войти
-              </Link>
-            </p>
-
-            <p className="mt-2 text-sm text-brown/70">
-              Нет доступа к почте?{' '}
-              <Link href="/recover-account" className="text-wine hover:underline">
-                Восстановить по резервному коду
-              </Link>
-            </p>
-          </>
-        )}
+        <p className="mt-6 text-sm text-brown/60">
+          Кодов нет? Восстановить доступ без них нельзя: аккаунт не связан с
+          подтверждённым адресом. Обратитесь к администрации.
+        </p>
       </div>
     </main>
   )

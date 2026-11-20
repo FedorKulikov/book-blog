@@ -74,15 +74,6 @@ export default function LoginPage() {
             />
           </div>
 
-          <div className="text-right">
-            <Link
-              href="/forgot-password"
-              className="text-sm text-brown/70 hover:text-wine hover:underline"
-            >
-              Забыли пароль?
-            </Link>
-          </div>
-
           {error && <p className="text-wine text-sm">Ошибка: {error}</p>}
 
           <button
