@@ -76,3 +76,26 @@ Deno.test('hashCode: хеш кода не совпадает с открытым
     'другой секрет — другой хеш',
   )
 })
+
+
+Deno.test('hashCode: форматированный и нормализованный код дают одинаковый хеш', async () => {
+  const [formatted] = generateRecoveryCodes(1)
+  const normalized = normalizeCode(formatted)
+  if (normalized === null) {
+    throw new Error('сгенерированный код должен нормализоваться')
+  }
+
+  const formattedHash = await hashCode(formatted, 'secret-one')
+  const normalizedHash = await hashCode(normalized, 'secret-one')
+  assertEqual(formattedHash, normalizedHash, 'дефисы не должны менять хеш')
+})
+
+Deno.test('hashCode: некорректный код отклоняется', async () => {
+  let rejected = false
+  try {
+    await hashCode('NOT-A-RECOVERY-CODE', 'secret-one')
+  } catch {
+    rejected = true
+  }
+  assert(rejected, 'некорректный код не должен хешироваться')
+})

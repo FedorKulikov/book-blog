@@ -123,11 +123,13 @@ export async function hmacHex(value: string, secret: string): Promise<string> {
     .join('')
 }
 
-/** Хеш кода: в базе лежит только он */
+/** Хеш кода: канонизируем ввод, в базе лежит только HMAC */
 export async function hashCode(
-  normalizedCode: string,
+  code: string,
   secret: string,
 ): Promise<string> {
+  const normalizedCode = normalizeCode(code)
+  if (!normalizedCode) throw new Error('Invalid recovery code format')
   return hmacHex(normalizedCode, secret)
 }
 

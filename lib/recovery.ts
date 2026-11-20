@@ -101,8 +101,10 @@ export function hmacHex(value: string, secret: string): string {
   return createHmac('sha256', secret).update(value).digest('hex')
 }
 
-/** Хеш кода: в базе лежит только он */
-export function hashCode(normalizedCode: string, secret: string): string {
+/** Хеш кода: канонизируем ввод, в базе лежит только HMAC */
+export function hashCode(code: string, secret: string): string {
+  const normalizedCode = normalizeCode(code)
+  if (!normalizedCode) throw new Error('Invalid recovery code format')
   return hmacHex(normalizedCode, secret)
 }
 
