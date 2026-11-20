@@ -7,17 +7,10 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
+      // Служебные страницы НЕ запрещаем сканировать: иначе робот не прочитает
+      // их X-Robots-Tag: noindex и может поставить URL в индекс без описания.
+      // Заголовок noindex для них выставляется в next.config.ts.
       allow: '/',
-      disallow: [
-        '/admin',
-        '/news/new',
-        '/messages',
-        '/profile/edit',
-        '/support',
-        '/welcome',
-        '/login',
-        '/signup',
-      ],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

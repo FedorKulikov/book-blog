@@ -238,10 +238,14 @@ function NewPostContent() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-sm font-medium mb-1 text-brown-dark">
+          <label
+            htmlFor="news-type"
+            className="block text-sm font-medium mb-1 text-brown-dark"
+          >
             Тип
           </label>
           <select
+            id="news-type"
             value={type}
             onChange={(e) => setType(e.target.value)}
             className="w-full border border-emerald-dark/15 rounded-lg px-3 py-2 bg-cream-warm/40 focus:outline-none focus:border-emerald-mid"
@@ -264,10 +268,14 @@ function NewPostContent() {
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-brown-dark">
+          <label
+            htmlFor="news-title"
+            className="block text-sm font-medium mb-1 text-brown-dark"
+          >
             Заголовок
           </label>
           <input
+            id="news-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -279,10 +287,14 @@ function NewPostContent() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-brown-dark">
+          <label
+            htmlFor="news-content"
+            className="block text-sm font-medium mb-1 text-brown-dark"
+          >
             Текст
           </label>
           <textarea
+            id="news-content"
             value={content}
             onChange={(e) => setContent(e.target.value)}
             required
@@ -296,10 +308,14 @@ function NewPostContent() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1 text-brown-dark">
+          <label
+            htmlFor="news-tags"
+            className="block text-sm font-medium mb-1 text-brown-dark"
+          >
             Теги
           </label>
           <input
+            id="news-tags"
             type="text"
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}

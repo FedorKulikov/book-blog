@@ -659,7 +659,23 @@ const STOP_WORDS = [
   'акци',
   'ценам',
   'рубл',
+  // Английские ленты приносят витрины скидок (Book Riot Deals of the Day)
+  'deals of the day',
+  'promo code',
+  // Совсем не книжное
+  'видеоигр',
+  'gta',
 ]
+
+/**
+ * Книжная лексика для англоязычных лент.
+ *
+ * Literary Hub и Book Riot — широкие издания: они пишут и о музыке
+ * («The Years When Gospel Artists Went Platinum»), и о видеоиграх.
+ * Пропускаем только материалы, в которых есть книжные слова.
+ */
+const EN_TOPIC_RE =
+  /\b(book|books|novel|novels|author|authors|writer|writers|poet|poetry|fiction|nonfiction|non-fiction|memoir|essay|essays|literary|literature|publish|publisher|publishers|publishing|bookstore|bookshop|library|librar|reading|reader|readers|manuscript|translation|translator|prize|award|bestsell|book club|paperback|hardcover|imprint|edition|shortlist|longlist|anthology)\b/i
 
 /** Домены магазинов: если лента ведёт туда, подменяем ссылку на сайт источника */
 const SHOP_HOSTS = ['litres.ru', 'chitai-gorod.ru']
@@ -789,6 +805,13 @@ function detectNewsType(item: FeedItemLike, feed: FeedSource): NewsType {
  * со слова «постанов», а не «анонс», и должны попадать в «События».
  */
 const CATEGORY_RULES: { re: RegExp; category: NewsCategoryValue }[] = [
+  {
+    // Обзоры, подборки и советы «что почитать» — это статьи, а не новинки.
+    // Правило стоит первым: «Книжные новинки для маркетологов: что стоит
+    // прочитать» не должно попадать в рубрику «Новинки».
+    re: /(подборк|что почитать|что стоит прочитать|что читать|рекомендательн|топ[- ]?\d|выбор редакции|гид по)/i,
+    category: 'news',
+  },
   {
     re: /(анонс|афиш|встреч|постанов|презентац|лекци|фестивал|ярмарк|выставк|концерт|чтен)/i,
     category: 'event',
@@ -1196,6 +1219,7 @@ function buildRows(
   skippedStopWords: number
   skippedLinks: number
   skippedArchive: number
+  skippedOffTopic: number
 } {
   const seen = new Set<string>()
   const rows: NewRow[] = []
@@ -1203,6 +1227,7 @@ function buildRows(
   let skippedStopWords = 0
   let skippedLinks = 0
   let skippedArchive = 0
+  let skippedOffTopic = 0
 
   for (const item of items) {
     const rawTitle = (item.title ?? '').trim()
@@ -1226,6 +1251,19 @@ function buildRows(
     if (hasStopWord(stripHtml(rawTitle))) {
       skippedStopWords++
       continue
+    }
+
+    // Английские ленты широкие: Literary Hub и Book Riot пишут и о музыке,
+    // и о видеоиграх. Пускаем только материалы с книжной лексикой.
+    if (feed.lang === 'en') {
+      const haystack = `${stripHtml(rawTitle)} ${stripHtml(
+        item.contentSnippet ?? item.description ?? '',
+      )}`
+
+      if (!EN_TOPIC_RE.test(haystack)) {
+        skippedOffTopic++
+        continue
+      }
     }
 
     // Ссылка: магазины → сайт источника, главные страницы → пропуск
@@ -1277,7 +1315,14 @@ function buildRows(
     })
   }
 
-  return { rows, skippedForeign, skippedStopWords, skippedLinks, skippedArchive }
+  return {
+    rows,
+    skippedForeign,
+    skippedStopWords,
+    skippedLinks,
+    skippedArchive,
+    skippedOffTopic,
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -2283,6 +2328,7 @@ async function main(): Promise<void> {
   let skippedStopWords = 0
   let skippedLinks = 0
   let skippedArchive = 0
+  let skippedOffTopic = 0
 
   for (const feed of FEEDS) {
     try {
@@ -2295,6 +2341,7 @@ async function main(): Promise<void> {
       skippedStopWords += result.skippedStopWords
       skippedLinks += result.skippedLinks
       skippedArchive += result.skippedArchive
+      skippedOffTopic += result.skippedOffTopic
 
       log(
         `«${feedTitle}» (${feed.label}): записей ${items.length}, принято ${limited.length}`,
@@ -2309,7 +2356,8 @@ async function main(): Promise<void> {
 
   log(
     `отфильтровано: иностранных ${skippedForeign}, стоп-слов ${skippedStopWords}, ` +
-      `пустых/главных ссылок ${skippedLinks}, архив ${skippedArchive}`,
+      `пустых/главных ссылок ${skippedLinks}, архив ${skippedArchive}, ` +
+      `не по теме ${skippedOffTopic}`,
   )
 
   // Дубли между лентами (одна новость может прийти из news и afisha)
