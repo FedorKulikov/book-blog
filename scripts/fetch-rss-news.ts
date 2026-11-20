@@ -1933,12 +1933,26 @@ async function updateTrends(): Promise<void> {
   // а при равной частоте выше ставим темы, потом книги, потом имена.
   const KIND_WEIGHT: Record<TrendKind, number> = { theme: 0, book: 1, name: 2 }
 
-  const top = [...counters.values()]
-    .sort((a, b) => {
-      if (b.mentions !== a.mentions) return b.mentions - a.mentions
-      return KIND_WEIGHT[a.kind] - KIND_WEIGHT[b.kind]
-    })
-    .slice(0, TREND_LIMIT)
+  // Ограничиваем каждый вид отдельно: иначе имена собственные (их больше всего)
+  // забивают список, и блок превращается в стену чипсов.
+  const PER_KIND_LIMIT: Record<TrendKind, number> = {
+    theme: 8,
+    book: 8,
+    name: 6,
+  }
+
+  const sorted = [...counters.values()].sort((a, b) => {
+    if (b.mentions !== a.mentions) return b.mentions - a.mentions
+    return KIND_WEIGHT[a.kind] - KIND_WEIGHT[b.kind]
+  })
+
+  const top: typeof sorted = []
+
+  for (const kind of ['theme', 'book', 'name'] as TrendKind[]) {
+    top.push(
+      ...sorted.filter(item => item.kind === kind).slice(0, PER_KIND_LIMIT[kind]),
+    )
+  }
 
   if (top.length === 0) {
     log(`тренды: за ${TREND_PERIOD_DAYS} дней ничего не нашлось`)
