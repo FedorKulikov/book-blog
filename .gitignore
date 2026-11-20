@@ -43,3 +43,7 @@ next-env.d.ts
 ui-check/
 .dshwolf/
 app/.dshwolf/
+
+# Скриншоты проверки (dsh-browser)
+browser-screenshots/
+
