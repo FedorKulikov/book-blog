@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'scripts/test-chat-security.ts'
+      - 'scripts/test-client-write-security.ts'
       - '.github/workflows/chat-security-smoke.yml'
       - 'supabase/migrations/**'
       - 'app/signup/page.tsx'
