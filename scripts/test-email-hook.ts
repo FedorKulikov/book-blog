@@ -171,30 +171,37 @@ async function main() {
   // ---------------------------------------------------------------- //
   // 7. Регистрация и вход не сломаны                               //
   // ---------------------------------------------------------------- //
-  const email = `hook-probe-${Date.now()}@example.com`
-  const password = 'ProbePass123!'
-  let createdId: string | null = null
+  const stamp = Date.now()
+  const shortEmail = `hook-short-${stamp}@example.com`
+  const email = `hook-probe-${stamp}@example.com`
+  const password = 'A1b2C3d4' // Exactly eight characters.
+  const createdIds: string[] = []
 
   try {
+    const shortSignup = await fetch(`${SUPA_URL}/auth/v1/signup`, {
+      method: 'POST',
+      headers: { apikey: ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: shortEmail, password: 'Short77' }),
+    })
+    const shortBody = (await shortSignup.json().catch(() => ({}))) as { user?: { id?: string } }
+    if (shortBody.user?.id) createdIds.push(shortBody.user.id)
+    check('Auth rejects passwords shorter than eight characters', shortSignup.status >= 400, `status ${shortSignup.status}`)
+
     const signupRes = await fetch(`${SUPA_URL}/auth/v1/signup`, {
       method: 'POST',
       headers: { apikey: ANON, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     })
-    // Сырой ответ GoTrue кладёт сессию на верхний уровень (access_token),
-    // а не в поле session — та обёртка есть только в supabase-js.
     const signupBody = (await signupRes.json().catch(() => ({}))) as {
       access_token?: string
       user?: { id?: string }
     }
-
-    createdId = signupBody.user?.id ?? null
+    if (signupBody.user?.id) createdIds.push(signupBody.user.id)
     const hasSession = Boolean(signupBody.access_token)
-
     check(
-      'регистрация без подтверждения почты работает',
+      'registration with the exact eight-character minimum works',
       signupRes.status === 200 && hasSession,
-      `статус ${signupRes.status}, сессия ${hasSession}, поля: ${Object.keys(signupBody).join(',')}`,
+      `status ${signupRes.status}, session ${hasSession}, fields: ${Object.keys(signupBody).join(',')}`,
     )
 
     const loginRes = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
@@ -202,11 +209,16 @@ async function main() {
       headers: { apikey: ANON, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     })
-    check('вход после регистрации работает', loginRes.status === 200, `статус ${loginRes.status}`)
+    check('login after registration works', loginRes.status === 200, `status ${loginRes.status}`)
+
+    const wrongLogin = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { apikey: ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: 'WrongPass123!' }),
+    })
+    check('wrong password does not authenticate', wrongLogin.status >= 400, `status ${wrongLogin.status}`)
   } finally {
-    if (createdId) {
-      await admin.auth.admin.deleteUser(createdId).catch(() => undefined)
-    }
+    for (const id of createdIds) await admin.auth.admin.deleteUser(id).catch(() => undefined)
   }
 
   console.log('')

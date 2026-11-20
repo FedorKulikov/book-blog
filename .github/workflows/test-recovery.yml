@@ -8,10 +8,25 @@ name: Test recovery flow
 # Запуск: Actions → Test recovery flow → Run workflow.
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/test-recovery.ts'
+      - 'scripts/test-email-hook.ts'
+      - '.github/workflows/test-recovery.yml'
+      - 'app/api/recovery/**'
+      - 'app/api/auth/email-hook/**'
+      - 'lib/recovery.ts'
+      - 'lib/supabase/admin.ts'
+      - 'app/signup/page.tsx'
+      - 'app/auth/reset/page.tsx'
+      - 'lib/errors.ts'
   workflow_dispatch:
 
 jobs:
   test:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
