@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const SUPA_URL = process.env.SUPABASE_URL ?? ''
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -30,7 +30,7 @@ const admin = createClient(SUPA_URL, SECRET_KEY, {
 const stamp = Date.now().toString(36)
 const password = 'ChatSmoke!Pass2026'
 type TestUser = { id: string; email: string; username: string }
-type Client = ReturnType<typeof createClient>
+type Client = SupabaseClient<any>
 
 let passed = 0
 let failed = 0
@@ -161,12 +161,13 @@ async function main() {
     if (conversation.error || !conversation.data) {
       throw new Error(`could not create temporary conversation (${conversation.error?.code ?? 'unknown'})`)
     }
-    conversationId = conversation.data as string
+    const testConversationId = conversation.data as string
+    conversationId = testConversationId
 
     const inserted = await aliceClient
       .from('messages')
       .insert({
-        conversation_id: conversationId,
+        conversation_id: testConversationId,
         sender_id: alice.id,
         text: `temporary access-control smoke test ${stamp}`,
       })
@@ -175,7 +176,8 @@ async function main() {
     if (inserted.error || !inserted.data?.id) {
       throw new Error(`could not insert temporary message (${inserted.error?.code ?? 'unknown'})`)
     }
-    messageId = inserted.data.id
+    const testMessageId = inserted.data.id
+    testMessageId = testMessageId
 
     const originalText = `temporary access-control smoke test ${stamp}`
 
@@ -191,7 +193,7 @@ async function main() {
     const markRead = await bobClient
       .from('messages')
       .update({ read_at: readTimestamp })
-      .eq('id', messageId)
+      .eq('id', testMessageId)
       .is('read_at', null)
       .select('id, read_at')
       .single()
@@ -225,19 +227,19 @@ async function main() {
     const editText = await bobClient
       .from('messages')
       .update({ text: 'unauthorized edit' })
-      .eq('id', messageId)
+      .eq('id', testMessageId)
     check('participant cannot edit another message text', Boolean(editText.error), safeError(editText.error))
 
     const editSender = await bobClient
       .from('messages')
       .update({ sender_id: bob.id })
-      .eq('id', messageId)
+      .eq('id', testMessageId)
     check('participant cannot replace message sender', Boolean(editSender.error), safeError(editSender.error))
 
     const unchanged = await bobClient
       .from('messages')
       .select('text, sender_id, read_at')
-      .eq('id', messageId)
+      .eq('id', testMessageId)
       .single()
     check(
       'message content and sender remain unchanged',
@@ -249,13 +251,13 @@ async function main() {
     const rewriteRead = await bobClient
       .from('messages')
       .update({ read_at: new Date(Date.now() + 60_000).toISOString() })
-      .eq('id', messageId)
+      .eq('id', testMessageId)
     check('recipient cannot rewrite an existing read timestamp', Boolean(rewriteRead.error), safeError(rewriteRead.error))
 
     const senderRead = await aliceClient
       .from('messages')
       .update({ read_at: null })
-      .eq('id', messageId)
+      .eq('id', testMessageId)
     check('sender cannot clear/change read status', Boolean(senderRead.error), safeError(senderRead.error))
 
     // Anonymous role has no UPDATE privilege, even for read_at.
@@ -265,7 +267,7 @@ async function main() {
     const anonUpdate = await anonymous
       .from('messages')
       .update({ read_at: new Date().toISOString() })
-      .eq('id', messageId)
+      .eq('id', testMessageId)
     check('anonymous role cannot update message read status', Boolean(anonUpdate.error), safeError(anonUpdate.error))
 
     // RPCs that require an account must not be executable as anon.
@@ -321,7 +323,7 @@ async function main() {
     const conv = await bobClient
       .from('conversations')
       .select('id, user1_id, user2_id, muted_by_user1, muted_by_user2')
-      .eq('id', conversationId)
+      .eq('id', testConversationId)
       .single()
     if (conv.error || !conv.data) {
       throw new Error(`could not read temporary conversation (${conv.error?.code ?? 'unknown'})`)
@@ -333,7 +335,7 @@ async function main() {
     const changeOwnMute = await bobClient
       .from('conversations')
       .update({ [ownMute]: nextOwnMute })
-      .eq('id', conversationId)
+      .eq('id', testConversationId)
       .select('id')
       .single()
     check('participant can change their own mute flag', !changeOwnMute.error, safeError(changeOwnMute.error))
@@ -341,19 +343,19 @@ async function main() {
     const changeOtherMute = await bobClient
       .from('conversations')
       .update({ [otherMute]: !Boolean(conv.data[otherMute]) })
-      .eq('id', conversationId)
+      .eq('id', testConversationId)
     check('participant cannot change the other user mute flag', Boolean(changeOtherMute.error), safeError(changeOtherMute.error))
 
     const changeParticipants = await bobClient
       .from('conversations')
       .update({ user2_id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' })
-      .eq('id', conversationId)
+      .eq('id', testConversationId)
     check('participant cannot change conversation membership', Boolean(changeParticipants.error), safeError(changeParticipants.error))
 
     const verifyConversation = await bobClient
       .from('conversations')
       .select('user1_id, user2_id')
-      .eq('id', conversationId)
+      .eq('id', testConversationId)
       .single()
     check(
       'conversation participants remain unchanged',
