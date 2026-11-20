@@ -35,6 +35,30 @@ const nextConfig: NextConfig = {
       { protocol: 'http', hostname: 'bing.com', pathname: '/**' },
     ],
   },
+
+  /**
+   * Индексация служебных страниц.
+   *
+   * robots.txt умеет только запрещать сканирование, но запрещённый URL
+   * всё равно может попасть в индекс — робот не прочитает страницу и не
+   * увидит noindex. Поэтому служебные адреса НЕ закрываем в robots.txt,
+   * а отдаём заголовок X-Robots-Tag: noindex: робот страницу прочитает
+   * и в выдачу не поставит.
+   */
+  async headers() {
+    const noindex = [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }]
+
+    return [
+      { source: '/news/new', headers: noindex },
+      { source: '/login', headers: noindex },
+      { source: '/signup', headers: noindex },
+      { source: '/welcome', headers: noindex },
+      { source: '/profile/edit', headers: noindex },
+      { source: '/messages/:path*', headers: noindex },
+      { source: '/admin/:path*', headers: noindex },
+      { source: '/support/:path*', headers: noindex },
+    ]
+  },
 };
 
 export default nextConfig;

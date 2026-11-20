@@ -1,11 +1,22 @@
-'use client'
+// app/messages/page.tsx
+// Серверная обёртка списка сообщений: гость уходит на /login до рендера.
+import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
+import MessagesPage from './MessagesClient'
 
-import ConversationList from '../components/ConversationList'
+export const dynamic = 'force-dynamic'
 
-export default function MessagesPage() {
-  return (
-    <main className="p-4 md:p-8 max-w-3xl mx-auto">
-      <ConversationList />
-    </main>
-  )
+export const metadata: Metadata = {
+  title: 'Сообщения',
+  robots: { index: false, follow: false },
+}
+
+export default async function MessagesRoute() {
+  const supabase = await createSupabaseServerClient()
+  const { data } = await supabase.auth.getUser()
+
+  if (!data.user) redirect('/login')
+
+  return <MessagesPage />
 }
