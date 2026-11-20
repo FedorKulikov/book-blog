@@ -125,7 +125,9 @@ export default async function RadarPage() {
                 className="inline-flex items-baseline gap-2 rounded-full bg-[#014b32] px-4 py-2 text-sm font-medium text-[#E2E2E0] transition-colors hover:bg-[#0E2931]"
               >
                 {item.topic}
-                <span className="text-xs text-[#E2E2E0]/60">×{item.mentions}</span>
+                {item.mentions > 1 && (
+                  <span className="text-xs text-[#E2E2E0]/60">×{item.mentions}</span>
+                )}
               </Link>
             ))}
 
@@ -137,7 +139,9 @@ export default async function RadarPage() {
                 title="Название книги"
               >
                 {item.topic}
-                <span className="text-xs text-[#E2E2E0]/60">×{item.mentions}</span>
+                {item.mentions > 1 && (
+                  <span className="text-xs text-[#E2E2E0]/60">×{item.mentions}</span>
+                )}
               </Link>
             ))}
 
@@ -148,7 +152,9 @@ export default async function RadarPage() {
                 className="inline-flex items-baseline gap-2 rounded-full border border-[#493344] bg-[#0E2931] px-4 py-2 text-sm text-[#E2E2E0] transition-colors hover:border-[#681F2D]"
               >
                 {item.topic}
-                <span className="text-xs text-[#E2E2E0]/50">×{item.mentions}</span>
+                {item.mentions > 1 && (
+                  <span className="text-xs text-[#E2E2E0]/50">×{item.mentions}</span>
+                )}
               </Link>
             ))}
           </div>

@@ -1741,24 +1741,32 @@ async function refreshNewsMeta(): Promise<void> {
 const TREND_PERIOD_DAYS = 30
 const TREND_LIMIT = 40
 
-/** Темы, которые ищем в заголовках прямым совпадением */
+/** Темы, которые ищем в заголовках прямым совпадением (RU + EN) */
 const THEME_PATTERNS: { re: RegExp; topic: string }[] = [
-  { re: /букер/i, topic: 'Букеровская премия' },
-  { re: /нобел/i, topic: 'Нобелевская премия' },
-  { re: /пулитцер/i, topic: 'Пулитцеровская премия' },
-  { re: /экранизац|сериал|фильм по книге/i, topic: 'Экранизации' },
-  { re: /перевод/i, topic: 'Переводы' },
-  { re: /ярмарк|фестивал/i, topic: 'Ярмарки и фестивали' },
-  { re: /аудиокниг/i, topic: 'Аудиокниги' },
-  { re: /библиотек/i, topic: 'Библиотеки' },
-  { re: /новинк|новые книги/i, topic: 'Новинки' },
-  { re: /запрет|цензур|изъят/i, topic: 'Запреты и цензура' },
+  { re: /букер|booker/i, topic: 'Букеровская премия' },
+  { re: /нобел|nobel/i, topic: 'Нобелевская премия' },
+  { re: /пулитцер|pulitzer/i, topic: 'Пулитцеровская премия' },
+  {
+    re: /national book award|букеровск\w+ преми|литературн\w+ преми|преми[июя]\s|award|prize/i,
+    topic: 'Литературные премии',
+  },
+  { re: /экранизац|сериал|фильм по книге|adaptation|film|series/i, topic: 'Экранизации' },
+  { re: /перевод|translat/i, topic: 'Переводы' },
+  { re: /ярмарк|фестивал|festival|book fair/i, topic: 'Ярмарки и фестивали' },
+  { re: /аудиокниг|audiobook/i, topic: 'Аудиокниги' },
+  { re: /библиотек|librar/i, topic: 'Библиотеки' },
+  { re: /новинк|новые книги|new release|new book/i, topic: 'Новинки' },
+  { re: /запрет|цензур|изъят|banned|censor/i, topic: 'Запреты и цензура' },
   { re: /нейросет|искусственн\w+ интеллект|\bAI\b/i, topic: 'ИИ и книги' },
   { re: /тираж/i, topic: 'Тиражи' },
-  { re: /электронн\w+ книг/i, topic: 'Электронные книги' },
-  { re: /букинист|антикварн/i, topic: 'Букинистика' },
-  { re: /поэзи|стих/i, topic: 'Поэзия' },
-  { re: /детск\w+ книг|подростков/i, topic: 'Детские книги' },
+  { re: /электронн\w+ книг|e-?book|ebook/i, topic: 'Электронные книги' },
+  { re: /букинист|антикварн|rare book/i, topic: 'Букинистика' },
+  { re: /поэзи|стих|poetry|poem/i, topic: 'Поэзия' },
+  { re: /детск\w+ книг|подростков|children|young adult|\bYA\b/i, topic: 'Детские книги' },
+  { re: /бестселлер|bestsell/i, topic: 'Бестселлеры' },
+  { re: /скидк|распродаж|deals of the day|sale/i, topic: 'Скидки и акции' },
+  { re: /тест:|quiz/i, topic: 'Тесты и викторины' },
+  { re: /интервью|interview/i, topic: 'Интервью' },
 ]
 
 /** Слова, которые не могут быть «именем в тренде» */
@@ -1769,10 +1777,29 @@ const NAME_STOPWORDS = new Set([
   'почему', 'как', 'что', 'когда', 'новая', 'новый', 'новое', 'большой',
   'первый', 'первая', 'самые', 'самый', 'итоги', 'неделя', 'недели', 'год',
   'года', 'день', 'дня', 'время', 'место', 'история', 'жизнь', 'мир',
+  'январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август',
+  'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+  'september', 'october', 'november', 'december',
   'the', 'book', 'books', 'new', 'why', 'how', 'best', 'review', 'reviews',
   'literary', 'literature', 'author', 'authors', 'reader', 'readers',
   'novel', 'novels', 'story', 'stories', 'week', 'year', 'day', 'time',
+  'daily', 'deals', 'award', 'awards', 'winner', 'meet', 'according', 'lists',
 ])
+
+/**
+ * Слова из названий наших источников: «Lit Hub», «Book Riot», «Эксмо» —
+ * это не тренды, а подписи лент. Собираем их из FEEDS автоматически,
+ * чтобы не перечислять руками.
+ */
+const SOURCE_WORDS = new Set(
+  FEEDS.flatMap(feed =>
+    feed.label
+      .toLowerCase()
+      .split(/[^a-zа-яё0-9]+/)
+      .filter(word => word.length >= 3),
+  ),
+)
 
 /** Вид тренда: тема, книжное название в кавычках или имя */
 type TrendKind = 'theme' | 'name' | 'book'
@@ -1814,6 +1841,7 @@ function extractTrends(text: string): { topic: string; kind: TrendKind }[] {
     const firstWord = clean.split(/\s+/)[0]?.toLowerCase() ?? ''
 
     if (NAME_STOPWORDS.has(firstWord)) continue
+    if (SOURCE_WORDS.has(firstWord)) continue
     if (clean.length < 5) continue
 
     const key = clean.toLowerCase()
@@ -1899,13 +1927,21 @@ async function updateTrends(): Promise<void> {
     }
   }
 
+  // Порог повторяемости не ставим: импорт приносит 30–50 материалов за прогон,
+  // и за месяц темы почти не дублируются. Блок честно называется «О чём пишут»,
+  // поэтому показываем и однократные упоминания, но сортируем по частоте,
+  // а при равной частоте выше ставим темы, потом книги, потом имена.
+  const KIND_WEIGHT: Record<TrendKind, number> = { theme: 0, book: 1, name: 2 }
+
   const top = [...counters.values()]
-    .filter(item => item.mentions >= 2)
-    .sort((a, b) => b.mentions - a.mentions)
+    .sort((a, b) => {
+      if (b.mentions !== a.mentions) return b.mentions - a.mentions
+      return KIND_WEIGHT[a.kind] - KIND_WEIGHT[b.kind]
+    })
     .slice(0, TREND_LIMIT)
 
   if (top.length === 0) {
-    log(`тренды: за ${TREND_PERIOD_DAYS} дней повторяющихся тем не нашлось`)
+    log(`тренды: за ${TREND_PERIOD_DAYS} дней ничего не нашлось`)
     return
   }
 
