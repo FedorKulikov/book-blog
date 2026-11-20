@@ -100,6 +100,13 @@ export default function LoginPage() {
             Зарегистрироваться
           </Link>
         </p>
+
+        <p className="mt-2 text-sm text-brown/70">
+          Нет доступа к почте?{' '}
+          <Link href="/recover-account" className="text-wine hover:underline">
+            Восстановить по резервному коду
+          </Link>
+        </p>
       </div>
     </main>
   )
