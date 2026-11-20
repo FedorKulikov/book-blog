@@ -1,0 +1,74 @@
+name: Production health smoke
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-health-smoke
+  cancel-in-progress: true
+
+jobs:
+  check-production:
+    name: Check ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Custom domain bukleb.ru
+            url: https://bukleb.ru
+          - label: Layero project domain
+            url: https://book-blog.layero.app
+
+    steps:
+      - name: Fetch and verify the live application
+        shell: bash
+        env:
+          SITE_LABEL: ${{ matrix.label }}
+          SITE_URL: ${{ matrix.url }}
+        run: |
+          set -euo pipefail
+          body="$RUNNER_TEMP/site.html"
+          headers="$RUNNER_TEMP/headers.txt"
+
+          status="$(curl --silent --show-error --location \
+            --retry 2 --retry-delay 4 --retry-all-errors \
+            --connect-timeout 10 --max-time 45 \
+            --user-agent 'BookBlogProductionHealth/1.0' \
+            --dump-header "$headers" --output "$body" \
+            --write-out '%{http_code}' "$SITE_URL")"
+
+          title="$(grep -io '<title>[^<]*</title>' "$body" | head -n 1 || true)"
+          echo "Endpoint: $SITE_LABEL"
+          echo "HTTP status: $status"
+          echo "Page title: ${title:-<missing>}"
+
+          {
+            echo "### $SITE_LABEL"
+            echo ""
+            echo "- URL: $SITE_URL"
+            echo "- HTTP: $status"
+            echo "- Title: ${title:-missing}"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Expected HTTP 200 from $SITE_URL, received $status"
+            exit 1
+          fi
+
+          if ! grep -Fq 'Хлеба и букв' "$body"; then
+            echo "::error::The response does not contain the expected Book Blog application marker."
+            exit 1
+          fi
+
+          echo "Production application marker verified."
