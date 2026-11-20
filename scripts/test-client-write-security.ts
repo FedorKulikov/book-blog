@@ -29,6 +29,8 @@ const users: TestUser[] = []
 const clients: Client[] = []
 let postId: string | null = null
 let bookId: string | null = null
+let commentId: string | null = null
+let imageId: string | null = null
 let conversationId: string | null = null
 let notificationId: string | null = null
 let passed = 0
@@ -81,6 +83,11 @@ async function main() {
     const [client, otherClient] = await Promise.all([signedIn(alice), signedIn(bob)])
     const anonymous = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } })
 
+    // Consolidated public-read policy remains public, while user-owned
+    // rows and writes still require an authenticated owner.
+    const anonymousBooks = await anonymous.from('books').select('id').limit(1)
+    check('anonymous visitors can still read public books', !anonymousBooks.error && (anonymousBooks.data?.length ?? 0) === 1, safeError(anonymousBooks.error))
+
     // Anonymous visitors retain public reads but no client-side writes.
     const anonPost = await anonymous.from('posts').insert({ user_id: alice.id, title: 'anon write probe', type: 'creative' })
     check('anon cannot insert posts', Boolean(anonPost.error), safeError(anonPost.error))
@@ -90,6 +97,10 @@ async function main() {
     // Profile editing remains possible; role and system timestamps are protected.
     const profileEdit = await client.from('profiles').update({ bio: `smoke-${stamp}` }).eq('id', alice.id)
     check('owner can update their public bio', !profileEdit.error, safeError(profileEdit.error))
+
+    const otherProfileEdit = await otherClient.from('profiles')
+      .update({ bio: 'unauthorized profile change' }).eq('id', alice.id).select('id')
+    check('another user cannot edit an owned profile', !otherProfileEdit.error && (otherProfileEdit.data?.length ?? 0) === 0, safeError(otherProfileEdit.error))
 
     const roleEscalation = await client.from('profiles').update({ role: 'admin' }).eq('id', alice.id)
     const roleAfter = await client.from('profiles').select('role').eq('id', alice.id).single()
@@ -122,6 +133,16 @@ async function main() {
     )
     if (book.data?.id) bookId = book.data.id
 
+    if (bookId) {
+      const otherEditBook = await otherClient.from('books')
+        .update({ title: `unauthorized-${stamp}` }).eq('id', bookId).select('id')
+      check('another user cannot edit an owned book', !otherEditBook.error && (otherEditBook.data?.length ?? 0) === 0, safeError(otherEditBook.error))
+
+      const ownerEditBook = await client.from('books')
+        .update({ title: `Data security smoke edited ${stamp}` }).eq('id', bookId).select('id')
+      check('book owner can still edit their own book', !ownerEditBook.error && ownerEditBook.data?.length === 1, safeError(ownerEditBook.error))
+    }
+
     // Post INSERT trigger must own status; client cannot forge timestamps/views.
     const forgedPost = await client.from('posts').insert({
       user_id: alice.id, title: `forged-post-${stamp}`, type: 'creative',
@@ -143,6 +164,24 @@ async function main() {
     if (post.data?.id) postId = post.data.id
 
     if (postId) {
+      const bobPrivatePost = await otherClient.from('posts').select('id').eq('id', postId)
+      check('other user cannot read an owner pending post', !bobPrivatePost.error && (bobPrivatePost.data?.length ?? 0) === 0, safeError(bobPrivatePost.error))
+
+      const anonPrivatePost = await anonymous.from('posts').select('id').eq('id', postId)
+      check('anonymous visitor cannot read a pending post', !anonPrivatePost.error && (anonPrivatePost.data?.length ?? 0) === 0, safeError(anonPrivatePost.error))
+
+      const ownerEditPost = await client.from('posts')
+        .update({ title: `Data security smoke edited ${stamp}` }).eq('id', postId).select('id')
+      check('post owner can still edit their own post', !ownerEditPost.error && ownerEditPost.data?.length === 1, safeError(ownerEditPost.error))
+
+      const otherEditPost = await otherClient.from('posts')
+        .update({ title: 'unauthorized edit' }).eq('id', postId).select('id')
+      check('another user cannot edit an owner pending post', !otherEditPost.error && (otherEditPost.data?.length ?? 0) === 0, safeError(otherEditPost.error))
+
+      const otherDeletePost = await otherClient.from('posts')
+        .delete().eq('id', postId).select('id')
+      check('another user cannot delete an owner pending post', !otherDeletePost.error && (otherDeletePost.data?.length ?? 0) === 0, safeError(otherDeletePost.error))
+
       const forgedPostUpdate = await client.from('posts')
         .update({ created_at: '2099-01-01T00:00:00.000Z' }).eq('id', postId)
       check('post created_at cannot be rewritten', Boolean(forgedPostUpdate.error), safeError(forgedPostUpdate.error))
@@ -165,6 +204,40 @@ async function main() {
           Math.abs(Date.now() - Date.parse(comment.data?.created_at ?? '')) < 120_000,
         safeError(comment.error),
       )
+      if (comment.data?.id) commentId = comment.data.id
+
+      if (commentId) {
+        const anonComment = await anonymous.from('comments').select('id').eq('id', commentId)
+        check('anonymous visitors can still read public comments', !anonComment.error && anonComment.data?.length === 1, safeError(anonComment.error))
+
+        const otherDeleteComment = await otherClient.from('comments')
+          .delete().eq('id', commentId).select('id')
+        check('another user cannot delete an owned comment', !otherDeleteComment.error && (otherDeleteComment.data?.length ?? 0) === 0, safeError(otherDeleteComment.error))
+
+        const ownerDeleteComment = await client.from('comments')
+          .delete().eq('id', commentId).select('id')
+        check('comment owner can still delete their own comment', !ownerDeleteComment.error && ownerDeleteComment.data?.length === 1, safeError(ownerDeleteComment.error))
+        if (!ownerDeleteComment.error && ownerDeleteComment.data?.length === 1) commentId = null
+      }
+
+      const image = await client.from('post_images').insert({
+        post_id: postId,
+        url: 'https://example.com/data-smoke-image.jpg',
+        sort_order: 0,
+      }).select('id').single()
+      check('post owner can attach an image row', !image.error && Boolean(image.data?.id), safeError(image.error))
+      if (image.data?.id) imageId = image.data.id
+
+      if (imageId) {
+        const otherDeleteImage = await otherClient.from('post_images')
+          .delete().eq('id', imageId).select('id')
+        check('another user cannot delete an owned post image', !otherDeleteImage.error && (otherDeleteImage.data?.length ?? 0) === 0, safeError(otherDeleteImage.error))
+
+        const ownerDeleteImage = await client.from('post_images')
+          .delete().eq('id', imageId).select('id')
+        check('post owner can still delete their own image', !ownerDeleteImage.error && ownerDeleteImage.data?.length === 1, safeError(ownerDeleteImage.error))
+        if (!ownerDeleteImage.error && ownerDeleteImage.data?.length === 1) imageId = null
+      }
 
       const forgedLike = await client.from('likes').insert({
         post_id: postId, user_id: alice.id, created_at: '2099-01-01T00:00:00.000Z',
@@ -250,6 +323,8 @@ async function main() {
     }
 
     if (notificationId) await admin.from('notifications').delete().eq('id', notificationId)
+    if (commentId) await admin.from('comments').delete().eq('id', commentId)
+    if (imageId) await admin.from('post_images').delete().eq('id', imageId)
     if (conversationId) {
       await admin.from('messages').delete().eq('conversation_id', conversationId)
       await admin.from('conversations').delete().eq('id', conversationId)
