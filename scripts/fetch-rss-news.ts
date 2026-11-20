@@ -57,6 +57,12 @@ type FeedSource = {
    * и их полезно разделять. У новостных лент двоеточие — часть заголовка.
    */
   isBookFeed?: boolean
+  /**
+   * Брать подпись источника из самой ленты, а не из подписи ленты.
+   * Нужно поисковым лентам: там label — это поисковый запрос,
+   * а реальный издатель приходит в <News:Source> (НТВ, ТАСС, «Горький»…).
+   */
+  usePublisher?: boolean
 }
 
 /**
@@ -161,13 +167,53 @@ function feedFromUrl(url: string): FeedSource {
   }
 }
 
+/**
+ * Поисковые ленты: не ждём, пока новость попадёт в чей-то фиксированный RSS,
+ * а сами спрашиваем Bing News по книжным темам. Отдача — обычный RSS,
+ * но ссылки завёрнуты в редирект Bing (разворачиваем) и издатель приходит
+ * в <News:Source>. Так закрываются дыры: свежие события, премии, новинки,
+ * которые ни одно издательство в своей ленте не публикует.
+ */
+const SEARCH_QUERIES: {
+  q: string
+  category: NewsCategoryValue
+  lang: 'ru' | 'en'
+}[] = [
+  { q: 'книжные новинки', category: 'new_book', lang: 'ru' },
+  { q: 'вышла новая книга', category: 'new_book', lang: 'ru' },
+  { q: 'литературная премия', category: 'news', lang: 'ru' },
+  { q: 'книжная ярмарка', category: 'event', lang: 'ru' },
+  { q: 'встреча с писателем', category: 'event', lang: 'ru' },
+  { q: 'книжный рынок тиражи', category: 'publisher', lang: 'ru' },
+  { q: 'book prize winner', category: 'news', lang: 'en' },
+]
+
+const SEARCH_FEEDS: FeedSource[] = SEARCH_QUERIES.map(query => ({
+  url:
+    'https://www.bing.com/news/search?q=' +
+    encodeURIComponent(query.q) +
+    '&format=RSS&mkt=' +
+    (query.lang === 'en' ? 'en-US' : 'ru-RU'),
+  label: `Поиск: ${query.q}`,
+  siteUrl: 'https://www.bing.com/news',
+  defaultType: 'Новость',
+  category: query.category,
+  lang: query.lang,
+  usePublisher: true,
+}))
+
 const FEEDS: FeedSource[] = (() => {
   const custom = (process.env.RSS_FEED_URLS ?? '')
     .split(',')
     .map(value => value.trim())
     .filter(Boolean)
 
-  if (custom.length === 0) return DEFAULT_FEEDS
+  if (custom.length === 0) {
+    // Поиск можно выключить переменной окружения — на случай отладки
+    return process.env.DISABLE_SEARCH === '1'
+      ? DEFAULT_FEEDS
+      : [...DEFAULT_FEEDS, ...SEARCH_FEEDS]
+  }
 
   const parsed: FeedSource[] = []
   for (const url of custom) {
@@ -265,6 +311,10 @@ type FeedItemLike = {
   mediaThumbnail?: { $?: { url?: string } }[]
   /** <category> — из неё выводим тип материала */
   categories?: string[]
+  /** <News:Source> — издатель в поисковых лентах Bing News */
+  newsSource?: string
+  /** <News:Image> — превью от Bing, годится как запасная картинка */
+  newsImage?: string
 }
 
 type FeedMeta = {
@@ -538,6 +588,9 @@ async function loadFeedOnce(
         item: [
           ['media:content', 'mediaContent', { keepArray: true }],
           ['media:thumbnail', 'mediaThumbnail', { keepArray: true }],
+          // Bing News отдаёт издателя и превью в своих тегах
+          ['News:Source', 'newsSource'],
+          ['News:Image', 'newsImage'],
         ],
       },
     })
@@ -597,6 +650,26 @@ function hasStopWord(title: string): boolean {
 }
 
 /**
+ * Bing News отдаёт ссылки через свой редирект:
+ * http://www.bing.com/news/apiclick.aspx?...&url=https%3a%2f%2fwww.ntv.ru%2f…
+ * Достаём исходный адрес — иначе в базу попал бы bing.com,
+ * а не статья издателя. Для обычных ссылок возвращаем вход как есть.
+ */
+function unwrapBingLink(link: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(link)
+  } catch {
+    return link
+  }
+
+  if (!/(^|\.)bing\.com$/i.test(parsed.hostname)) return link
+  if (!/apiclick/i.test(parsed.pathname)) return link
+
+  return parsed.searchParams.get('url') ?? link
+}
+
+/**
  * Ссылка на материал или null, если запись бесполезна.
  * - пустая ссылка или главная страница сайта → пропуск;
  * - ссылка на магазин (Литрес, Читай-город) → ссылка на сайт источника.
@@ -604,6 +677,14 @@ function hasStopWord(title: string): boolean {
 function resolveItemLink(rawLink: string, feed: FeedSource): string | null {
   const link = rawLink.trim()
   if (!link) return null
+
+  // Bing News заворачивает ссылки в свой редирект:
+  // /news/apiclick.aspx?...&url=<закодированный адрес> — достаём оригинал
+  const unwrapped = unwrapBingLink(link)
+  if (unwrapped !== link) {
+    const inner = resolveItemLink(unwrapped, feed)
+    return inner
+  }
 
   let parsed: URL
   try {
@@ -660,6 +741,9 @@ function extractImageUrl(item: FeedItemLike): string | null {
   const html = item['content:encoded'] ?? item.content ?? item.description ?? ''
   const match = /<img[^>]+src=["']([^"']+)["']/i.exec(html)
   if (match?.[1] && isHttpUrl(match[1])) return match[1]
+
+  // Bing присылает своё превью — пусть лучше оно, чем градиентная заглушка
+  if (isHttpUrl(item.newsImage)) return item.newsImage.trim()
 
   return null
 }
@@ -1154,7 +1238,11 @@ function buildRows(
     rows.push({
       title: truncate(normalizeTitle(title), TITLE_MAX),
       url,
-      source: feed.label,
+      // У поисковых лент реальный издатель приходит в <News:Source>,
+      // а label — это поисковый запрос
+      source: feed.usePublisher
+        ? truncate((item.newsSource ?? '').trim() || feed.label, 80)
+        : feed.label,
       summary: rawSummary ? truncate(stripHtml(rawSummary), SUMMARY_MAX) : null,
       // В таблице нет отдельного published_at: created_at = дата публикации,
       // чтобы лента на сайте сортировалась по свежести книг, а не по времени импорта.

@@ -25,6 +25,14 @@ const nextConfig: NextConfig = {
       { protocol: 'http', hostname: 'www.museumbook.ru', pathname: '/**' },
       { protocol: 'https', hostname: 'www.museumbook.ru', pathname: '/**' },
       { protocol: 'https', hostname: 'covers.openlibrary.org', pathname: '/**' },
+      // Превью из поисковых лент (Bing News). Остальные домены новостей
+      // в оптимизатор не вносим: ExternalNewsCover умеет откатываться
+      // на обычный <img>, и картинка всё равно покажется.
+      { protocol: 'https', hostname: 'www.bing.com', pathname: '/**' },
+      { protocol: 'https', hostname: 'bing.com', pathname: '/**' },
+      // Bing отдаёт превью по http — без этих правил оптимизатор их отклонит
+      { protocol: 'http', hostname: 'www.bing.com', pathname: '/**' },
+      { protocol: 'http', hostname: 'bing.com', pathname: '/**' },
     ],
   },
 };
