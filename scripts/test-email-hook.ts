@@ -111,7 +111,12 @@ async function main() {
   // ---------------------------------------------------------------- //
   const valid = await postHook(recoveryPayload(true))
   check('валидная подпись принимается', valid.status === 200, `статус ${valid.status}`)
-  check('recovery подавлен без выдачи токена', valid.body.ok === true && !('token' in valid.body))
+  // Контракт Supabase: успех — пустой HTTP 200 без тела
+  check(
+    'recovery подавлен без выдачи токена',
+    Object.keys(valid.body).length === 0 && !('token' in valid.body),
+    `поля: ${Object.keys(valid.body).join(',') || 'нет'}`,
+  )
 
   const badSig = await postHook(recoveryPayload(true), { signature: 'v1,AAAA' })
   check('невалидная подпись отклоняется', badSig.status === 401, `статус ${badSig.status}`)

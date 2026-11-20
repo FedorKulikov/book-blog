@@ -3,6 +3,7 @@
 // Сколько активных резервных кодов у текущего пользователя.
 // Нужно интерфейсу настроек: показать «коды не созданы» и предложить их создать.
 import { NextResponse } from 'next/server'
+import { isPreviewRequest } from '@/lib/env-guard'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { isRecoveryConfigured } from '@/lib/recovery'
@@ -16,7 +17,11 @@ function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: NO_STORE })
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (isPreviewRequest(request)) {
+    return json({ error: 'not_available_on_preview' }, 404)
+  }
+
   const supabase = await createSupabaseServerClient()
   const {
     data: { user },

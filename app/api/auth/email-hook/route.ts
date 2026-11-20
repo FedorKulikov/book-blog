@@ -20,6 +20,7 @@
 // а не фиктивный успех: пусть сценарий падает заметно, а не молча.
 import { NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { isPreviewRequest } from '@/lib/env-guard'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -37,11 +38,20 @@ const UNDELIVERED_ACTIONS = new Set([
   'reauthentication',
 ])
 
-function json(body: unknown, status = 200) {
-  return NextResponse.json(body, {
-    status,
+/** Успех по контракту Supabase Auth Hooks: пустой HTTP 200 */
+function ok() {
+  return new NextResponse(null, {
+    status: 200,
     headers: { 'Cache-Control': 'no-store' },
   })
+}
+
+/** Ошибка в документированном формате Supabase Auth Hooks */
+function fail(status: number, message: string) {
+  return NextResponse.json(
+    { error: { http_code: status, message } },
+    { status, headers: { 'Cache-Control': 'no-store' } },
+  )
 }
 
 /**
@@ -112,56 +122,60 @@ function extractAction(payload: unknown): string | null {
 }
 
 export async function POST(request: Request) {
+  if (isPreviewRequest(request)) {
+    return fail(404, 'not_available_on_preview')
+  }
+
   const secret = process.env.AUTH_EMAIL_HOOK_SECRET
 
   if (!secret) {
     // Без секрета подпись проверить нельзя — письма не отправляем вовсе
-    return json({ error: 'hook_not_configured' }, 500)
+    return fail(500, 'hook_not_configured')
   }
 
   // Тело читаем как текст: подпись считается по исходным байтам
   const rawBody = await request.text()
 
   if (!hasValidSignature(rawBody, request.headers, secret)) {
-    return json({ error: 'invalid_signature' }, 401)
+    return fail(401, 'invalid_signature')
   }
 
   let payload: unknown
   try {
     payload = JSON.parse(rawBody)
   } catch {
-    return json({ error: 'invalid_json' }, 400)
+    return fail(400, 'invalid_json')
   }
 
   const action = extractAction(payload)
 
   if (!action) {
-    return json({ error: 'unsupported_action' }, 501)
+    return fail(501, 'unsupported_action')
   }
 
   // Восстановление пароля письмом не отправляем: адрес не подтверждён,
   // значит владение им не доказано. Нейтральный ответ одинаков для любых
   // входных данных — по нему нельзя определить существование аккаунта.
   if (action === 'recovery') {
-    return json({ ok: true })
+    return ok()
   }
 
   // Подтверждение регистрации: при выключенном Confirm Email письмо не
   // запрашивается вовсе, поэтому 200 здесь честный — письма и не ждали.
   // Если подтверждение когда-нибудь включат, доставку нужно будет подключать.
   if (action === 'signup') {
-    return json({ ok: true })
+    return ok()
   }
 
   // Уведомления о безопасности: доставлять нечем, подавляем.
   if (action.endsWith('_notification')) {
-    return json({ ok: true })
+    return ok()
   }
 
   // Письмо требуется, но отправить его не через что.
   if (UNDELIVERED_ACTIONS.has(action)) {
-    return json({ error: 'email_delivery_not_configured' }, 501)
+    return fail(501, 'email_delivery_not_configured')
   }
 
-  return json({ error: 'unsupported_action' }, 501)
+  return fail(501, 'unsupported_action')
 }
