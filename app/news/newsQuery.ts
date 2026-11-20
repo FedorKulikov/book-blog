@@ -430,7 +430,10 @@ export async function fetchExternalNewsFeed(
       // Рубрика из базы отфильтрована в SQL, выведенную фильтруем здесь
       return categoryInDb ? true : item.category === filter
     })
-    .slice(0, NEWS_LIMIT)
+    // Внешних новостей теперь много (свои поисковые ленты + издательства),
+    // поэтому в общую ленту берём вдвое больше: иначе половина материалов
+    // видна только через фильтры рубрик.
+    .slice(0, NEWS_LIMIT * 2)
 
   return { items, error: null }
 }
