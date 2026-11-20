@@ -32,10 +32,14 @@ jobs:
       - name: Установить зависимости
         run: npm ci
 
-      # Секрет живёт только в рамках прогона: в проде используется свой,
-      # и тестовый прогон не может повлиять на боевые коды.
-      - name: Сгенерировать секрет для прогона
-        run: echo "RECOVERY_CODE_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      # Секреты живут только в рамках прогона: в проде свои, тестовый прогон
+      # не может повлиять на боевые коды и подписи хука.
+      - name: Сгенерировать секреты для прогона
+        run: |
+          {
+            echo "RECOVERY_CODE_SECRET=$(openssl rand -hex 32)"
+            echo "AUTH_EMAIL_HOOK_SECRET=v1,whsec_$(openssl rand -base64 32)"
+          } >> "$GITHUB_ENV"
 
       - name: Сборка
         run: npm run build
@@ -56,6 +60,9 @@ jobs:
 
       - name: Сценарии восстановления
         run: npx tsx scripts/test-recovery.ts
+
+      - name: Сценарии email-хука
+        run: npx tsx scripts/test-email-hook.ts
 
       - name: Лог сервера
         if: always()
