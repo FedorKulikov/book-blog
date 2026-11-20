@@ -4,9 +4,7 @@ import { supabase } from '@/lib/supabase'
 // Домен берём из env (как в layout.tsx). Фолбэк — боевой домен,
 // чтобы при отсутствии переменной карта не начала указывать на localhost.
 // Регулярка убирает случайный слэш в конце значения.
-const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL || 'https://bukleb.ru'
-).replace(/\/+$/, '')
+import { SITE_URL } from '@/lib/site'
 
 type ProfileRow = {
   username: string | null

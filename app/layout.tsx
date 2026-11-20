@@ -1,5 +1,6 @@
 import { Playfair_Display, Inter } from 'next/font/google'
 import { Metadata } from 'next'
+import { SITE_URL } from '@/lib/site'
 import Sidebar from './components/Header'
 import MobileNav from './components/MobileNav'
 import YandexMetrika from './components/YandexMetrika'
@@ -18,9 +19,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || 'https://bukleb.ru'
-  ),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'Хлеба и букв',
     template: '%s · Хлеба и букв',
