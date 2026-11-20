@@ -107,12 +107,33 @@ export function newsHref(filter: NewsFilter): string {
 }
 
 /**
+ * Тема из URL (переход с чипса «Книжного радара»): «?topic=Букер».
+ *
+ * Значение уходит в SQL как часть `ilike`-шаблона, поэтому вырезаем всё,
+ * что может сломать запрос или подменить шаблон: `%`, `_`, запятые, скобки,
+ * кавычки и обратный слэш. Длину ограничиваем.
+ */
+export function parseNewsTopic(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (!raw) return null
+
+  const cleaned = raw
+    .replace(/[%_,()"'`\\<>*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+
+  return cleaned.length >= 2 ? cleaned : null
+}
+
+/**
  * Одна выборка на всю страницу: самый свежий пост становится «Главным сегодня»,
  * остальные уходят в сетку. Так мы не делаем два запроса в базу.
  */
 export async function fetchNewsFeed(
   supabase: SupabaseClient,
   filter: NewsFilter,
+  topic: string | null = null,
 ): Promise<NewsFeed> {
   let query = supabase
     .from('posts')
@@ -124,6 +145,11 @@ export async function fetchNewsFeed(
 
   if (filter !== 'all') {
     query = query.eq('news_category', filter)
+  }
+
+  // Тема с радара: ищем по заголовку и тексту поста
+  if (topic) {
+    query = query.or(`title.ilike.%${topic}%,content.ilike.%${topic}%`)
   }
 
   const { data, error } = await query
@@ -318,6 +344,7 @@ function deriveCategory(row: ExternalRow): NewsCategory {
 export async function fetchExternalNewsFeed(
   supabase: SupabaseClient,
   filter: NewsFilter,
+  topic: string | null = null,
   limit: number = NEWS_LIMIT * 3,
 ): Promise<{ items: PortalNewsItem[]; error: string | null }> {
   function buildQuery(select: string, useSqlFilter: boolean) {
@@ -329,6 +356,11 @@ export async function fetchExternalNewsFeed(
 
     if (useSqlFilter && filter !== 'all') {
       request = request.eq('news_category', filter)
+    }
+
+    // Тема с радара: заголовок или краткое описание
+    if (topic) {
+      request = request.or(`title.ilike.%${topic}%,summary.ilike.%${topic}%`)
     }
 
     return request

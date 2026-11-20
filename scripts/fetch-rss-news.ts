@@ -1730,10 +1730,15 @@ async function refreshNewsMeta(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Книжный радар: тренды недели                                        */
+/* Книжный радар: тренды                                          */
 /* ------------------------------------------------------------------ */
 
-const TREND_PERIOD_DAYS = 7
+/**
+ * За сколько дней считаем тренды. Неделя оказалась слишком узким окном:
+ * импорт приносит 30–50 материалов за прогон, и за 7 дней повторяющихся
+ * тем почти не набиралось (в одном прогоне вышла ровно одна тема).
+ */
+const TREND_PERIOD_DAYS = 30
 const TREND_LIMIT = 40
 
 /** Темы, которые ищем в заголовках прямым совпадением */
@@ -1769,37 +1774,55 @@ const NAME_STOPWORDS = new Set([
   'novel', 'novels', 'story', 'stories', 'week', 'year', 'day', 'time',
 ])
 
-/** Что ищем в одном заголовке: темы + имена собственные */
-function extractTrends(
-  title: string,
-): { topic: string; kind: 'theme' | 'name' }[] {
-  const found: { topic: string; kind: 'theme' | 'name' }[] = []
+/** Вид тренда: тема, книжное название в кавычках или имя */
+type TrendKind = 'theme' | 'name' | 'book'
+
+/** Что ищем в тексте: темы, книжные названия в кавычках и имена собственные */
+function extractTrends(text: string): { topic: string; kind: TrendKind }[] {
+  const found: { topic: string; kind: TrendKind }[] = []
   const seen = new Set<string>()
 
   for (const pattern of THEME_PATTERNS) {
-    if (pattern.re.test(title) && !seen.has(pattern.topic)) {
+    if (pattern.re.test(text) && !seen.has(pattern.topic)) {
       seen.add(pattern.topic)
       found.push({ topic: pattern.topic, kind: 'theme' })
     }
   }
 
-  // Имена: последовательности слов с заглавной буквы («Хван Согён», «Sally Rooney»)
-  const names = title.match(
-    /[A-ZА-ЯЁ][a-zа-яё'-]{3,}(?:\s+[A-ZА-ЯЁ][a-zа-яё'-]{3,}){0,2}/g,
-  )
+  // Книжные названия в кавычках: «Мастер и Маргарита», “Klara and the Sun”
+  const quoted = text.match(/[«"“]([^»"”]{4,60})[»"”]/g) ?? []
 
-  for (const name of names ?? []) {
+  for (const raw of quoted) {
+    const clean = raw.replace(/^[«"“]|[»"”]$/g, '').trim()
+    if (clean.length < 4) continue
+
+    const key = clean.toLowerCase()
+    if (seen.has(key)) continue
+
+    seen.add(key)
+    found.push({ topic: clean, kind: 'book' })
+
+    if (found.filter(item => item.kind === 'book').length >= 2) break
+  }
+
+  // Имена: последовательности слов с заглавной буквы («Хван Согён», «Sally Rooney»)
+  const names =
+    text.match(/[A-ZА-ЯЁ][a-zа-яё'-]{3,}(?:\s+[A-ZА-ЯЁ][a-zа-яё'-]{3,}){0,2}/g) ?? []
+
+  for (const name of names) {
     const clean = name.trim()
     const firstWord = clean.split(/\s+/)[0]?.toLowerCase() ?? ''
 
     if (NAME_STOPWORDS.has(firstWord)) continue
     if (clean.length < 5) continue
-    if (seen.has(clean)) continue
 
-    seen.add(clean)
+    const key = clean.toLowerCase()
+    if (seen.has(key)) continue
+
+    seen.add(key)
     found.push({ topic: clean, kind: 'name' })
 
-    // Больше двух имён из одного заголовка не берём: это уже шум
+    // Больше двух имён из одного текста не берём: это уже шум
     if (found.filter(item => item.kind === 'name').length >= 2) break
   }
 
@@ -1837,7 +1860,7 @@ async function updateTrends(): Promise<void> {
 
   const { data, error } = await supabase
     .from('external_news')
-    .select('title, title_ru')
+    .select('title, title_ru, summary')
     .gte('created_at', since)
     .limit(1000)
 
@@ -1855,15 +1878,17 @@ async function updateTrends(): Promise<void> {
   const rows = (data ?? []) as unknown as {
     title: string
     title_ru: string | null
+    summary: string | null
   }[]
 
   const counters = new Map<
     string,
-    { topic: string; kind: 'theme' | 'name'; mentions: number }
+    { topic: string; kind: TrendKind; mentions: number }
   >()
 
   for (const row of rows) {
-    const text = `${row.title_ru ?? ''} ${row.title}`
+    // Считаем и по описанию: в заголовках не всё, о чём пишут
+    const text = `${row.title_ru ?? ''} ${row.title} ${row.summary ?? ''}`
 
     for (const { topic, kind } of extractTrends(text)) {
       const key = `${kind}:${topic.toLowerCase()}`
@@ -1919,8 +1944,11 @@ async function updateTrends(): Promise<void> {
   }
 
   const themes = top.filter(item => item.kind === 'theme').length
+  const books = top.filter(item => item.kind === 'book').length
+  const names = top.length - themes - books
+
   log(
-    `тренды: сохранено ${top.length} (тем ${themes}, имён ${top.length - themes}), топ: ${top
+    `тренды: сохранено ${top.length} (тем ${themes}, имён ${names}, книг ${books}), топ: ${top
       .slice(0, 3)
       .map(item => `${item.topic} ×${item.mentions}`)
       .join(', ')}`,

@@ -89,6 +89,7 @@ export default async function RadarPage() {
   ])
 
   const themes = trends.filter(item => item.kind === 'theme')
+  const books = trends.filter(item => item.kind === 'book')
   const names = trends.filter(item => item.kind === 'name')
 
   return (
@@ -109,9 +110,12 @@ export default async function RadarPage() {
       {trends.length > 0 && (
         <section aria-labelledby="radar-trends" className="mb-12">
           <h2 id="radar-trends" className="sr-only">
-            Тренды недели
+            О чём пишут
           </h2>
-          <BlockHead title="Тренды недели" hint="по упоминаниям в заголовках" />
+          <BlockHead
+            title="О чём пишут"
+            hint="темы, книги и имена по упоминаниям за месяц"
+          />
 
           <div className="flex flex-wrap gap-2">
             {themes.map(item => (
@@ -119,6 +123,18 @@ export default async function RadarPage() {
                 key={`theme-${item.topic}`}
                 href={`/news?topic=${encodeURIComponent(item.topic)}`}
                 className="inline-flex items-baseline gap-2 rounded-full bg-[#014b32] px-4 py-2 text-sm font-medium text-[#E2E2E0] transition-colors hover:bg-[#0E2931]"
+              >
+                {item.topic}
+                <span className="text-xs text-[#E2E2E0]/60">×{item.mentions}</span>
+              </Link>
+            ))}
+
+            {books.map(item => (
+              <Link
+                key={`book-${item.topic}`}
+                href={`/news?topic=${encodeURIComponent(item.topic)}`}
+                className="inline-flex items-baseline gap-2 rounded-full bg-[#681F2D] px-4 py-2 text-sm font-medium text-[#E2E2E0] transition-colors hover:bg-[#4A1520]"
+                title="Название книги"
               >
                 {item.topic}
                 <span className="text-xs text-[#E2E2E0]/60">×{item.mentions}</span>

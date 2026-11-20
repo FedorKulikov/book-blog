@@ -4,10 +4,10 @@
 // ещё нет (миграция не применена) — блок просто не показывается.
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-/** Одна тема или имя из трендов недели */
+/** Одна тема, имя или книжное название из трендов радара */
 export type TrendItem = {
   topic: string
-  kind: 'theme' | 'name'
+  kind: 'theme' | 'name' | 'book'
   mentions: number
 }
 
