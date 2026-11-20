@@ -9,16 +9,25 @@ import { createHmac } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 
 const BASE = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:3000'
+
+// Цель переключается переменной окружения, сценарии не меняются:
+//   EDGE_FUNCTIONS_URL=https://<ref>.supabase.co/functions/v1
+const EDGE_FUNCTIONS_URL = process.env.EDGE_FUNCTIONS_URL ?? ''
+const HOOK_URL = EDGE_FUNCTIONS_URL
+  ? `${EDGE_FUNCTIONS_URL}/auth-email-hook`
+  : `${BASE}/api/auth/email-hook`
 const SECRET = process.env.AUTH_EMAIL_HOOK_SECRET ?? ''
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+// Новый секретный ключ Supabase (sb_secret_*). Legacy service_role
+// в тестовых сценариях не используется.
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY ?? ''
 
 for (const [name, value] of Object.entries({
   AUTH_EMAIL_HOOK_SECRET: SECRET,
   NEXT_PUBLIC_SUPABASE_URL: SUPA_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON,
-  SUPABASE_SERVICE_ROLE_KEY: SERVICE,
+  SUPABASE_SECRET_KEY: SECRET_KEY,
 })) {
   if (!value) {
     console.error(`нет переменной ${name}`)
@@ -26,8 +35,23 @@ for (const [name, value] of Object.entries({
   }
 }
 
-const admin = createClient(SUPA_URL, SERVICE, {
+/**
+ * Новый секретный ключ (sb_secret_*) не является JWT: убираем его из
+ * Authorization, чтобы ключ уходил только в apikey.
+ */
+function apikeyOnlyFetch(key: string): typeof fetch {
+  return (input, init) => {
+    const headers = new Headers(init?.headers)
+    if (headers.get('authorization') === `Bearer ${key}`) {
+      headers.delete('authorization')
+    }
+    return fetch(input, { ...init, headers })
+  }
+}
+
+const admin = createClient(SUPA_URL, SECRET_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
+  global: { fetch: apikeyOnlyFetch(SECRET_KEY) },
 })
 
 let failures = 0
@@ -78,7 +102,7 @@ async function postHook(
       opts.signature === undefined ? `v1,${sign(id, timestamp, raw)}` : (opts.signature ?? '')
   }
 
-  const res = await fetch(`${BASE}/api/auth/email-hook`, {
+  const res = await fetch(HOOK_URL, {
     method: 'POST',
     headers,
     body: raw,

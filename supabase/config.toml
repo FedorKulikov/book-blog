@@ -1,0 +1,17 @@
+# supabase/config.toml
+#
+# Минимальная конфигурация для Edge Functions проекта «Хлеба и букв».
+# Больше ничего не настраивается: локальный стек Supabase не поднимается,
+# деплой идёт через `supabase functions deploy --use-api` (без Docker).
+project_id = "tbqjyaxbymntdqzldrjz"
+
+# Recovery обслуживает и публичный redeem, поэтому платформенная проверка JWT
+# на шлюзе отключена: авторизацию generate/status выполняет код функции
+# через auth.getUser(token). Публичный redeem без сессии — осознанное решение.
+[functions.recovery]
+verify_jwt = false
+
+# Send Email Hook вызывается GoTrue без пользовательского JWT.
+# Единственная защита — подпись Standard Webhooks, проверяемая до JSON.parse.
+[functions.auth-email-hook]
+verify_jwt = false
