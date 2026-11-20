@@ -19,7 +19,7 @@ begin
   from pg_proc
   where oid = 'public.increment_book_views(uuid)'::regprocedure;
 
-  if not ('search_path=' = any(v_config)) then
+  if not ('search_path=""' = any(v_config)) then
     raise exception 'increment_book_views must use an empty search_path';
   end if;
 
