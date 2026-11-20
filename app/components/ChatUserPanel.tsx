@@ -106,8 +106,9 @@ export default function ChatUserPanel({
 
       setProfile((data as Profile | null) ?? null)
 
-      const [{ count: posts }, { count: followers }, { data: blocking }] =
+      const [{ data: { user } }, { count: posts }, { count: followers }] =
         await Promise.all([
+          supabase.auth.getUser(),
           supabase
             .from('posts')
             .select('*', { count: 'exact', head: true })
@@ -117,12 +118,17 @@ export default function ChatUserPanel({
             .from('follows')
             .select('*', { count: 'exact', head: true })
             .eq('following_id', userId),
-          supabase.rpc('is_blocking', { other_user_id: userId }),
         ])
+
+      let blocking = false
+      if (user && user.id !== userId) {
+        const { data } = await supabase.rpc('is_blocking', { other_user_id: userId })
+        blocking = Boolean(data)
+      }
 
       setPostsCount(posts ?? 0)
       setFollowersCount(followers ?? 0)
-      setIsBlocking(!!blocking)
+      setIsBlocking(blocking)
       setLoading(false)
     }
     load()
