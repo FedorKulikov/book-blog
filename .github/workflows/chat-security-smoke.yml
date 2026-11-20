@@ -32,6 +32,36 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Read-only Auth password posture
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: tbqjyaxbymntdqzldrjz
+        run: |
+          set -euo pipefail
+          set +x
+          if [ -z "${TOKEN:-}" ]; then
+            echo "Auth config: Management API token is not configured" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          umask 077
+          tmp=$(mktemp)
+          trap 'rm -f "$tmp"' EXIT
+          status=$(curl -sS --connect-timeout 10 --max-time 30 \
+            -o "$tmp" -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth")
+
+          if [ "$status" != "200" ]; then
+            echo "Auth config read returned HTTP $status; no settings were changed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "### Supabase Auth password posture (read-only)" >> "$GITHUB_STEP_SUMMARY"
+          jq '{password_min_length, password_required_characters, password_hibp_enabled}' "$tmp" \
+            >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify temporary chat access-control scenarios
         env:
           SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
