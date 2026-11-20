@@ -13,6 +13,9 @@ export function toPlainText(markdown: string): string {
     .replace(/```[\s\S]*?```/g, ' ') // блоки кода
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // ![alt](url)
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // [текст](url) → текст
+    // Теги спойлера: в превью карточки и в мета-теги они попадать не должны —
+    // иначе в описании видно «[spoil]…[/spoil]»
+    .replace(/\[\/?spoil\]/gi, ' ')
     .replace(/<[^>]*>/g, ' ') // html-теги
     .replace(/^#{1,6}\s+/gm, '') // заголовки
     .replace(/^\s*[-+*]\s+/gm, '') // списки
