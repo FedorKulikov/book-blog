@@ -191,6 +191,55 @@ async function main() {
       .eq('id', messageId)
     check('anonymous role cannot update message read status', Boolean(anonUpdate.error), safeError(anonUpdate.error))
 
+    // RPCs that require an account must not be executable as anon.
+    const anonCheckRate = await anonymous.rpc('check_and_log_action', {
+      action_input: 'chat-smoke',
+      max_per_hour: 10,
+      max_per_minute: 1,
+    })
+    check('anon cannot execute check_and_log_action', Boolean(anonCheckRate.error), safeError(anonCheckRate.error))
+
+    const anonUnread = await anonymous.rpc('count_unread_messages')
+    check('anon cannot execute count_unread_messages', Boolean(anonUnread.error), safeError(anonUnread.error))
+
+    const anonTicket = await anonymous.rpc('create_ticket', {
+      p_subject: 'smoke',
+      p_category: 'other',
+      p_message: 'temporary anonymous permission probe',
+    })
+    check('anon cannot execute create_ticket', Boolean(anonTicket.error), safeError(anonTicket.error))
+
+    const anonConversation = await anonymous.rpc('get_or_create_conversation', {
+      other_user_id: bob.id,
+    })
+    check('anon cannot execute get_or_create_conversation', Boolean(anonConversation.error), safeError(anonConversation.error))
+
+    const anonBlockedByOther = await anonymous.rpc('is_blocked_by_other', {
+      other_user_id: bob.id,
+    })
+    check('anon cannot execute is_blocked_by_other', Boolean(anonBlockedByOther.error), safeError(anonBlockedByOther.error))
+
+    const anonBlocking = await anonymous.rpc('is_blocking', {
+      other_user_id: bob.id,
+    })
+    check('anon cannot execute is_blocking', Boolean(anonBlocking.error), safeError(anonBlocking.error))
+
+    const anonStaff = await anonymous.rpc('is_staff')
+    check('anon cannot execute is_staff', Boolean(anonStaff.error), safeError(anonStaff.error))
+
+    // These two RPCs intentionally remain public for view counters. Use
+    // a non-existent UUID so the calls cannot change a real book or post.
+    const noRealRecord = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+    const anonBookView = await anonymous.rpc('increment_book_views', {
+      book_id_input: noRealRecord,
+    })
+    check('anon retains public book view counter', !anonBookView.error, safeError(anonBookView.error))
+
+    const anonPostView = await anonymous.rpc('increment_post_views', {
+      post_id_input: noRealRecord,
+    })
+    check('anon retains public post view counter', !anonPostView.error, safeError(anonPostView.error))
+
     // Mute: a participant may change their own flag only.
     const conv = await bobClient
       .from('conversations')
