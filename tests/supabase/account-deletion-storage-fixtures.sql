@@ -40,10 +40,8 @@ alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
 
 -- Supabase manages ownership of storage.objects separately from public tables.
--- Temporarily grant the local CI postgres role membership so it can create
--- policies as the actual owner; revoke that membership before this transaction commits.
-grant supabase_storage_admin to postgres;
-set local role supabase_storage_admin;
+-- The CI fixture is executed using the disposable local supabase_admin role.
+-- Never change the managed owner of storage.objects.
 alter table storage.objects enable row level security;
 
 grant usage on schema public to authenticated, service_role;
@@ -127,8 +125,5 @@ create policy ci_chat_media_select_conversation_participants
       )
     )
   );
-
-reset role;
-revoke supabase_storage_admin from postgres;
 
 commit;
