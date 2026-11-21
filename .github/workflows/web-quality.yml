@@ -91,6 +91,7 @@ jobs:
             app/books/add/page.tsx \
             app/profile/page.tsx \
             app/profile/edit/page.tsx \
+            app/profile/edit/EditProfileClient.tsx \
             app/support/'[id]'/page.tsx \
             app/post/'[id]'/edit/page.tsx \
             app/page.tsx \
