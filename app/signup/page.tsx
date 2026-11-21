@@ -166,7 +166,7 @@ export default function SignupPage() {
       if (
         res.ok &&
         Array.isArray(data.codes) &&
-        data.codes.length === 10 &&
+        data.codes.length > 0 &&
         data.saved === data.codes.length
       ) {
         setCodes(data.codes)
@@ -211,7 +211,7 @@ export default function SignupPage() {
       if (
         !res.ok ||
         !Array.isArray(data.codes) ||
-        data.codes.length !== 10 ||
+        data.codes.length === 0 ||
         data.saved !== data.codes.length
       ) {
         setRecoveryError(
