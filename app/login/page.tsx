@@ -91,7 +91,17 @@ export default function LoginPage() {
 
         <p className="mt-4 text-sm text-brown/70">
           Нет аккаунта?{' '}
-          <Link href="/signup" className="text-wine hover:underline">
+          <Link
+            href="/signup"
+            onClick={event => {
+              const next = safeInternalPath(new URLSearchParams(window.location.search).get('next'))
+              if (next !== '/') {
+                event.preventDefault()
+                router.push(`/signup?next=${encodeURIComponent(next)}`)
+              }
+            }}
+            className="text-wine hover:underline"
+          >
             Зарегистрироваться
           </Link>
         </p>
