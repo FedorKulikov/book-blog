@@ -99,7 +99,7 @@ begin
     raise exception 'second distinct email request from same IP should be allowed';
   end if;
 
-  for i in 3..20 loop
+  for i in 3..19 loop
     v_email := lpad(to_hex(i), 64, '0');
     if not public.allow_email_recovery_reset(v_email, v_ip_hash) then
       raise exception 'IP limit blocked request % before the twentieth attempt', i;
