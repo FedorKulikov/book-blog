@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 import AvatarUploader from '@/app/components/AvatarUploader'
 import { ChevronLeft } from '@/app/components/icons'
 import RecoveryCodes from '@/app/components/RecoveryCodes'
+import PasskeySecurity from '@/app/components/PasskeySecurity'
+import ChangePassword from '@/app/components/ChangePassword'
 
 export default function EditProfilePage() {
   const router = useRouter()
@@ -146,9 +148,14 @@ export default function EditProfilePage() {
         </button>
       </form>
 
-      <div className="mt-8">
+      <section className="mt-8 space-y-5">
+        <h2 className="font-playfair text-xl font-bold text-emerald-dark">
+          Безопасность аккаунта
+        </h2>
+        <PasskeySecurity />
+        <ChangePassword />
         <RecoveryCodes />
-      </div>
+      </section>
     </main>
   )
 }
