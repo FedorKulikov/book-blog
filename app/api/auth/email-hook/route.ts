@@ -1,23 +1,10 @@
 // app/api/auth/email-hook/route.ts
 //
-// Supabase Auth Hook «Send Email».
-//
-// Зачем: подтверждение почты в проекте отключено, поэтому Supabase помечает
-// ЛЮБОЙ адрес подтверждённым автоматически. Из-за этого `email_confirmed_at`
-// ничего не доказывает, а `POST /auth/v1/recover` отправлял ссылку сброса
-// владельцу любого чужого ящика — то есть позволял захватить аккаунт.
-//
-// Hook заменяет встроенную отправку Supabase: если мы не отправили письмо,
-// ссылка не уйдёт никуда. Поэтому recovery подавляется нейтральным ответом.
-//
-// ВАЖНО: hook НЕ имеет fallback на SMTP. Всё, что не отправлено здесь,
-// не отправляется вообще. Используемые в проекте сценарии:
-//   • recovery        — подавляется осознанно (восстановление по резервным кодам);
-//   • signup          — письмо не запрашивается, подтверждение почты выключено;
-//   • *_notification  — уведомления не доставляются (SMTP не настроен);
-//   • magiclink, invite, email_change, reauthentication — в приложении не используются.
-// Для неиспользуемых сценариев, где письмо реально нужно, возвращаем 501,
-// а не фиктивный успех: пусть сценарий падает заметно, а не молча.
+// Supabase Auth Send Email Hook.
+// Supabase's public /auth/v1/recover email is always suppressed here.
+ // The application sends recovery messages only through its own rate-limited
+ // endpoint after checking a separate verified-mailbox record. Historical
+ // auth.users.email_confirmed_at values are intentionally ignored.
 import { NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { isPreviewRequest } from '@/lib/env-guard'
@@ -25,10 +12,8 @@ import { isPreviewRequest } from '@/lib/env-guard'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Допустимое расхождение часов: защита от повторного использования запроса */
 const TOLERANCE_SECONDS = 5 * 60
 
-/** События, где письмо обязано уйти. В приложении не используются. */
 const UNDELIVERED_ACTIONS = new Set([
   'invite',
   'magiclink',
@@ -38,14 +23,18 @@ const UNDELIVERED_ACTIONS = new Set([
   'reauthentication',
 ])
 
-/**
- * Успех по контракту Supabase Auth Hooks.
- *
- * Тело пустое по смыслу, но с Content-Type: application/json и телом {}:
- * клиент хуков в GoTrue отклоняет ответ без JSON Content-Type
- * (hook_payload_invalid_content_type), и тогда recovery возвращает 400
- * для существующего адреса — то есть появляется оракул перечисления.
- */
+type EmailHookPayload = {
+  user?: {
+    id?: unknown
+    email?: unknown
+  } | null
+  email_data?: {
+    email_action_type?: unknown
+    token_hash?: unknown
+  }
+  email_action_type?: unknown
+}
+
 function ok() {
   return NextResponse.json({}, {
     status: 200,
@@ -53,7 +42,6 @@ function ok() {
   })
 }
 
-/** Ошибка в документированном формате Supabase Auth Hooks */
 function fail(status: number, message: string) {
   return NextResponse.json(
     { error: { http_code: status, message } },
@@ -61,12 +49,7 @@ function fail(status: number, message: string) {
   )
 }
 
-/**
- * Проверка подписи по спецификации Standard Webhooks.
- *
- * Подписывается строка `id.timestamp.body`, ключ — base64-часть секрета
- * вида `v1,whsec_<base64>`. Сравнение — constant-time.
- */
+/** Verify Standard Webhooks: HMAC-SHA256(id.timestamp.body), constant-time. */
 function hasValidSignature(
   rawBody: string,
   headers: Headers,
@@ -88,19 +71,19 @@ function hasValidSignature(
   const base64Key = withoutVersion.startsWith('whsec_')
     ? withoutVersion.slice(6)
     : withoutVersion
-
   const key = Buffer.from(base64Key, 'base64')
+
   if (key.length === 0) return false
 
   const expected = createHmac('sha256', key)
     .update(`${id}.${timestamp}.${rawBody}`)
     .digest('base64')
-
   const expectedBuffer = Buffer.from(expected)
 
   return signatureHeader.split(' ').some(entry => {
     const value = entry.startsWith('v1,') ? entry.slice(3) : entry
     const actual = Buffer.from(value)
+
     return (
       actual.length === expectedBuffer.length &&
       timingSafeEqual(actual, expectedBuffer)
@@ -108,24 +91,14 @@ function hasValidSignature(
   })
 }
 
-/** Тип события из фактического payload Supabase */
-function extractAction(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') return null
+function parsePayload(value: unknown): EmailHookPayload | null {
+  if (!value || typeof value !== 'object') return null
+  return value as EmailHookPayload
+}
 
-  const record = payload as Record<string, unknown>
-  const emailData = record.email_data
-
-  if (emailData && typeof emailData === 'object') {
-    const action = (emailData as Record<string, unknown>).email_action_type
-    if (typeof action === 'string') return action
-  }
-
-  // На случай другой версии payload
-  if (typeof record.email_action_type === 'string') {
-    return record.email_action_type
-  }
-
-  return null
+function actionOf(payload: EmailHookPayload): string | null {
+  const action = payload.email_data?.email_action_type ?? payload.email_action_type
+  return typeof action === 'string' ? action : null
 }
 
 export async function POST(request: Request) {
@@ -135,54 +108,40 @@ export async function POST(request: Request) {
 
   const secret = process.env.AUTH_EMAIL_HOOK_SECRET
 
-  // Секрета нет — подпись проверить нельзя, значит ни одно письмо отправить
-  // нельзя. Отвечаем успехом осознанно: иначе Supabase начнёт отдавать ошибки
-  // на recovery, и появится разница между существующим и несуществующим
-  // адресом. Ничего не отправлено — это безопасное поведение по умолчанию.
-  if (!secret) {
-    return ok()
-  }
+  // No secret means delivery is disabled. Never fall back to built-in SMTP.
+  if (!secret) return ok()
 
-  // Тело читаем как текст: подпись считается по исходным байтам
   const rawBody = await request.text()
 
   if (!hasValidSignature(rawBody, request.headers, secret)) {
     return fail(401, 'invalid_signature')
   }
 
-  let payload: unknown
+  let payload: EmailHookPayload | null
   try {
-    payload = JSON.parse(rawBody)
+    payload = parsePayload(JSON.parse(rawBody))
   } catch {
     return fail(400, 'invalid_json')
   }
 
-  const action = extractAction(payload)
+  if (!payload) return fail(400, 'invalid_payload')
 
-  if (!action) {
-    return fail(501, 'unsupported_action')
-  }
+  const action = actionOf(payload)
+  if (!action) return fail(501, 'unsupported_action')
 
-  // Восстановление пароля письмом не отправляем: адрес не подтверждён,
-  // значит владение им не доказано. Нейтральный ответ одинаков для любых
-  // входных данных — по нему нельзя определить существование аккаунта.
   if (action === 'recovery') {
+    // Never send from the public Auth endpoint. The custom reset endpoint
+    // calls admin.generateLink, checks the verified-email record and then
+    // sends through Resend with its own email/IP rate limits.
     return ok()
   }
 
-  // Подтверждение регистрации: при выключенном Confirm Email письмо не
-  // запрашивается вовсе, поэтому 200 здесь честный — письма и не ждали.
-  // Если подтверждение когда-нибудь включат, доставку нужно будет подключать.
-  if (action === 'signup') {
-    return ok()
-  }
+  // Email confirmations remain disabled. Signup does not request a message.
+  if (action === 'signup') return ok()
 
-  // Уведомления о безопасности: доставлять нечем, подавляем.
-  if (action.endsWith('_notification')) {
-    return ok()
-  }
+  // Security notices are not enabled until a notification policy is designed.
+  if (action.endsWith('_notification')) return ok()
 
-  // Письмо требуется, но отправить его не через что.
   if (UNDELIVERED_ACTIONS.has(action)) {
     return fail(501, 'email_delivery_not_configured')
   }

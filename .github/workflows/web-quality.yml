@@ -54,6 +54,9 @@ jobs:
       - name: Auth navigation regression tests
         run: npm run test:auth-navigation
 
+      - name: Verified email recovery tests
+        run: npm run test:email-recovery
+
       - name: TypeScript
         run: npx tsc --noEmit
 
@@ -64,6 +67,15 @@ jobs:
             app/login/page.tsx \
             app/signup/page.tsx \
             app/forgot-password/page.tsx \
+            app/api/email-recovery/status/route.ts \
+            app/api/email-recovery/request/route.ts \
+            app/api/email-recovery/reset-request/route.ts \
+            app/api/email-recovery/confirm/route.ts \
+            app/api/auth/email-hook/route.ts \
+            app/components/EmailRecoverySecurity.tsx \
+            app/components/EmailRecoveryResetForm.tsx \
+            app/email-recovery/confirm/page.tsx \
+            app/email-recovery/confirm/EmailRecoveryConfirmClient.tsx \
             app/recover-account/page.tsx \
             app/auth/confirm/page.tsx \
             app/auth/reset/page.tsx \
@@ -79,6 +91,7 @@ jobs:
             app/books/add/page.tsx \
             app/profile/page.tsx \
             app/profile/edit/page.tsx \
+            app/profile/edit/EditProfileClient.tsx \
             app/support/'[id]'/page.tsx \
             app/post/'[id]'/edit/page.tsx \
             app/page.tsx \
@@ -93,6 +106,7 @@ jobs:
             app/sitemap.ts \
             app/components/JsonLd.tsx \
             lib/auth-navigation.ts \
+            lib/email-recovery.ts \
             proxy.ts \
             next.config.ts
       - name: Production build
