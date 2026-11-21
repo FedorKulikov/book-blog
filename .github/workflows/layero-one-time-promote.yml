@@ -63,6 +63,7 @@ jobs:
           export LAYERO_PROJECT_SLUG
           printf 'LAYERO_PROJECT_SLUG=%s\n' "$LAYERO_PROJECT_SLUG" >> "$GITHUB_ENV"
 
+          # Confirm DNS ownership and TLS via Layero's own verifier before any production promotion.
           VERIFY_FILE="$RUNNER_TEMP/layero-domain-verify.jsonl"
           npx --yes layero@latest domains verify bukleb.ru --project "$LAYERO_PROJECT_SLUG" --json > "$VERIFY_FILE"
           node - "$VERIFY_FILE" <<'NODE'
