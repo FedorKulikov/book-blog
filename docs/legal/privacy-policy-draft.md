@@ -21,7 +21,7 @@
 | GitHub Actions | CI, smoke-проверки и ежедневный backup workflow | Хранение логов/артефактов и права доступа |
 | Backblaze B2 | DB dump после шифрования age выгружается в S3-совместимое хранилище | Регион bucket, договор, lifecycle, retention и доступ к ключу расшифровки |
 | Яндекс Метрика | Код счётчика работает только если задан NEXT_PUBLIC_YANDEX_METRIKA_ID; подключены clickmap, trackLinks и accurateTrackBounce | Проверить, задан ли ID в production, cookies, договор и правовое основание |
-| Яндекс Вебвизор | В исходном коде был установлен webvisor:true; исправление отключает его до аудита маскирования | Проверить после выкладки, что в production Webvisor отключён |
+| Яндекс Вебвизор | PR #42 изменил настройку приложения на webvisor:false, добавил ym-hide-content для приватных блоков и ym-disable-keys для полей входа/регистрации | Проверить, что актуальный код выложен и Webvisor также выключен в настройках production-счётчика |
 | Resend | Код email-восстановления умеет отправлять через Resend, но feature flag и production SQL migration не активированы | Не считать действующим обработчиком до запуска; до запуска проверить DPA и географию обработки |
 | Selectel | DNS-панель домена | Не объявлять обработчиком пользовательского контента без подтверждения фактических потоков |
 
@@ -77,7 +77,7 @@ Supabase проект book-blog размещён в регионе eu-central-1 
 
 - 152-ФЗ, статья 18, часть 5: https://www.consultant.ru/document/cons_doc_LAW_61801/cbf4e15b7c330f9372e876cdf2bc928bad7950ef/
 - 152-ФЗ, статья 18.1 (публикация политики): https://www.consultant.ru/document/cons_doc_LAW_61801/eeeebe22bf738fd65bb66b95cc278911ae2525ee/
-- 152-ФЗ, статья 9 (согласие): https://www.consultant.ru/document/Cons_doc_LAW_61801/6c94959bc017ac80140621762d2ac59f6006b08c/
+- 152-ФЗ, статья 9 (согласие): https://www.consultant.ru/document/cons_doc_LAW_61801/6c94959bc017ac80140621762d2ac59f6006b08c/
 - 152-ФЗ, статья 12 (трансграничная передача): https://www.consultant.ru/document/Cons_doc_LAW_61801/e4ebbe1780de623c7cf32a59ca82a7bb523a25dd/
 - 152-ФЗ, статья 22 (уведомление): https://www.consultant.ru/document/cons_doc_LAW_61801/d996966e22e1320c9de1ab82d9f6be12c3d9d765/
 - GDPR: https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng
