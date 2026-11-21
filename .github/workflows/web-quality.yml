@@ -356,7 +356,7 @@ jobs:
               echo "::error::Missing local Supabase variable: $name"
               exit 1
             fi
-            printf '%s=%s\\n' "$name" "$value" >> "$GITHUB_ENV"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
           done
 
       - name: Apply isolated account deletion fixtures
