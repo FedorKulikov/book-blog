@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { Heart } from './icons'
@@ -32,6 +33,7 @@ function explainLikeError(message: string): string {
 }
 
 export default function LikeButton({ postId }: { postId: string }) {
+  const router = useRouter()
   const [count, setCount] = useState(0)
   const [liked, setLiked] = useState(false)
   const [user, setUser] = useState<User | null>(null)
@@ -66,7 +68,8 @@ export default function LikeButton({ postId }: { postId: string }) {
     if (busy) return
 
     if (!user) {
-      alert('Войдите, чтобы поставить лайк')
+      const currentPath = `${window.location.pathname}${window.location.search}`
+      router.push(`/login?next=${encodeURIComponent(currentPath)}`)
       return
     }
 
