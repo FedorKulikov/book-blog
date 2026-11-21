@@ -337,6 +337,7 @@ jobs:
           supabase status --output env > "$status_file"
           set -a
           # Source the CLI-generated env file so quoting is removed correctly.
+          # shellcheck disable=SC1090
           source "$status_file"
           set +a
 
