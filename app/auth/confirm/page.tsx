@@ -154,10 +154,10 @@ function ConfirmContent() {
             </h1>
             <p className="text-brown-dark/70 mb-6">{errorMsg}</p>
             <Link
-              href={isRecovery ? '/forgot-password' : '/login'}
+              href={isRecovery ? '/recover-account' : '/login'}
               className="inline-block bg-wine hover:bg-wine-dark text-white px-5 py-2.5 rounded-full text-sm transition-colors"
             >
-              {isRecovery ? 'Запросить новое письмо' : 'Попробовать снова'}
+              {isRecovery ? 'Восстановить по резервному коду' : 'Попробовать снова'}
             </Link>
           </>
         )}
