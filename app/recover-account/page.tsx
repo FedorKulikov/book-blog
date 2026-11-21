@@ -184,11 +184,9 @@ export default function RecoverAccountPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-sm text-brown/70">
-          Есть доступ к почте?{' '}
-          <Link href="/forgot-password" className="text-wine hover:underline">
-            Восстановить по ссылке из письма
-          </Link>
+        <p className="mt-4 text-sm text-brown/60">
+          Восстановление по ссылке из email сейчас отключено. Здесь нужен
+          именно резервный код, сохранённый заранее.
         </p>
         <p className="mt-2 text-sm text-brown/70">
           Вспомнили пароль?{' '}

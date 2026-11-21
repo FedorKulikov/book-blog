@@ -424,11 +424,17 @@ export default function Comments({ postId }: { postId: string }) {
         </div>
       ) : (
         <p className="text-sm text-brown/60 mb-4">
-          <a href="/login" className="text-wine hover:underline">
+          <a
+            href={`/login?next=${encodeURIComponent(`/post/${postId}`)}`}
+            className="text-wine hover:underline"
+          >
             Войдите
           </a>{' '}
           или{' '}
-          <a href="/signup" className="text-wine hover:underline">
+          <a
+            href={`/signup?next=${encodeURIComponent(`/post/${postId}`)}`}
+            className="text-wine hover:underline"
+          >
             зарегистрируйтесь
           </a>
           , чтобы оставить комментарий.

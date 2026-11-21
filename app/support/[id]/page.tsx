@@ -23,7 +23,7 @@ export default async function TicketPage({
   const supabase = await createSupabaseServerClient()
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  if (!user) redirect(`/login?next=${encodeURIComponent(`/support/${id}`)}`)
 
   // RLS отдаст тикет только автору или staff — 404 для остальных
   const { data: ticketData } = await supabase

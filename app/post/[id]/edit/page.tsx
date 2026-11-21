@@ -34,7 +34,7 @@ export default async function EditPostPage({
   } = await supabase.auth.getUser()
 
   // Гостя отправляем логиниться, а не показываем 404 — так понятнее
-  if (!user) redirect('/login')
+  if (!user) redirect(`/login?next=${encodeURIComponent(`/post/${id}/edit`)}`)
 
   const isAuthor = user.id === post.user_id
 

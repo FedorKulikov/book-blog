@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
+import { safeInternalPath } from '@/lib/auth-navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -27,7 +28,8 @@ export default function LoginPage() {
       setError(humanizeError(error.message))
       setLoading(false)
     } else {
-      router.push('/')
+      const next = safeInternalPath(new URLSearchParams(window.location.search).get('next'))
+      router.replace(next)
       router.refresh()
     }
   }
@@ -48,6 +50,7 @@ export default function LoginPage() {
             <input
               id="login-email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -66,6 +69,7 @@ export default function LoginPage() {
             <input
               id="login-password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -87,16 +91,26 @@ export default function LoginPage() {
 
         <p className="mt-4 text-sm text-brown/70">
           Нет аккаунта?{' '}
-          <Link href="/signup" className="text-wine hover:underline">
+          <Link
+            href="/signup"
+            onClick={event => {
+              const next = safeInternalPath(new URLSearchParams(window.location.search).get('next'))
+              if (next !== '/') {
+                event.preventDefault()
+                router.push(`/signup?next=${encodeURIComponent(next)}`)
+              }
+            }}
+            className="text-wine hover:underline"
+          >
             Зарегистрироваться
           </Link>
         </p>
 
         <p className="mt-2 text-sm text-brown/70">
-          Нет доступа к почте?{' '}
-          <Link href="/recover-account" className="text-wine hover:underline">
-            Восстановить по резервному коду
+          <Link href="/forgot-password" className="text-wine hover:underline">
+            Забыли пароль?
           </Link>
+          {' '}Восстановление доступно по резервному коду.
         </p>
       </div>
     </main>

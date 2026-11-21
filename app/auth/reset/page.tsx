@@ -107,15 +107,16 @@ export default function ResetPasswordPage() {
             Ссылка недействительна
           </h1>
           <p className="text-brown/70 mb-6">
-            Ссылка устарела или открыта в другом браузере. Запросите новое
-            письмо — это займёт минуту.
+            Ссылка недействительна или восстановить сессию не удалось.
+            Восстановление пароля по email сейчас отключено — используйте
+            резервный код, сохранённый при регистрации.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
-              href="/forgot-password"
+              href="/recover-account"
               className="rounded-full bg-emerald-mid px-5 py-2 text-sm text-cream hover:bg-emerald-dark transition-colors"
             >
-              Запросить ссылку
+              Восстановить по коду
             </Link>
             <Link
               href="/login"

@@ -23,6 +23,7 @@ export default function CodesReveal({
   title = 'Сохраните коды — они больше не появятся',
 }: Props) {
   const [copied, setCopied] = useState(false)
+  const [confirmedSaved, setConfirmedSaved] = useState(false)
   const [error, setError] = useState('')
 
   async function copyAll() {
@@ -77,6 +78,16 @@ export default function CodesReveal({
         ))}
       </ul>
 
+      <label className="mb-3 flex items-start gap-2 text-sm text-brown-dark">
+        <input
+          type="checkbox"
+          checked={confirmedSaved}
+          onChange={event => setConfirmedSaved(event.target.checked)}
+          className="mt-1"
+        />
+        <span>Я сохранил резервные коды в надёжном месте и понимаю, что они больше не будут показаны.</span>
+      </label>
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -95,7 +106,8 @@ export default function CodesReveal({
         <button
           type="button"
           onClick={onDone}
-          className="rounded-full px-4 py-2 text-sm text-brown/70 hover:text-wine transition-colors"
+          disabled={!confirmedSaved}
+          className="rounded-full px-4 py-2 text-sm text-brown/70 hover:text-wine transition-colors disabled:cursor-not-allowed disabled:opacity-40"
         >
           {doneLabel}
         </button>

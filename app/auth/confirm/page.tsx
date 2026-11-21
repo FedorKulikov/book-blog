@@ -87,8 +87,9 @@ function ConfirmContent() {
       }
 
       setErrorMsg(
-        'В ссылке нет token_hash и не удалось восстановить сессию. ' +
-          'Возможно, ссылка устарела — запросите новое письмо.',
+        isRecovery
+          ? 'Восстановление пароля по email сейчас отключено. Используйте резервный код, сохранённый при регистрации.'
+          : 'В ссылке нет token_hash и не удалось восстановить сессию. Возможно, ссылка устарела — попробуйте подтвердить email ещё раз.',
       )
       setStatus('error')
     }
@@ -99,7 +100,7 @@ function ConfirmContent() {
       alive = false
       if (timer) window.clearTimeout(timer)
     }
-  }, [searchParams, router, next])
+  }, [searchParams, router, next, isRecovery])
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-cream">
@@ -154,10 +155,10 @@ function ConfirmContent() {
             </h1>
             <p className="text-brown-dark/70 mb-6">{errorMsg}</p>
             <Link
-              href={isRecovery ? '/forgot-password' : '/login'}
+              href={isRecovery ? '/recover-account' : '/login'}
               className="inline-block bg-wine hover:bg-wine-dark text-white px-5 py-2.5 rounded-full text-sm transition-colors"
             >
-              {isRecovery ? 'Запросить новое письмо' : 'Попробовать снова'}
+              {isRecovery ? 'Восстановить по резервному коду' : 'Попробовать снова'}
             </Link>
           </>
         )}

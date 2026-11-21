@@ -16,7 +16,7 @@ export default async function EditProfileRoute() {
   const supabase = await createSupabaseServerClient()
   const { data } = await supabase.auth.getUser()
 
-  if (!data.user) redirect('/login')
+  if (!data.user) redirect('/login?next=%2Fprofile%2Fedit')
 
   return <EditProfilePage />
 }

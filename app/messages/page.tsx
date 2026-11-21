@@ -16,7 +16,7 @@ export default async function MessagesRoute() {
   const supabase = await createSupabaseServerClient()
   const { data } = await supabase.auth.getUser()
 
-  if (!data.user) redirect('/login')
+  if (!data.user) redirect('/login?next=%2Fmessages')
 
   return <MessagesPage />
 }

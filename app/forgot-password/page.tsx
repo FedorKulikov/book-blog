@@ -1,16 +1,3 @@
-'use client'
-
-// app/forgot-password/page.tsx
-//
-// Восстановление пароля по email отключено.
-//
-// Причина: подтверждение почты в проекте выключено, поэтому Supabase
-// помечает любой адрес подтверждённым автоматически. Владелец чужого
-// ящика мог запросить ссылку сброса и захватить чужой аккаунт.
-// Пока владение адресом не проверяется независимо, ссылка сброса —
-// это дыра, а не функция.
-//
-// Рабочий способ — одноразовые резервные коды: /recover-account.
 import Link from 'next/link'
 
 export default function ForgotPasswordPage() {
@@ -18,26 +5,23 @@ export default function ForgotPasswordPage() {
     <main className="p-4 md:p-8 flex justify-center">
       <div className="w-full max-w-md">
         <h1 className="text-3xl font-bold mb-4 text-emerald-dark">
-          🔑 Восстановление пароля
+          🔑 Забыли пароль?
         </h1>
 
-        <div className="rounded-xl border border-wine/25 bg-wine/5 p-4 mb-6">
+        <div className="rounded-xl border border-emerald-dark/15 bg-cream-warm/30 p-4 mb-6">
           <p className="text-sm text-brown-dark">
-            Восстановление по ссылке из письма <strong>отключено</strong>:
-            адреса при регистрации не подтверждаются, поэтому письмо могло бы
-            уйти владельцу чужого ящика.
+            Сейчас восстановить пароль можно с помощью резервного кода,
+            который вы сохранили при регистрации или создали в настройках профиля.
           </p>
         </div>
 
-        <p className="text-brown-dark/80 mb-4">
-          Пароль восстанавливается по резервному коду — тому набору, который вы
-          сохранили при регистрации или создали в настройках профиля.
+        <p className="text-sm text-brown/70 mb-3">
+          Для восстановления понадобятся:
         </p>
-
-        <ul className="text-sm text-brown/70 space-y-1 mb-6">
-          <li>• Имя пользователя</li>
-          <li>• Один резервный код</li>
-          <li>• Новый пароль</li>
+        <ul className="text-sm text-brown/70 space-y-1 mb-6 list-disc pl-5">
+          <li>имя пользователя;</li>
+          <li>один неиспользованный резервный код;</li>
+          <li>новый пароль длиной не менее 8 символов.</li>
         </ul>
 
         <div className="flex flex-wrap gap-3">
@@ -45,7 +29,7 @@ export default function ForgotPasswordPage() {
             href="/recover-account"
             className="rounded-full bg-emerald-mid px-5 py-2.5 text-sm text-cream hover:bg-emerald-dark transition-colors"
           >
-            Восстановить по резервному коду
+            Восстановить по коду
           </Link>
           <Link
             href="/login"
@@ -56,8 +40,9 @@ export default function ForgotPasswordPage() {
         </div>
 
         <p className="mt-6 text-sm text-brown/60">
-          Кодов нет? Восстановить доступ без них нельзя: аккаунт не связан с
-          подтверждённым адресом. Обратитесь к администрации.
+          Восстановление по ссылке из email сейчас отключено. Если резервных
+          кодов не осталось, самостоятельный сброс пароля недоступен —
+          потребуется помощь администрации проекта.
         </p>
       </div>
     </main>
