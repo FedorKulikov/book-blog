@@ -13,6 +13,7 @@ export type ChatMessage = {
   created_at: string
   read_at: string | null
   sender_id: string
+  media_unavailable?: boolean
 }
 
 export default function MessageBubble({
@@ -96,6 +97,12 @@ export default function MessageBubble({
               isOwn={isOwn}
             />
           </div>
+        )}
+
+        {message.media_unavailable && (
+          <p role="status" className="px-2 py-1 text-xs opacity-75">
+            Вложение не удалось загрузить. Обновите переписку.
+          </p>
         )}
 
         {hasText && (
