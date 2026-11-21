@@ -47,18 +47,21 @@ export default function NewTicketForm() {
 
     if (rpcError) {
       console.error('[support] create_ticket failed:', rpcError.message)
-      setError('Не удалось создать обращение: ' + rpcError.message)
+      setError('Не удалось создать обращение. Проверьте соединение и попробуйте ещё раз.')
       setSending(false)
       return
     }
 
-    const ticketId = data as unknown as string | null
+    const ticketId = typeof data === 'string' ? data.trim() : ''
+    if (!ticketId) {
+      setError('Сервер не подтвердил создание обращения. Текст формы сохранён — попробуйте отправить ещё раз.')
+      setSending(false)
+      return
+    }
+
     setSubject('')
     setMessage('')
-
-    if (ticketId) {
-      router.push(`/support/${ticketId}`)
-    }
+    router.push(`/support/${ticketId}`)
     router.refresh()
   }
 
@@ -80,7 +83,9 @@ export default function NewTicketForm() {
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
+          minLength={5}
           maxLength={200}
+          required
           placeholder="Коротко: о чём вопрос"
           className="w-full border border-emerald-dark/15 rounded-lg px-3 py-2 text-sm bg-cream-warm/40 focus:outline-none focus:border-emerald-mid"
         />
@@ -113,7 +118,9 @@ export default function NewTicketForm() {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           rows={5}
+          minLength={10}
           maxLength={5000}
+          required
           placeholder="Что случилось? Что вы ожидали?"
           className="w-full border border-emerald-dark/15 rounded-lg px-3 py-2 text-sm bg-cream-warm/40 focus:outline-none focus:border-emerald-mid resize-y"
         />
