@@ -31,10 +31,10 @@ export function safeInternalPath(value: string | null | undefined): string {
   }
 }
 
-export function getPostAuthPath(search: string): string {
+export function getPostAuthPath(search: string, fallback = '/welcome'): string {
   const params = new URLSearchParams(search)
   const next = params.get('next')
-  if (!next) return '/welcome'
+  if (!next) return fallback
 
   const destination = safeInternalPath(next)
   let pathname = decodeURIComponent(new URL(destination, 'https://internal.invalid').pathname)
@@ -49,7 +49,7 @@ export function getPostAuthPath(search: string): string {
   // После успешной авторизации нельзя возвращать пользователя на экран,
   // который снова требует авторизацию или начинает recovery-flow.
   if (authOnlyPaths.has(pathname) || pathname.startsWith('/auth/')) {
-    return '/welcome'
+    return fallback
   }
 
   return destination
