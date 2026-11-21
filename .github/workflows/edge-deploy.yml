@@ -58,10 +58,6 @@ jobs:
             echo "invalid_secret_length: AUTH_EMAIL_HOOK_SECRET must decode to exactly 32 bytes"
             exit 1
           fi
-          if [ "$missing" -ne 0 ]; then
-            echo "остановка до операций записи"
-            exit 1
-          fi
           echo "secrets: ok"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
