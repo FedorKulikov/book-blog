@@ -19,15 +19,18 @@ export default function EmailRecoverySecurity() {
     if (!enabled) return
 
     const result = new URLSearchParams(window.location.search).get('emailRecovery')
-    if (result === 'verified') {
-      setNotice('Email подтверждён. Теперь его можно использовать для восстановления пароля.')
-    } else if (result === 'invalid') {
-      setError('Ссылка подтверждения недействительна или срок её действия истёк. Запросите новую.')
-    }
-
     let alive = true
 
     async function load() {
+      await Promise.resolve()
+      if (!alive) return
+
+      if (result === 'verified') {
+        setNotice('Email подтверждён. Теперь его можно использовать для восстановления пароля.')
+      } else if (result === 'invalid') {
+        setError('Ссылка подтверждения недействительна или срок её действия истёк. Запросите новую.')
+      }
+
       try {
         const response = await fetch('/api/email-recovery/status', {
           cache: 'no-store',
