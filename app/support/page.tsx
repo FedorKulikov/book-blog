@@ -40,7 +40,7 @@ export default async function SupportPage() {
             Чтобы написать в поддержку, войдите в аккаунт — обращения привязаны к пользователю.
           </p>
           <Link
-            href="/login"
+            href="/login?next=%2Fsupport"
             className="inline-block bg-wine hover:bg-wine-dark text-white rounded-full px-6 py-2 text-sm transition-colors"
           >
             Войти
