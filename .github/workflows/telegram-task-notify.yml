@@ -55,8 +55,16 @@ jobs:
 
           payload="$(jq -n --arg chat_id "${TG_CHAT_ID}" --arg text "${message}" '{chat_id: $chat_id, text: $text}')"
 
-          curl --fail-with-body --silent --show-error --max-time 20 \
+          response="$(curl --fail-with-body --silent --show-error --max-time 20 \
             --request POST \
             --header 'Content-Type: application/json' \
             --data-binary "${payload}" \
-            "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"
+            "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage")"
+
+          if ! jq -e '.ok == true' <<< "${response}" >/dev/null; then
+            echo "::error::Telegram API rejected the notification."
+            exit 1
+          fi
+
+          unset response
+          echo "Telegram notification delivered successfully."
