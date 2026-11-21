@@ -294,7 +294,7 @@ export default function SignupPage() {
               onChange={e => setRecoveryPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
+              className="ym-disable-keys w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
               placeholder="Пароль, который вы только что задали"
             />
             {recoveryError && <p role="alert" className="text-sm text-wine">{recoveryError}</p>}
@@ -401,7 +401,7 @@ export default function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
+              className="ym-disable-keys w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
               placeholder="you@example.com"
             />
           </div>
@@ -421,7 +421,7 @@ export default function SignupPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={MIN_PASSWORD}
-              className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
+              className="ym-disable-keys w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
               placeholder={`Минимум ${MIN_PASSWORD} символов`}
             />
           </div>
