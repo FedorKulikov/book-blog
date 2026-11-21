@@ -278,7 +278,7 @@ async function testDefaultPreservation(): Promise<{
 }
 
 async function testOptionalOwnMessageRemoval(counterpart: TestUser, outsider: TestUser): Promise<void> {
-  console.log('[account-deletion-storage] testing optional removal of only the deleting user's messages')
+  console.log(`[account-deletion-storage] testing optional removal of only the deleting user's messages`)
 
   const deletingUser = await createTestUser('remove-own-author')
   const conversationId = await createConversation(deletingUser.id, counterpart.id)
@@ -306,8 +306,8 @@ async function testOptionalOwnMessageRemoval(counterpart: TestUser, outsider: Te
     audioUrl: ownAudio,
   })
 
-  await expectDownload(counterpart.client, ownPhoto, true, 'counterpart can read the other user's photo before removal')
-  await expectDownload(counterpart.client, ownAudio, true, 'counterpart can read the other user's audio before removal')
+  await expectDownload(counterpart.client, ownPhoto, true, `counterpart can read the other user's photo before removal`)
+  await expectDownload(counterpart.client, ownAudio, true, `counterpart can read the other user's audio before removal`)
 
   const { error: removeOwnMediaError } = await admin.storage
     .from('chat-media')
@@ -321,8 +321,8 @@ async function testOptionalOwnMessageRemoval(counterpart: TestUser, outsider: Te
     .eq('sender_id', deletingUser.id)
   checkError('delete only messages authored by the deleting user', deleteOwnMessagesError)
 
-  assert.equal(storageObjectCount(ownPhoto), 0, 'deleting user's photo should be removed')
-  assert.equal(storageObjectCount(ownAudio), 0, 'deleting user's audio should be removed')
+  assert.equal(storageObjectCount(ownPhoto), 0, `deleting user's photo should be removed`)
+  assert.equal(storageObjectCount(ownAudio), 0, `deleting user's audio should be removed`)
 
   await deleteAuthUser(deletingUser.id, 'remove-own-author')
 
@@ -336,8 +336,8 @@ async function testOptionalOwnMessageRemoval(counterpart: TestUser, outsider: Te
   assert.equal(remainingMessages?.[0]?.sender_id, counterpart.id, 'counterpart author identity must remain')
   assert.equal(remainingMessages?.[0]?.text, 'This message belongs to the other participant and must remain', 'counterpart message text must remain')
 
-  await expectDownload(counterpart.client, ownPhoto, false, 'removed user's photo no longer exists')
-  await expectDownload(counterpart.client, ownAudio, false, 'removed user's audio no longer exists')
+  await expectDownload(counterpart.client, ownPhoto, false, `removed user's photo no longer exists`)
+  await expectDownload(counterpart.client, ownAudio, false, `removed user's audio no longer exists`)
   await expectDownload(outsider.client, ownPhoto, false, 'outsider cannot read removed media')
 
   const { data: conversation, error: conversationError } = await counterpart.client
