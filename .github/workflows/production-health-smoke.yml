@@ -87,15 +87,20 @@ jobs:
           check_guest_login_redirect() {
             local route="$1"
             local expected_next="$2"
-            local headers="$RUNNER_TEMP/guest-${route//\//_}.headers"
-            local status location
-            status="$(curl --silent --show-error --max-time 25 --dump-header "$headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${route}" || true)"
-            location="$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { sub(/^[^:]*:[[:space:]]*/, ""); gsub(/\r/, ""); print; exit }' "$headers")"
-            if [[ ! "$status" =~ ^30[1278]$ ]] || [[ "$location" != *"/login?next="* ]] || [[ "$location" != *"$expected_next"* ]]; then
-              echo "::error::Guest route $route must redirect to /login with its return path (HTTP $status; Location: $location)."
+            local result status effective_url
+            # The Layero hostname may first redirect to the custom canonical
+            # domain. Follow the entire chain, then assert that the final page
+            # is the login screen with the original protected path preserved.
+            result="$(curl --silent --show-error --location --max-redirs 5 --max-time 35 \
+              --output /dev/null --write-out '%{http_code} %{url_effective}' \
+              "${SITE_URL%/}${route}" || true)"
+            status="${result%% *}"
+            effective_url="${result#* }"
+            if [[ "$status" != "200" ]] || [[ "$effective_url" != *"/login?next="* ]] || [[ "$effective_url" != *"$expected_next"* ]]; then
+              echo "::error::Guest route $route must finish at /login with its return path (HTTP $status; final URL: $effective_url)."
               exit 1
             fi
-            echo "Guest route $route redirects to login and preserves its return path."
+            echo "Guest route $route ends at login and preserves its return path."
           }
 
           check_guest_login_redirect "/profile" "%2Fprofile"
