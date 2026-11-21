@@ -13,6 +13,8 @@ export type ChatMessage = {
   created_at: string
   read_at: string | null
   sender_id: string
+  image_object_path?: string | null
+  audio_object_path?: string | null
   media_unavailable?: boolean
 }
 
