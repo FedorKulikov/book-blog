@@ -81,11 +81,26 @@ jobs:
             `TXT=${checks.txt_ok ?? "unknown"}, ownership=${checks.ownership_ok ?? "unknown"}.`
           );
           if (result.error) console.log(`Layero domain diagnostic: ${String(result.error).slice(0, 500)}`);
-          if (result.verified !== true || result.ssl_status !== "active") {
-            console.error("bukleb.ru is not verified with an active TLS certificate in Layero. No production change was made.");
+          if (
+            result.verified !== true ||
+            checks.a_ok !== true ||
+            checks.txt_ok !== true ||
+            checks.ownership_ok !== true ||
+            !["active", "issued"].includes(result.ssl_status)
+          ) {
+            console.error("Layero domain ownership/DNS is not verified or its certificate status is not issued/active. No production change was made.");
             process.exit(1);
           }
           NODE
+
+          # Layero can report ssl_status=issued while the externally served certificate is already valid.
+          # Require a normal HTTPS request (curl verifies hostname and trust chain; no -k) before promoting.
+          tls_status="$(curl --silent --show-error --location --max-time 25 --output /dev/null --write-out '%{http_code}' 'https://bukleb.ru/' || true)"
+          if [[ "$tls_status" != "200" ]]; then
+            echo "::error::HTTPS preflight failed for bukleb.ru (HTTP ${tls_status:-unknown}); no production change was made."
+            exit 1
+          fi
+          echo "HTTPS preflight passed with normal certificate verification (HTTP $tls_status)."
 
           ready=0
           for attempt in $(seq 1 30); do
