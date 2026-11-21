@@ -20,7 +20,7 @@ export default async function AddBookPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) redirect('/login')
+  if (!user) redirect('/login?next=%2Fbooks%2Fadd')
 
   return (
     <main className="p-4 md:p-8 max-w-2xl mx-auto">
