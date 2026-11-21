@@ -1,23 +1,13 @@
 // app/api/auth/email-hook/route.ts
 //
 // Supabase Auth Send Email Hook.
-// Password-reset emails are delivered only if the user explicitly verified
-// the current mailbox from an authenticated profile session. The project's
-// historical auth.users.email_confirmed_at values are intentionally ignored.
+// Supabase's public /auth/v1/recover email is always suppressed here.
+ // The application sends recovery messages only through its own rate-limited
+ // endpoint after checking a separate verified-mailbox record. Historical
+ // auth.users.email_confirmed_at values are intentionally ignored.
 import { NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { isPreviewRequest } from '@/lib/env-guard'
-import { getAdminClient } from '@/lib/supabase/admin'
-import {
-  buildPasswordRecoveryUrl,
-  emailRecoveryHmac,
-  escapeEmailHtml,
-  getAuthEmailSiteUrl,
-  getEmailRecoverySecret,
-  isEmailRecoveryConfigured,
-  sendEmailViaResend,
-} from '@/lib/email-recovery'
-
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -110,78 +100,6 @@ function actionOf(payload: EmailHookPayload): string | null {
   return typeof action === 'string' ? action : null
 }
 
-/**
- * Keep the public Auth response identical for unknown/unverified users and
- * verified users. This avoids turning the hook into an account-enumeration
- * oracle. Delivery errors are logged without addresses or tokens.
- */
-async function handleRecovery(payload: EmailHookPayload) {
-  if (!isEmailRecoveryConfigured()) return
-
-  const userId = payload.user?.id
-  const email = payload.user?.email
-  const tokenHash = payload.email_data?.token_hash
-  const secret = getEmailRecoverySecret()
-  const admin = getAdminClient()
-
-  if (
-    typeof userId !== 'string' ||
-    typeof email !== 'string' ||
-    !email ||
-    typeof tokenHash !== 'string' ||
-    !tokenHash ||
-    !secret ||
-    !admin
-  ) {
-    return
-  }
-
-  const { data: verified, error: lookupError } = await admin.rpc(
-    'email_recovery_is_verified',
-    {
-      p_user_id: userId,
-      p_email_hash: emailRecoveryHmac(email.trim().toLowerCase(), secret),
-    },
-  )
-
-  if (lookupError) {
-    console.error('[email-hook] verified-email lookup failed')
-    return
-  }
-
-  if (verified !== true) return
-
-  try {
-    const siteUrl = getAuthEmailSiteUrl()
-    const recoveryUrl = buildPasswordRecoveryUrl(siteUrl, tokenHash)
-    const safeUrl = escapeEmailHtml(recoveryUrl)
-    const idempotencyKey = emailRecoveryHmac(
-      `recovery:${userId}:${tokenHash}`,
-      secret,
-    )
-
-    await sendEmailViaResend({
-      to: email,
-      subject: 'Ссылка для восстановления пароля — «Хлеба и букв»',
-      html: [
-        '<!doctype html><html lang="ru"><body>',
-        '<h2>Восстановление пароля</h2>',
-        '<p>Получен запрос на смену пароля в аккаунте «Хлеба и букв».</p>',
-        `<p><a href="${safeUrl}">Создать новый пароль</a></p>`,
-        '<p>Ссылка одноразовая. Если вы не запрашивали сброс, проигнорируйте письмо.</p>',
-        '</body></html>',
-      ].join(''),
-      text: [
-        'Получен запрос на смену пароля в аккаунте «Хлеба и букв».',
-        recoveryUrl,
-        'Ссылка одноразовая. Если вы не запрашивали сброс, проигнорируйте письмо.',
-      ].join('\n\n'),
-      idempotencyKey: `auth-recovery/${idempotencyKey}`,
-    })
-  } catch {
-    console.error('[email-hook] recovery email delivery failed')
-  }
-}
 
 export async function POST(request: Request) {
   if (isPreviewRequest(request)) {
@@ -212,11 +130,9 @@ export async function POST(request: Request) {
   if (!action) return fail(501, 'unsupported_action')
 
   if (action === 'recovery') {
-    try {
-      await handleRecovery(payload)
-    } catch {
-      console.error('[email-hook] recovery processing failed')
-    }
+    // Never send from the public Auth endpoint. The custom reset endpoint
+    // calls admin.generateLink, checks the verified-email record and then
+    // sends through Resend with its own email/IP rate limits.
     return ok()
   }
 
