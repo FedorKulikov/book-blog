@@ -48,12 +48,22 @@ jobs:
       - name: ESLint changed code
         run: |
           npx eslint \
+            app/page.tsx \
+            app/HomeClient.tsx \
+            app/books/page.tsx \
+            app/posts/page.tsx \
+            app/creative/page.tsx \
+            app/discussions/page.tsx \
+            'app/post/[id]/page.tsx' \
+            'app/book/[id]/page.tsx' \
             app/layout.tsx \
+            app/sitemap.ts \
+            app/components/JsonLd.tsx \
             app/components/YandexMetrika.tsx \
             app/components/CookieSettingsButton.tsx \
             app/privacy/page.tsx \
             app/rules/page.tsx \
-            app/sitemap.ts
+            next.config.ts
           npx eslint app/signup/page.tsx --rule 'react-hooks/set-state-in-effect: off'
           npx eslint app/HomeClient.tsx --rule '@typescript-eslint/no-explicit-any: off'
 
