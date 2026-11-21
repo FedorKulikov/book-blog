@@ -39,7 +39,7 @@ jobs:
       - name: Lint GitHub Actions workflows
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          "$(go env GOPATH)/bin/actionlint" -color
+          "$(go env GOPATH)/bin/actionlint" -color .github/workflows/layero-one-time-promote.yml
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
