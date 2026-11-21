@@ -1,6 +1,17 @@
 'use client'
 
 export default function CookieSettingsButton() {
+  const counterId = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID
+  const analyticsEnabled = Boolean(counterId && /^\\d+$/.test(counterId))
+
+  if (!analyticsEnabled) {
+    return (
+      <p className="text-xs text-brown/60">
+        Необязательная веб-аналитика сейчас не подключена.
+      </p>
+    )
+  }
+
   return (
     <button
       type="button"
