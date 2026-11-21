@@ -109,6 +109,8 @@ jobs:
             app/layout.tsx \
             app/sitemap.ts \
             app/components/JsonLd.tsx \
+            app/components/Header.tsx \
+            app/rules/page.tsx \
             lib/auth-navigation.ts \
             lib/email-recovery.ts \
             lib/chat-media.ts \

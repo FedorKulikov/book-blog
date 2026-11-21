@@ -37,8 +37,11 @@ type Profile = {
 export default function Sidebar() {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [open, setOpen] = useState(false)
   const pathname = usePathname()
+  // The menu is open only for the route on which it was opened. A route
+  // change therefore closes it without a setState-in-effect render.
+  const [openForPath, setOpenForPath] = useState<string | null>(null)
+  const open = openForPath === pathname
   const router = useRouter()
 
   useEffect(() => {
@@ -76,10 +79,6 @@ export default function Sidebar() {
   }, [])
 
   useEffect(() => {
-    setOpen(false)
-  }, [pathname])
-
-  useEffect(() => {
     if (typeof document !== 'undefined') {
       document.body.style.overflow = open ? 'hidden' : ''
       return () => {
@@ -92,7 +91,7 @@ export default function Sidebar() {
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
-    setOpen(false)
+    setOpenForPath(null)
     router.push('/')
     router.refresh()
   }
@@ -114,6 +113,7 @@ export default function Sidebar() {
     { href: '/discussions', label: 'Обсуждения', Icon: MessageCircle },
     { href: '/messages', label: 'Сообщения', Icon: Mail, badge: true },
     { href: '/support', label: 'Поддержка', Icon: LifeBuoy },
+    { href: '/rules', label: 'Правила сообщества', Icon: Shield },
   ]
 
   const isStaff = profile?.role === 'admin' || profile?.role === 'moderator'
@@ -123,7 +123,7 @@ export default function Sidebar() {
       {/* Верхняя полоса — только на мобильных */}
       <header className="mobile-header bg-emerald-dark text-cream px-4 py-3">
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => setOpenForPath(pathname)}
           className="text-cream"
           aria-label="Открыть меню"
         >
@@ -161,7 +161,7 @@ export default function Sidebar() {
 
       {/* Затемнение под мобильным меню */}
       {open && (
-        <div className="sidebar-backdrop" onClick={() => setOpen(false)} />
+        <div className="sidebar-backdrop" onClick={() => setOpenForPath(null)} />
       )}
 
       {/* Сайдбар */}
@@ -171,7 +171,7 @@ export default function Sidebar() {
         }`}
       >
         <button
-          onClick={() => setOpen(false)}
+          onClick={() => setOpenForPath(null)}
           className="sidebar-close-btn absolute top-4 right-4 flex items-center justify-center text-cream/70 hover:text-cream transition-colors"
           aria-label="Закрыть меню"
         >
