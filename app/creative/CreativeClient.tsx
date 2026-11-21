@@ -31,8 +31,8 @@ export default function CreativeClient({ initialPosts }: { initialPosts: any[] }
   return (
     <main className="p-4 md:p-8 max-w-7xl mx-auto">
       <Hero
-        title="Творчество"
-        subtitle="Ваши истории, мысли, вдохновение. Делитесь, создавайте, находите отклик."
+        title="Рассказы, стихи и эссе"
+        subtitle="Авторское творчество читателей: публикуйте прозу, стихи и эссе и находите своих читателей."
         image="/hero-creative.jpg"
       />
 
