@@ -31,18 +31,18 @@ function enableMetrika(id: string) {
 
   target[`disableYaCounter${id}`] = false
 
-  if (!target.ym) {
-    const queued = ((...args: unknown[]) => {
-      queued.a.push(args)
-    }) as MetrikaFunction
-    queued.a = []
-    queued.l = Date.now()
-    target.ym = queued
-  }
+  const queuedCalls: unknown[][] = []
+  const ym = target.ym ?? Object.assign(
+    (...args: unknown[]) => {
+      queuedCalls.push(args)
+    },
+    { a: queuedCalls, l: Date.now() },
+  ) as MetrikaFunction
+  target.ym = ym
 
   // Webvisor is deliberately disabled: this community has private messages
   // and support tickets, whose content must not be session-recorded.
-  target.ym(Number(id), 'init', {
+  ym(Number(id), 'init', {
     clickmap: true,
     trackLinks: true,
     accurateTrackBounce: true,
