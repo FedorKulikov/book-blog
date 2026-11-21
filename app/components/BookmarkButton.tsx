@@ -67,7 +67,8 @@ export default function BookmarkButton({
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        router.push('/login')
+        const currentPath = `${window.location.pathname}${window.location.search}`
+        router.push(`/login?next=${encodeURIComponent(currentPath)}`)
         return
       }
 
