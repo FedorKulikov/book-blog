@@ -1,0 +1,215 @@
+name: One-time Layero production deployment
+
+# This workflow is deliberately opt-in by a dedicated marker path.
+# It deploys the exact main checkout only when this workflow/marker is added
+# or deliberately changed. Ordinary future main pushes do not trigger it.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/layero-deploy-main-once.yml'
+      - '.github/ops/layero-deploy-main-once.marker'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: layero-production-one-time-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      LAYERO_TOKEN: ${{ secrets.LAYERO_TOKEN }}
+      LAYERO_NO_UPDATE_CHECK: '1'
+    steps:
+      - name: Check out exact main source
+        uses: actions/checkout@v4
+
+      - name: Verify one-time release marker and required token
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker="$(tr -d '\r\n' < .github/ops/layero-deploy-main-once.marker)"
+          if [[ "$marker" != "deploy-current-main-once" ]]; then
+            echo "::error::The explicit one-time Layero deployment marker is missing or invalid."
+            exit 1
+          fi
+          if [[ -z "${LAYERO_TOKEN:-}" ]]; then
+            echo "::error::Missing repository secret LAYERO_TOKEN. No production change was made."
+            exit 1
+          fi
+          echo "Validated one-time deployment request for commit $GITHUB_SHA."
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve exactly one existing Layero project
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LAYERO_JSON=1
+          projects_file="$RUNNER_TEMP/layero-projects.jsonl"
+          npx --yes layero@latest projects list --json > "$projects_file"
+
+          project_info="$(node - "$projects_file" "$GITHUB_REPOSITORY" <<'NODE'
+          const fs = require("node:fs");
+          const [file, repository] = process.argv.slice(2);
+          const events = fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const projects = events.filter(e => e.event === "projects").flatMap(e => e.projects || []);
+          const matches = projects.filter(p => (p.repo || "").toLowerCase() === repository.toLowerCase());
+          if (matches.length !== 1) {
+            console.error("Expected exactly one existing Layero project linked to " + repository + "; found " + matches.length + ".");
+            process.exit(1);
+          }
+          const project = matches[0];
+          if (!project.id || !project.slug || !/^[a-z0-9-]+$/.test(project.slug)) {
+            console.error("Layero returned an invalid project identity.");
+            process.exit(1);
+          }
+          console.error("Resolved the existing project " + project.slug + ".");
+          process.stdout.write(JSON.stringify({ id: project.id, slug: project.slug }));
+          NODE
+          )"
+
+          project_id="$(jq -r '.id' <<< "$project_info")"
+          project_slug="$(jq -r '.slug' <<< "$project_info")"
+          if [[ -z "$project_id" || -z "$project_slug" || "$project_id" == "null" || "$project_slug" == "null" ]]; then
+            echo "::error::Could not resolve the Layero project. No production change was made."
+            exit 1
+          fi
+          echo "LAYERO_PROJECT_ID=$project_id" >> "$GITHUB_ENV"
+          echo "LAYERO_PROJECT_SLUG=$project_slug" >> "$GITHUB_ENV"
+
+      - name: Verify custom domain before deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LAYERO_JSON=1
+          verify_file="$RUNNER_TEMP/domain-verify.jsonl"
+          npx --yes layero@latest domains verify bukleb.ru --project "$LAYERO_PROJECT_SLUG" --json > "$verify_file"
+          node - "$verify_file" <<'NODE'
+          const fs = require("node:fs");
+          const events = fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const result = events.find(e => e.event === "domain_verified" && e.domain === "bukleb.ru");
+          if (!result) {
+            console.error("Layero returned no verification result for bukleb.ru.");
+            process.exit(1);
+          }
+          const checks = result.checks || {};
+          console.log("Domain verified=" + result.verified + ", SSL=" + result.ssl_status +
+            ", A=" + checks.a_ok + ", TXT=" + checks.txt_ok + ", ownership=" + checks.ownership_ok);
+          if (result.verified !== true || checks.a_ok !== true || checks.txt_ok !== true ||
+              checks.ownership_ok !== true || !["active", "issued"].includes(result.ssl_status)) {
+            console.error("The production domain is not verified. No deployment was started.");
+            process.exit(1);
+          }
+          NODE
+
+          status="$(curl --silent --show-error --location --max-time 25 --output /dev/null --write-out '%{http_code}' https://bukleb.ru/ || true)"
+          if [[ "$status" != "200" ]]; then
+            echo "::error::HTTPS preflight for the existing production domain failed (HTTP ${status:-unknown})."
+            exit 1
+          fi
+          echo "Existing production HTTPS preflight passed."
+
+      - name: Dry-run and verify the exact existing production target
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LAYERO_JSON=1
+          plan_file="$RUNNER_TEMP/layero-plan.jsonl"
+          npx --yes layero@latest deploy --project "$LAYERO_PROJECT_ID" --prod --promote --yes --dry-run --json > "$plan_file"
+
+          node - "$plan_file" "$LAYERO_PROJECT_ID" "$GITHUB_REPOSITORY" <<'NODE'
+          const fs = require("node:fs");
+          const [file, projectId, repository] = process.argv.slice(2);
+          const events = fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const plan = events.find(e => e.event === "plan");
+          if (!plan) {
+            console.error("Layero returned no dry-run plan.");
+            process.exit(1);
+          }
+          const project = plan.project || {};
+          console.log("Plan: runtime=" + (plan.runtime_kind || "unknown") +
+            ", repo=" + (project.repo || "none") + ", replaces_live_site=" + plan.replaces_live_site);
+          if (project.id !== projectId ||
+              (project.repo || "").toLowerCase() !== repository.toLowerCase() ||
+              plan.creates_project !== false ||
+              plan.replaces_live_site !== true ||
+              plan.project_settings !== "read" ||
+              plan.runtime_kind !== "ssr_next") {
+            console.error("Dry-run did not target the existing linked Next.js project exactly. No deployment was started.");
+            process.exit(1);
+          }
+          NODE
+
+      - name: Deploy exact main checkout to existing production project
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LAYERO_JSON=1
+          deploy_file="$RUNNER_TEMP/layero-deploy.jsonl"
+          npx --yes layero@latest deploy --project "$LAYERO_PROJECT_ID" --prod --promote --yes --confirm-repeated-failure --json > "$deploy_file"
+
+          node - "$deploy_file" <<'NODE'
+          const fs = require("node:fs");
+          const events = fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const ready = events.find(e => e.event === "ready");
+          if (!ready || !ready.deploy_id || ready.edge_ready !== true || !ready.url) {
+            console.error("Layero did not confirm a serving production deployment.");
+            process.exit(1);
+          }
+          const url = new URL(ready.url);
+          if (url.protocol !== "https:") {
+            console.error("Layero returned a non-HTTPS production URL.");
+            process.exit(1);
+          }
+          console.log("Layero reports deployment " + ready.deploy_id + " ready at " + ready.url + ".");
+          NODE
+
+      - name: Verify deployed homepage, community rules, and sitemap
+        shell: bash
+        run: |
+          set -euo pipefail
+          verified=0
+          for attempt in $(seq 1 12); do
+            status="$(curl --silent --show-error --location --max-time 25 --output "$RUNNER_TEMP/home.html" --write-out '%{http_code}' https://bukleb.ru/ || true)"
+            if [[ "$status" == "200" ]] && grep -Fq 'Хлеба и букв — книжное сообщество для читателей' "$RUNNER_TEMP/home.html"; then
+              verified=1
+              break
+            fi
+            echo "Waiting for the deployed homepage (attempt $attempt/12, HTTP $status)."
+            sleep 5
+          done
+          if [[ "$verified" -ne 1 ]]; then
+            echo "::error::The deployed homepage did not return the expected current metadata."
+            exit 1
+          fi
+
+          rules_status="$(curl --silent --show-error --location --max-time 25 --output "$RUNNER_TEMP/rules.html" --write-out '%{http_code}' https://bukleb.ru/rules || true)"
+          if [[ "$rules_status" != "200" ]] || ! grep -Fq 'Правила сообщества' "$RUNNER_TEMP/rules.html"; then
+            echo "::error::The public /rules route is not live after deployment (HTTP $rules_status)."
+            exit 1
+          fi
+
+          sitemap_status="$(curl --silent --show-error --location --max-time 25 --output "$RUNNER_TEMP/sitemap.xml" --write-out '%{http_code}' https://bukleb.ru/sitemap.xml || true)"
+          if [[ "$sitemap_status" != "200" ]] || ! grep -Fq 'https://bukleb.ru/rules' "$RUNNER_TEMP/sitemap.xml"; then
+            echo "::error::The production sitemap does not include /rules."
+            exit 1
+          fi
+
+          layero_rules_status="$(curl --silent --show-error --location --max-time 25 --output "$RUNNER_TEMP/layero-rules.html" --write-out '%{http_code}' https://book-blog.layero.app/rules || true)"
+          if [[ "$layero_rules_status" != "200" ]] || ! grep -Fq 'Правила сообщества' "$RUNNER_TEMP/layero-rules.html"; then
+            echo "::error::The Layero project domain is not serving the deployed /rules route (HTTP $layero_rules_status)."
+            exit 1
+          fi
+
+          echo "Verified production home, /rules, sitemap entry, and Layero project domain for commit $GITHUB_SHA."
