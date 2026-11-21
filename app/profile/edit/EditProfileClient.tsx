@@ -9,6 +9,7 @@ import { ChevronLeft } from '@/app/components/icons'
 import RecoveryCodes from '@/app/components/RecoveryCodes'
 import PasskeySecurity from '@/app/components/PasskeySecurity'
 import ChangePassword from '@/app/components/ChangePassword'
+import EmailRecoverySecurity from '@/app/components/EmailRecoverySecurity'
 
 export default function EditProfilePage() {
   const router = useRouter()
@@ -152,6 +153,7 @@ export default function EditProfilePage() {
         <h2 className="font-playfair text-xl font-bold text-emerald-dark">
           Безопасность аккаунта
         </h2>
+        <EmailRecoverySecurity />
         <PasskeySecurity />
         <ChangePassword />
         <RecoveryCodes />
