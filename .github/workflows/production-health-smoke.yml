@@ -77,4 +77,9 @@ jobs:
             exit 1
           fi
 
-          echo "Production application marker verified."
+          if ! grep -Fq 'Книжное сообщество для читателей' "$body"; then
+            echo "::error::The response is serving the app but not the current SEO homepage metadata."
+            exit 1
+          fi
+
+          echo "Production application marker and SEO homepage metadata verified."
