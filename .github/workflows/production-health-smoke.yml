@@ -91,3 +91,19 @@ jobs:
             exit 1
           fi
           echo "Private profile dashboard is excluded from search indexing."
+
+          filter_headers="$RUNNER_TEMP/news-filter-headers.txt"
+          filter_status="$(curl --silent --show-error --location --max-time 25 --dump-header "$filter_headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/news?category=contest" || true)"
+          if [[ "$filter_status" != "200" ]] || ! grep -Eiq '^x-robots-tag:[[:space:]]*noindex,[[:space:]]*follow' "$filter_headers"; then
+            echo "::error::A filtered news category must return HTTP 200 with X-Robots-Tag: noindex, follow (received HTTP $filter_status)."
+            exit 1
+          fi
+          echo "Filtered news category is noindex,follow."
+
+          news_headers="$RUNNER_TEMP/news-main-headers.txt"
+          news_status="$(curl --silent --show-error --location --max-time 25 --dump-header "$news_headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/news" || true)"
+          if [[ "$news_status" != "200" ]] || grep -Eiq '^x-robots-tag:.*noindex' "$news_headers"; then
+            echo "::error::The main /news landing page must remain indexable (received HTTP $news_status)."
+            exit 1
+          fi
+          echo "Main /news landing page remains indexable."
