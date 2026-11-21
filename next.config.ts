@@ -60,6 +60,8 @@ const nextConfig: NextConfig = {
       { source: '/auth/reset', headers: noindex },
       { source: '/recover-account', headers: noindex },
       { source: '/welcome', headers: noindex },
+      // /profile is the authenticated account dashboard; public profiles use /profile/:username.
+      { source: '/profile', headers: noindex },
       { source: '/profile/edit', headers: noindex },
       { source: '/messages/:path*', headers: noindex },
       { source: '/admin/:path*', headers: noindex },
