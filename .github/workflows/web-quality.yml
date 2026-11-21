@@ -58,6 +58,9 @@ jobs:
       - name: Verified email recovery tests
         run: npm run test:email-recovery
 
+      - name: Chat media path tests
+        run: npm run test:chat-media-paths
+
       - name: TypeScript
         run: npx tsc --noEmit
 
@@ -108,6 +111,10 @@ jobs:
             app/components/JsonLd.tsx \
             lib/auth-navigation.ts \
             lib/email-recovery.ts \
+            lib/chat-media.ts \
+            lib/chat-media-path.ts \
+            app/messages/'[id]'/page.tsx \
+            app/components/MessageBubble.tsx \
             proxy.ts \
             next.config.ts
       - name: Production build
@@ -157,6 +164,79 @@ jobs:
           CREATE TABLE auth.users (
             id uuid PRIMARY KEY
           );
+
+          CREATE OR REPLACE FUNCTION auth.uid()
+          RETURNS uuid
+          LANGUAGE sql
+          STABLE
+          AS $function$
+            SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $function$;
+
+          CREATE SCHEMA storage;
+          CREATE TABLE storage.buckets (
+            id text PRIMARY KEY,
+            public boolean NOT NULL DEFAULT true
+          );
+          CREATE TABLE storage.objects (
+            id bigserial PRIMARY KEY,
+            bucket_id text NOT NULL REFERENCES storage.buckets(id),
+            name text NOT NULL
+          );
+          CREATE OR REPLACE FUNCTION storage.foldername(object_name text)
+          RETURNS text[]
+          LANGUAGE sql
+          IMMUTABLE
+          AS $function$
+            SELECT string_to_array(object_name, '/')
+          $function$;
+
+          CREATE TABLE public.conversations (
+            id uuid PRIMARY KEY,
+            user1_id uuid NOT NULL,
+            user2_id uuid NOT NULL
+          );
+          CREATE TABLE public.messages (
+            id uuid PRIMARY KEY,
+            conversation_id uuid NOT NULL REFERENCES public.conversations(id),
+            sender_id uuid NOT NULL,
+            image_url text,
+            audio_url text
+          );
+
+          ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+          ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+          ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+
+          CREATE POLICY chat_media_public_read
+            ON storage.objects
+            FOR SELECT
+            TO public
+            USING (bucket_id = 'chat-media');
+
+          CREATE POLICY conversations_read_own
+            ON public.conversations
+            FOR SELECT
+            TO authenticated
+            USING (user1_id = auth.uid() OR user2_id = auth.uid());
+
+          CREATE POLICY messages_read_own
+            ON public.messages
+            FOR SELECT
+            TO authenticated
+            USING (
+              EXISTS (
+                SELECT 1 FROM public.conversations c
+                WHERE c.id = conversation_id
+                  AND (c.user1_id = auth.uid() OR c.user2_id = auth.uid())
+              )
+            );
+
+          GRANT USAGE ON SCHEMA auth, storage, public TO anon, authenticated;
+          GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated;
+          GRANT EXECUTE ON FUNCTION storage.foldername(text) TO anon, authenticated;
+          GRANT SELECT ON storage.buckets, storage.objects TO anon, authenticated;
+          GRANT SELECT ON public.conversations, public.messages TO anon, authenticated;
           SQL
 
       - name: Apply email recovery migration to ephemeral PostgreSQL
@@ -170,3 +250,36 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname recovery_test --set ON_ERROR_STOP=1 --file tests/sql/email-recovery-migration.test.sql
+
+      - name: Seed chat media access fixtures
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname recovery_test --set ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO storage.buckets (id, public) VALUES ('chat-media', true);
+          INSERT INTO public.conversations (id, user1_id, user2_id) VALUES
+            ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002'),
+            ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000004'),
+            ('10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000005');
+          INSERT INTO public.messages (id, conversation_id, sender_id, image_url, audio_url) VALUES
+            ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'https://project.supabase.co/storage/v1/object/public/chat-media/00000000-0000-0000-0000-000000000001/photo.jpg', null),
+            ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', null, '00000000-0000-0000-0000-000000000001/voice.webm'),
+            ('20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', 'https://project.supabase.co/storage/v1/object/public/chat-media/00000000-0000-0000-0000-000000000003/secret.jpg', null),
+            ('20000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'https://project.supabase.co/storage/v1/object/public/chat-media/00000000-0000-0000-0000-000000000003/secret.jpg', null);
+          INSERT INTO storage.objects (bucket_id, name) VALUES
+            ('chat-media', '00000000-0000-0000-0000-000000000001/photo.jpg'),
+            ('chat-media', '00000000-0000-0000-0000-000000000001/voice.webm'),
+            ('chat-media', '00000000-0000-0000-0000-000000000003/secret.jpg');
+          SQL
+
+      - name: Apply private chat media migration to ephemeral PostgreSQL
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname recovery_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261208_chat_media_private.sql
+
+      - name: Verify private chat media access boundaries
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname recovery_test --set ON_ERROR_STOP=1 --file tests/sql/chat-media-private-migration.test.sql
