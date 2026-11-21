@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "fetch:rss": "tsx scripts/fetch-rss-news.ts"
+    "fetch:rss": "tsx scripts/fetch-rss-news.ts",
+    "test:auth-navigation": "tsx --test tests/auth-navigation.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
