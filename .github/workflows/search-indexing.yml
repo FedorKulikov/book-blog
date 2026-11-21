@@ -37,9 +37,30 @@ jobs:
           KEY_FILE="public/${KEY}.txt"
           KEY_URL="https://bukleb.ru/${KEY}.txt"
 
+          # A green IndexNow run must mean the expected SEO release is actually live.
+          homepage="$(mktemp)"
+          homepage_status="$(curl --silent --show-error --location --max-time 20 \
+            --output "${homepage}" --write-out '%{http_code}' 'https://bukleb.ru/' || true)"
+          if [[ "${homepage_status}" != "200" ]] || ! grep -Fq 'Книжное сообщество для читателей' "${homepage}"; then
+            rm -f "${homepage}"
+            echo "::error::bukleb.ru is not serving the SEO release yet. Promote the latest ready main deploy in Layero."
+            exit 1
+          fi
+          rm -f "${homepage}"
+
+          sitemap="$(mktemp)"
+          sitemap_status="$(curl --silent --show-error --location --max-time 20 \
+            --output "${sitemap}" --write-out '%{http_code}' 'https://bukleb.ru/sitemap.xml' || true)"
+          if [[ "${sitemap_status}" != "200" ]] || ! grep -Fq 'https://bukleb.ru/' "${sitemap}"; then
+            rm -f "${sitemap}"
+            echo "::error::The production sitemap is unavailable or does not contain the canonical domain."
+            exit 1
+          fi
+          rm -f "${sitemap}"
+
           if [[ ! -f "${KEY_FILE}" ]] || [[ "$(tr -d '\r\n' < "${KEY_FILE}")" != "${KEY}" ]]; then
-            echo "::warning::IndexNow key file is missing or does not match. No URLs submitted."
-            exit 0
+            echo "::error::IndexNow key file is missing or does not match the configured key."
+            exit 1
           fi
 
           verified=0
@@ -58,8 +79,8 @@ jobs:
           done
 
           if [[ "${verified}" -ne 1 ]]; then
-            echo "::warning::The live key file is not available yet. IndexNow notification skipped; deployment is not blocked."
-            exit 0
+            echo "::error::The live IndexNow key file is still unavailable after 12 attempts. No URLs were submitted."
+            exit 1
           fi
 
           urls='[
@@ -92,7 +113,9 @@ jobs:
               echo "IndexNow accepted the public landing-page URLs (HTTP ${status})."
               ;;
             *)
-              echo "::warning::IndexNow did not accept the submission (HTTP ${status:-unknown}). Response omitted from logs."
+              echo "::error::IndexNow did not accept the submission (HTTP ${status:-unknown}). Response omitted from logs."
+              rm -f "${response_file}"
+              exit 1
               ;;
           esac
 
