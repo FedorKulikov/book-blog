@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 const enabled = process.env.NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY === 'true'
 
@@ -20,17 +19,19 @@ export default function EmailRecoveryResetForm() {
     setNotice('')
 
     try {
-      const redirectTo = new URL('/auth/confirm?next=%2Fauth%2Freset', window.location.origin)
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        email.trim(),
-        { redirectTo: redirectTo.toString() },
-      )
+      const response = await fetch('/api/email-recovery/reset-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      })
 
-      if (resetError) {
-        setError('Не удалось отправить запрос. Проверьте адрес и попробуйте позже.')
+      if (!response.ok) {
+        setError('Сервис восстановления временно недоступен. Попробуйте позже или используйте резервный код.')
         return
       }
 
+      // Deliberately the same for unknown, unverified and verified email
+      // addresses. The endpoint never confirms whether an account exists.
       setNotice(
         'Если адрес относится к аккаунту и ранее был подтверждён в настройках профиля, письмо для сброса пароля отправлено. Если письма нет, используйте резервный код.',
       )
