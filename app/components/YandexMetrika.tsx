@@ -21,6 +21,15 @@ function disableMetrika(id: string) {
   // Yandex documents this flag as a way to block cookies and data collection.
   target[`disableYaCounter${id}`] = true
   target.ym?.(Number(id), 'destruct')
+
+  // Remove accessible first-party Metrica cookies on the current host.
+  for (const item of document.cookie.split(';')) {
+    const name = item.split('=')[0]?.trim()
+    if (name?.startsWith('_ym_')) {
+      document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`
+      document.cookie = `${name}=; Max-Age=0; path=/; domain=${window.location.hostname}; SameSite=Lax`
+    }
+  }
 }
 
 function enableMetrika(id: string) {
@@ -62,6 +71,7 @@ export default function YandexMetrika() {
   const id = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID
   const validId = id && /^\\d+$/.test(id) ? id : null
   const [consent, setConsent] = useState<Consent>(null)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     try {
@@ -71,6 +81,7 @@ export default function YandexMetrika() {
       // If storage is unavailable, do not initialize optional analytics.
       setConsent('rejected')
     }
+    setReady(true)
 
     const openSettings = () => {
       if (validId) disableMetrika(validId)
@@ -102,7 +113,7 @@ export default function YandexMetrika() {
     setConsent(value)
   }
 
-  if (!validId || consent !== null) return null
+  if (!validId || !ready || consent !== null) return null
 
   return (
     <section
