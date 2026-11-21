@@ -332,7 +332,31 @@ jobs:
       - name: Export local-only connection details
         working-directory: ${{ runner.temp }}/account-deletion-supabase
         run: |
-          supabase status --output env >> "$GITHUB_ENV"
+          set -euo pipefail
+          status_file="$RUNNER_TEMP/supabase-local.env"
+          supabase status --output env > "$status_file"
+          set -a
+          # Source the CLI-generated env file so quoting is removed correctly.
+          source "$status_file"
+          set +a
+
+          case "$API_URL" in
+            http://127.0.0.1:*|http://localhost:*) ;;
+            *) echo "::error::Supabase API URL is not local"; exit 1 ;;
+          esac
+          case "$DB_URL" in
+            *127.0.0.1:*|*localhost:*) ;;
+            *) echo "::error::Supabase DB URL is not local"; exit 1 ;;
+          esac
+
+          for name in API_URL DB_URL ANON_KEY SERVICE_ROLE_KEY; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::Missing local Supabase variable: $name"
+              exit 1
+            fi
+            printf '%s=%s\\n' "$name" "$value" >> "$GITHUB_ENV"
+          done
 
       - name: Apply isolated account deletion fixtures
         run: |
