@@ -26,12 +26,18 @@ jobs:
         run: |
           set -euo pipefail
 
+          marker="$(tr -d '[:space:]' < notifications/ping.txt)"
+          if [[ "${marker}" == "setup" ]]; then
+            echo "Notification relay is installed; waiting for user secrets."
+            exit 0
+          fi
+
           if [[ -z "${TG_BOT_TOKEN}" || -z "${TG_CHAT_ID}" ]]; then
             echo "::error::Add TG_BOT_TOKEN and TG_CHAT_ID in repository Actions secrets."
             exit 1
           fi
 
-          case "$(tr -d '[:space:]' < notifications/ping.txt)" in
+          case "${marker}" in
             done)
               message="✅ Задача завершена. Вернись в исходный диалог ChatGPT — подробный результат уже там."
               ;;
