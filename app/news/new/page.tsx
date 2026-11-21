@@ -24,7 +24,7 @@ export default async function NewNewsPage() {
   const supabase = await createSupabaseServerClient()
   const { data } = await supabase.auth.getUser()
 
-  if (!data.user) redirect('/login')
+  if (!data.user) redirect('/login?next=%2Fnews%2Fnew')
 
   return <NewPostPage />
 }
