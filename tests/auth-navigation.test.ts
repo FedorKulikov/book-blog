@@ -6,9 +6,9 @@ import { getPostAuthPath, safeInternalPath } from '../lib/auth-navigation'
 test('safeInternalPath rejects protocol-relative and normalized external paths', () => {
   for (const value of [
     '//evil.com',
-    '/\\\\evil.com',
+    '/\\evil.com',
     '/..//evil.com',
-    '/./\\\\evil.com',
+    '/./\\evil.com',
   ]) {
     assert.equal(safeInternalPath(value), '/', `expected rejection for ${JSON.stringify(value)}`)
   }
