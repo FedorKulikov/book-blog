@@ -12,9 +12,9 @@ permissions:
 
 jobs:
   promote:
-    # One-time production promotion for the merged SEO metadata and catalogue changes in PR #29.
-    # Temporarily opened for one explicitly named SEO release commit; re-seal to that SHA afterwards.
-    if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ops: promote current main build to Layero production')"
+    # Permanently sealed to the exact main SHA whose Layero production deployment was verified.
+    # Later commits and workflow edits cannot trigger another production deployment.
+    if: "github.ref == 'refs/heads/main' && github.sha == '2feed55296df3186567fe885ff0587d451b3dfa6'"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
