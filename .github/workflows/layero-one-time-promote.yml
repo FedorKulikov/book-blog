@@ -63,17 +63,27 @@ jobs:
           export LAYERO_PROJECT_SLUG
           printf 'LAYERO_PROJECT_SLUG=%s\n' "$LAYERO_PROJECT_SLUG" >> "$GITHUB_ENV"
 
-          npx --yes layero@latest domains list --project "$LAYERO_PROJECT_SLUG" --json > "$DOMAINS_FILE"
-          node - "$DOMAINS_FILE" <<'NODE'
+          VERIFY_FILE="$RUNNER_TEMP/layero-domain-verify.jsonl"
+          npx --yes layero@latest domains verify bukleb.ru --project "$LAYERO_PROJECT_SLUG" --json > "$VERIFY_FILE"
+          node - "$VERIFY_FILE" <<'NODE'
           const fs = require("node:fs");
           const events = fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
-          const domains = events.filter((e) => e.event === "domains").flatMap((e) => e.domains || []);
-          const matches = domains.filter((d) => (d.domain || "").toLowerCase() === "bukleb.ru");
-          if (matches.length !== 1 || matches[0].verified !== true || matches[0].ssl_status !== "active") {
-            console.error("The linked Layero project does not show bukleb.ru as verified with active TLS. No production change was made.");
+          const result = events.find((e) => e.event === "domain_verified" && e.domain === "bukleb.ru");
+          if (!result) {
+            console.error("Layero did not return a verification result for bukleb.ru. No production change was made.");
             process.exit(1);
           }
-          console.log("Confirmed bukleb.ru is attached to this project with active TLS.");
+          const checks = result.checks || {};
+          console.log(
+            `Domain bukleb.ru: verified=${result.verified}, ssl_status=${result.ssl_status}, ` +
+            `A=${checks.a_ok ?? "unknown"}, CNAME=${checks.cname_ok ?? "unknown"}, ` +
+            `TXT=${checks.txt_ok ?? "unknown"}, ownership=${checks.ownership_ok ?? "unknown"}.`
+          );
+          if (result.error) console.log(`Layero domain diagnostic: ${String(result.error).slice(0, 500)}`);
+          if (result.verified !== true || result.ssl_status !== "active") {
+            console.error("bukleb.ru is not verified with an active TLS certificate in Layero. No production change was made.");
+            process.exit(1);
+          }
           NODE
 
           ready=0
