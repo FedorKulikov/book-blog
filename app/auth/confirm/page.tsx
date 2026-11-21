@@ -100,7 +100,7 @@ function ConfirmContent() {
       alive = false
       if (timer) window.clearTimeout(timer)
     }
-  }, [searchParams, router, next])
+  }, [searchParams, router, next, isRecovery])
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-cream">
