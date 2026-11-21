@@ -336,7 +336,7 @@ jobs:
           status_file="$RUNNER_TEMP/supabase-local.env"
           supabase status --output env > "$status_file"
           set -a
-          # Source the CLI-generated env file so quoting is removed correctly.
+          # This is a CLI-generated local env file, not user-controlled input.
           # shellcheck disable=SC1090
           source "$status_file"
           set +a
@@ -350,7 +350,21 @@ jobs:
             *) echo "::error::Supabase DB URL is not local"; exit 1 ;;
           esac
 
-          for name in API_URL DB_URL ANON_KEY SERVICE_ROLE_KEY; do
+          # Supabase-managed storage.objects belongs to supabase_storage_admin.
+          # The local supabase_admin DB role has the required administrative
+          # rights; it shares the disposable local database password.
+          admin_db_url="$(printf '%s' "$DB_URL" | sed -E 's#^(postgres(ql)?://)postgres:#\1supabase_admin:#')"
+          case "$admin_db_url" in
+            *127.0.0.1:*|*localhost:*) ;;
+            *) echo "::error::Admin DB URL is not local"; exit 1 ;;
+          esac
+          admin_identity="$(psql "$admin_db_url" -X -A -t -v ON_ERROR_STOP=1 -c "select current_user || '|' || rolsuper::text from pg_roles where rolname = current_user")"
+          if [ "$admin_identity" != "supabase_admin|true" ]; then
+            echo "::error::Expected local supabase_admin superuser, got '$admin_identity'"
+            exit 1
+          fi
+
+          for name in API_URL ANON_KEY SERVICE_ROLE_KEY; do
             value="${!name:-}"
             if [ -z "$value" ]; then
               echo "::error::Missing local Supabase variable: $name"
@@ -358,18 +372,7 @@ jobs:
             fi
             printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
           done
-
-      - name: Inspect isolated Storage role ownership
-        run: |
-          psql "$DB_URL" -X -A -t -F '|' -v ON_ERROR_STOP=1 -c "
-            select
-              current_user,
-              current_setting('server_version'),
-              (select rolsuper::text from pg_roles where rolname = current_user),
-              (select rolcreaterole::text from pg_roles where rolname = current_user),
-              (select rolcanlogin::text from pg_roles where rolname = 'supabase_admin'),
-              pg_has_role(current_user, 'supabase_storage_admin', 'MEMBER')::text;
-          "
+          printf 'DB_URL=%s\n' "$admin_db_url" >> "$GITHUB_ENV"
 
       - name: Apply isolated account deletion fixtures
         run: |
