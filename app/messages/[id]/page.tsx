@@ -10,6 +10,7 @@ import ConversationList from '@/app/components/ConversationList'
 import ChatUserPanel from '@/app/components/ChatUserPanel'
 import ImageLightbox from '@/app/components/ImageLightbox'
 import ChatMuteButton from '@/app/components/ChatMuteButton'
+import { signChatMediaMessages } from '@/lib/chat-media'
 import {
   ChevronLeft,
   Send,
@@ -135,6 +136,8 @@ export default function ConversationPage() {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const readyRef = useRef(false)
+  const messagesRef = useRef<ChatMessage[]>([])
+  const lastMediaRefreshAtRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -154,7 +157,7 @@ export default function ConversationPage() {
       setError(humanizeError(fetchError.message))
       return null
     }
-    return (data as ChatMessage[] | null) ?? []
+    return signChatMediaMessages((data as ChatMessage[] | null) ?? [])
   }, [id])
 
   const handleDeleteMessage = useCallback(
@@ -269,7 +272,7 @@ export default function ConversationPage() {
           .eq('conversation_id', id)
           .gt('created_at', last.created_at)
           .order('created_at', { ascending: true })
-        fresh = (data as ChatMessage[] | null) ?? []
+        fresh = await signChatMediaMessages((data as ChatMessage[] | null) ?? [])
       } else {
         fresh = (await fetchMessages()) ?? []
       }
@@ -286,6 +289,36 @@ export default function ConversationPage() {
 
     return () => clearInterval(timer)
   }, [uid, id, messages, fetchMessages, markRead])
+
+  // Keep the latest messages available to the signed-URL renewal callback.
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
+  const refreshMediaUrls = useCallback(async () => {
+    if (Date.now() - lastMediaRefreshAtRef.current < 45 * 60 * 1000) return
+    lastMediaRefreshAtRef.current = Date.now()
+
+    const refreshed = await signChatMediaMessages(messagesRef.current)
+    const refreshedById = new Map(refreshed.map(message => [message.id, message]))
+    // Merge by ID so a message arriving during the signing request is not lost.
+    setMessages(current =>
+      current.map(message => refreshedById.get(message.id) ?? message),
+    )
+  }, [])
+
+  // Signed links expire after one hour. Renew them before expiry and on tab return.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refreshMediaUrls()
+    }, 5 * 60 * 1000)
+    window.addEventListener('focus', refreshMediaUrls)
+
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshMediaUrls)
+    }
+  }, [refreshMediaUrls])
 
   // Автоскролл вниз
   useEffect(() => {
@@ -339,27 +372,27 @@ export default function ConversationPage() {
         return
       }
 
-      const { data: pub } = supabase.storage.from('chat-media').getPublicUrl(path)
-
       const { data, error: insertError } = await supabase
         .from('messages')
         .insert({
           conversation_id: id,
           sender_id: uid,
-          audio_url: pub.publicUrl,
+          audio_url: path,
           audio_duration: recordedDuration,
         })
         .select(MESSAGE_FIELDS)
         .single()
-      setUploading(false)
 
       if (insertError) {
+        setUploading(false)
         setError(humanizeError(insertError.message))
         return
       }
 
+      const [message] = await signChatMediaMessages([data as ChatMessage])
+      setUploading(false)
       setError(null)
-      setMessages(prev => [...prev, data as ChatMessage])
+      setMessages(prev => [...prev, message])
     },
     [id, uid]
   )
@@ -473,21 +506,21 @@ export default function ConversationPage() {
       return
     }
 
-    const { data: pub } = supabase.storage.from('chat-media').getPublicUrl(path)
-
     const { data, error: insertError } = await supabase
       .from('messages')
-      .insert({ conversation_id: id, sender_id: uid, image_url: pub.publicUrl })
+      .insert({ conversation_id: id, sender_id: uid, image_url: path })
       .select(MESSAGE_FIELDS)
       .single()
-    setUploading(false)
 
     if (insertError) {
+      setUploading(false)
       setError(humanizeError(insertError.message))
       return
     }
 
-    setMessages(prev => [...prev, data as ChatMessage])
+    const [message] = await signChatMediaMessages([data as ChatMessage])
+    setUploading(false)
+    setMessages(prev => [...prev, message])
   }
 
   async function handleSend(e: React.FormEvent) {

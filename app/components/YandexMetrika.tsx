@@ -11,6 +11,9 @@ import Script from 'next/script'
  *
  * Скрипт подключается с strategy="afterInteractive", чтобы не блокировать
  * отрисовку сайта.
+ *
+ * Вебвизор отключён: он может записывать содержимое динамических блоков.
+ * Не включать, пока не проверено маскирование всех пользовательских данных.
  */
 export default function YandexMetrika() {
   const id = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID
@@ -32,7 +35,7 @@ ym(${id}, 'init', {
 clickmap:true,
 trackLinks:true,
 accurateTrackBounce:true,
-webvisor:true
+webvisor:false
 });`,
         }}
       />

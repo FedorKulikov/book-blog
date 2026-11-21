@@ -13,6 +13,9 @@ export type ChatMessage = {
   created_at: string
   read_at: string | null
   sender_id: string
+  image_object_path?: string | null
+  audio_object_path?: string | null
+  media_unavailable?: boolean
 }
 
 export default function MessageBubble({
@@ -50,7 +53,7 @@ export default function MessageBubble({
   } max-w-[220px] sm:max-w-[260px] max-h-[320px] w-auto h-auto object-cover cursor-zoom-in`
 
   return (
-    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+    <div className={`ym-hide-content flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`max-w-[80%] ${
           isOwn ? 'bg-wine text-white' : 'bg-cream-warm text-brown-dark'
@@ -96,6 +99,12 @@ export default function MessageBubble({
               isOwn={isOwn}
             />
           </div>
+        )}
+
+        {message.media_unavailable && (
+          <p role="status" className="px-2 py-1 text-xs opacity-75">
+            Вложение не удалось загрузить. Обновите переписку.
+          </p>
         )}
 
         {hasText && (
