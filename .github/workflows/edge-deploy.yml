@@ -34,14 +34,30 @@ jobs:
           SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           PUBLISHABLE: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           RECOVERY: ${{ secrets.RECOVERY_CODE_SECRET }}
+          HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
         run: |
           set +x
+          set -euo pipefail
           missing=0
           check() { if [ -z "$2" ]; then echo "missing_secret: $1"; missing=1; fi; }
           check SUPABASE_ACCESS_TOKEN "$PAT"
           check SUPABASE_SECRET_KEY "$SECRET_KEY"
           check SUPABASE_PUBLISHABLE_KEY "$PUBLISHABLE"
           check RECOVERY_CODE_SECRET "$RECOVERY"
+          check AUTH_EMAIL_HOOK_SECRET "$HOOK"
+          if [[ -n "$HOOK" && ! "$HOOK" =~ ^v1,whsec_[A-Za-z0-9+/]+={0,2}$ ]]; then
+            echo "invalid_secret_format: AUTH_EMAIL_HOOK_SECRET must be v1,whsec_ followed by base64"
+            missing=1
+          fi
+          if [[ "$missing" -ne 0 ]]; then
+            echo "остановка до операций записи"
+            exit 1
+          fi
+          decoded_bytes="$(printf '%s' "${HOOK#v1,whsec_}" | base64 --decode | wc -c)"
+          if [[ "$decoded_bytes" -ne 32 ]]; then
+            echo "invalid_secret_length: AUTH_EMAIL_HOOK_SECRET must decode to exactly 32 bytes"
+            exit 1
+          fi
           if [ "$missing" -ne 0 ]; then
             echo "остановка до операций записи"
             exit 1
@@ -74,10 +90,12 @@ jobs:
           RECOVERY: ${{ secrets.RECOVERY_CODE_SECRET }}
           SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           PUBLISHABLE: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
         run: |
           set +x
+          set -euo pipefail
           umask 077
-          hook="v1,whsec_$(openssl rand -base64 32)"
+          hook="$HOOK"
           echo "::add-mask::$hook"
 
           tmp=$(mktemp)
