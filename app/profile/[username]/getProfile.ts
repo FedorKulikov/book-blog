@@ -86,22 +86,16 @@ export const getProfile = cache(
       comments = commentsCount ?? 0
     }
 
-    const { count: approvedPostsCount, error: approvedPostsCountError } =
-      await supabase
-        .from('posts')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', profile.id)
-        .eq('status', 'approved')
-
-    if (approvedPostsCountError) {
-      console.error('[getProfile] approved post count failed:', approvedPostsCountError.message)
-    }
+    // Query above already contains only approved posts for visitors, and approved +
+    // owner's own posts for the profile owner. Derive the public count from that
+    // same result instead of issuing a second COUNT request on every profile view.
+    const publicPostsCount = (postsData ?? []).filter(post => post.status === 'approved').length
 
     return {
       profile,
       posts,
       stats: { posts: posts.length, likes, comments },
-      publicPostsCount: approvedPostsCountError ? null : approvedPostsCount ?? 0,
+      publicPostsCount,
     }
   },
 )
