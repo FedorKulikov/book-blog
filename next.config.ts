@@ -50,6 +50,9 @@ const nextConfig: NextConfig = {
 
     return [
       { source: '/news/new', headers: noindex },
+      // Internal query results and client-only tag archives are not useful landing pages yet.
+      { source: '/search', headers: noindex },
+      { source: '/tag/:path*', headers: noindex },
       { source: '/login', headers: noindex },
       { source: '/signup', headers: noindex },
       { source: '/forgot-password', headers: noindex },
