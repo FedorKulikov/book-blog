@@ -9,6 +9,8 @@ test('safeInternalPath rejects protocol-relative and normalized external paths',
     '/\\evil.com',
     '/..//evil.com',
     '/./\\evil.com',
+    '/%2f%2fevil.com',
+    '/%5c%5cevil.com',
   ]) {
     assert.equal(safeInternalPath(value), '/', `expected rejection for ${JSON.stringify(value)}`)
   }
