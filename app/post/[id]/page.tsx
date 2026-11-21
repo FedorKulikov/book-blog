@@ -45,9 +45,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const description = getDescription(post.content, post.title, post.type)
   const plainContent = toPlainText(post.content ?? '')
-  const metaTitle = plainContent
-    ? `${post.title} — ${truncate(plainContent, 38)}`
-    : post.title
+  // Leave room for the global "· Хлеба и букв" title suffix.
+  // A short excerpt still distinguishes posts that share the same author title.
+  const metaTitle = truncate(
+    plainContent ? `${post.title} — ${truncate(plainContent, 38)}` : post.title,
+    42,
+  )
   const canonical = `/post/${post.id}`
   const images = post.post_images.slice(0, 4).map(image => ({
     url: image.url,
