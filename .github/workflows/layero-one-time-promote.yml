@@ -123,7 +123,7 @@ jobs:
           NODE
 
           # Deploy and explicitly promote the exact source tree checked out at GITHUB_SHA.
-          npx --yes layero@latest deploy --project "$LAYERO_PROJECT_ID" --prod --promote --yes --json > "$DEPLOY_FILE"
+          npx --yes layero@latest deploy --project "$LAYERO_PROJECT_ID" --prod --promote --yes --confirm-repeated-failure --json > "$DEPLOY_FILE"
           node - "$DEPLOY_FILE" "$PROMOTE_INFO" <<'NODE'
           const fs = require("node:fs");
           const [file, outputFile] = process.argv.slice(2);
