@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
-import { getPostAuthPath } from '@/lib/auth-navigation'
+import { getPostAuthPath, safeInternalPath } from '@/lib/auth-navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
