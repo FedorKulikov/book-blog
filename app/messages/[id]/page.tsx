@@ -300,8 +300,11 @@ export default function ConversationPage() {
     lastMediaRefreshAtRef.current = Date.now()
 
     const refreshed = await signChatMediaMessages(messagesRef.current)
-    messagesRef.current = refreshed
-    setMessages(refreshed)
+    const refreshedById = new Map(refreshed.map(message => [message.id, message]))
+    // Merge by ID so a message arriving during the signing request is not lost.
+    setMessages(current =>
+      current.map(message => refreshedById.get(message.id) ?? message),
+    )
   }, [])
 
   // Signed links expire after one hour. Renew them before expiry and on tab return.
