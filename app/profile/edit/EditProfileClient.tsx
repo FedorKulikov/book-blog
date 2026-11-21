@@ -22,7 +22,8 @@ export default function EditProfilePage() {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        router.push('/login')
+        const currentPath = `${window.location.pathname}${window.location.search}`
+        router.push(`/login?next=${encodeURIComponent(currentPath)}`)
         return
       }
       const { data } = await supabase
