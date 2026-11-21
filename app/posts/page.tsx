@@ -14,9 +14,9 @@ import { Library } from '../components/icons'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Отзывы о книгах, обзоры и публикации читателей',
+  title: 'Статьи о книгах, отзывы и публикации читателей',
   description:
-    'Читайте книжные отзывы и обзоры, обсуждения прочитанного, рассказы, стихи и другие публикации участников сообщества «Хлеба и букв».',
+    'Читайте статьи о книгах, отзывы и обзоры читателей, обсуждения прочитанного и другие публикации сообщества «Хлеба и букв».',
   alternates: { canonical: '/posts' },
   openGraph: {
     type: 'website',
@@ -54,8 +54,8 @@ export default async function AllPostsPage() {
   return (
     <main className="p-4 md:p-8 max-w-7xl mx-auto">
       <Hero
-        title="Все посты"
-        subtitle="Вся лента сообщества: книжные новинки, авторское творчество и обсуждения."
+        title="Статьи и публикации о книгах"
+        subtitle="Отзывы и обзоры читателей, обсуждения прочитанного, книжные новости и авторские тексты."
         image="/hero-home.jpg"
       />
 
