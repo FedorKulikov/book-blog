@@ -69,7 +69,7 @@ function enableMetrika(id: string) {
 
 export default function YandexMetrika() {
   const id = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID
-  const validId = id && /^\\d+$/.test(id) ? id : null
+  const validId = id && /^\d+$/.test(id) ? id : null
   const [consent, setConsent] = useState<Consent>(null)
   const [ready, setReady] = useState(false)
 
