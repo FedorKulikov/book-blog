@@ -212,7 +212,11 @@ export async function POST(request: Request) {
   if (!action) return fail(501, 'unsupported_action')
 
   if (action === 'recovery') {
-    await handleRecovery(payload)
+    try {
+      await handleRecovery(payload)
+    } catch {
+      console.error('[email-hook] recovery processing failed')
+    }
     return ok()
   }
 
