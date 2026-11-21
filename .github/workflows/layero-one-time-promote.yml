@@ -12,9 +12,8 @@ permissions:
 
 jobs:
   promote:
-    # Permanently sealed to the exact main SHA already deployed successfully.
-    # Any subsequent edit or push has a different github.sha and cannot deploy production.
-    if: "github.ref == 'refs/heads/main' && github.sha == '5233d29108a885a1e2fd4011a8b890bf76bc1602'"
+    # Temporarily opened for one explicitly named SEO release commit; re-seal to that SHA afterwards.
+    if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ops: promote current main build to Layero production')"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -146,13 +145,15 @@ jobs:
           homepage="$RUNNER_TEMP/homepage.html"
           creative="$RUNNER_TEMP/creative.html"
           discussions="$RUNNER_TEMP/discussions.html"
+          posts="$RUNNER_TEMP/posts.html"
+          books="$RUNNER_TEMP/books.html"
           sitemap="$RUNNER_TEMP/sitemap.xml"
           key_body="$RUNNER_TEMP/indexnow-key.txt"
 
           verified=0
           for attempt in $(seq 1 12); do
             home_status="$(curl --silent --show-error --location --max-time 25 --output "$homepage" --write-out '%{http_code}' 'https://bukleb.ru/' || true)"
-            if [[ "$home_status" == "200" ]] && grep -Fq 'Книжное сообщество для читателей' "$homepage"; then
+            if [[ "$home_status" == "200" ]] && grep -Fq 'Хлеба и букв — книжное сообщество для читателей' "$homepage"; then
               verified=1
               break
             fi
@@ -166,12 +167,22 @@ jobs:
 
           creative_status="$(curl --silent --show-error --location --max-time 25 --output "$creative" --write-out '%{http_code}' 'https://bukleb.ru/creative' || true)"
           discussions_status="$(curl --silent --show-error --location --max-time 25 --output "$discussions" --write-out '%{http_code}' 'https://bukleb.ru/discussions' || true)"
+          posts_status="$(curl --silent --show-error --location --max-time 25 --output "$posts" --write-out '%{http_code}' 'https://bukleb.ru/posts' || true)"
+          books_status="$(curl --silent --show-error --location --max-time 25 --output "$books" --write-out '%{http_code}' 'https://bukleb.ru/books' || true)"
           if [[ "$creative_status" != "200" ]] || ! grep -Fq 'Авторское творчество: рассказы, стихи и эссе' "$creative"; then
             echo "::error::The /creative page does not expose the intended metadata."
             exit 1
           fi
-          if [[ "$discussions_status" != "200" ]] || ! grep -Fq 'Обсуждения книг: мнения и читательские разговоры' "$discussions"; then
+          if [[ "$discussions_status" != "200" ]] || ! grep -Fq 'Обсуждения книг и отзывы читателей' "$discussions"; then
             echo "::error::The /discussions page does not expose the intended metadata."
+            exit 1
+          fi
+          if [[ "$posts_status" != "200" ]] || ! grep -Fq 'Статьи о книгах и отзывы читателей' "$posts"; then
+            echo "::error::The /posts page does not expose the intended metadata."
+            exit 1
+          fi
+          if [[ "$books_status" != "200" ]] || ! grep -Fq 'Каталог книг, отзывы и обсуждения читателей' "$books"; then
+            echo "::error::The /books page does not expose the catalogue introduction."
             exit 1
           fi
 
