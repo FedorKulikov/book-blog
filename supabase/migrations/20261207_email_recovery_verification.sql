@@ -180,7 +180,7 @@ comment on table private.email_recovery_tokens is
 -- Reset-link requests are tracked independently from verification-link
 -- requests. Both email and IP are keyed hashes; no raw address/IP is stored.
 create table if not exists private.email_recovery_reset_attempts (
-  id bigserial primary key,
+  id uuid primary key default gen_random_uuid(),
   email_hash text not null,
   ip_hash text not null,
   created_at timestamptz not null default now()
