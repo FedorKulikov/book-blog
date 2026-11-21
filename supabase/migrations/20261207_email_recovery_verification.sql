@@ -140,6 +140,23 @@ as 'select exists (
      and a.email_hash = p_email_hash
 )';
 
+
+create or replace function public.email_recovery_email_hash_verified(p_email_hash text)
+returns boolean
+language sql
+stable
+set search_path = ''
+as 'select exists (
+  select 1
+    from private.email_recovery_addresses a
+   where a.email_hash = p_email_hash
+)';
+
+revoke all on function public.email_recovery_email_hash_verified(text)
+  from public, anon, authenticated;
+grant execute on function public.email_recovery_email_hash_verified(text)
+  to service_role;
+
 create or replace function public.allow_email_recovery_reset(p_email_hash text, p_ip_hash text)
 returns boolean
 language sql
