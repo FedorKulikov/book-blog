@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import DiscussionsClient from './DiscussionsClient'
 
 export const metadata: Metadata = {
-  title: 'Обсуждения книг: мнения и читательские разговоры',
+  title: 'Обсуждения книг и отзывы читателей',
   description:
     'Обсуждайте прочитанные книги, делитесь впечатлениями, задавайте вопросы и отвечайте другим читателям в «Хлеба и букв».',
   alternates: { canonical: '/discussions' },
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'ru_RU',
     siteName: 'Хлеба и букв',
-    title: 'Обсуждения книг: мнения и читательские разговоры',
+    title: 'Обсуждения книг и отзывы читателей',
     description:
       'Обсуждайте прочитанные книги, делитесь впечатлениями, задавайте вопросы и отвечайте другим читателям в «Хлеба и букв».',
     url: '/discussions',
@@ -36,7 +36,7 @@ export default async function DiscussionsPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
-  // Запрашиваем только одобренные посты. 
+  // Запрашиваем только одобренные посты.
   // Если RLS не разрешает анонимное чтение, тут будет ошибка.
   const { data, error } = await supabase
     .from('posts')

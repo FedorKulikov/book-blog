@@ -89,6 +89,18 @@ export default function BooksClient({
         image="/hero-books.jpg"
       />
 
+      <section aria-labelledby="books-intro-heading" className="mb-8 max-w-4xl">
+        <h2
+          id="books-intro-heading"
+          className="font-playfair text-xl font-bold text-emerald-dark"
+        >
+          Каталог книг, отзывы и обсуждения читателей
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-brown/70">
+          Ищите произведения по названию и автору, открывайте связанные с книгами публикации и обсуждения. Делитесь впечатлениями о прочитанном и находите новые книги через опыт других читателей сообщества «Хлеба и букв».
+        </p>
+      </section>
+
       <div className="space-y-6 mb-8">
         {/* Поиск + кнопка добавления (только для авторизованных) */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

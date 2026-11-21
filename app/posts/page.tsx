@@ -14,7 +14,7 @@ import { Library } from '../components/icons'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Статьи о книгах, отзывы и публикации читателей',
+  title: 'Статьи о книгах и отзывы читателей',
   description:
     'Читайте статьи о книгах, отзывы и обзоры читателей, обсуждения прочитанного и другие публикации сообщества «Хлеба и букв».',
   alternates: { canonical: '/posts' },
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'ru_RU',
     siteName: 'Хлеба и букв',
-    title: 'Статьи и публикации о книгах',
+    title: 'Статьи о книгах и отзывы читателей',
     description:
       'Читайте книжные отзывы и обзоры, обсуждения прочитанного, рассказы, стихи и другие публикации участников сообщества «Хлеба и букв».',
     url: '/posts',
