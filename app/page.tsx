@@ -11,10 +11,20 @@ export const metadata: Metadata = {
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
+    locale: 'ru_RU',
+    siteName: 'Хлеба и букв',
     title: 'Книжное сообщество для читателей — Хлеба и букв',
     description:
       'Отзывы о книгах, обсуждения прочитанного и авторское творчество в небольшом сообществе читателей.',
     url: '/',
+    images: [
+      {
+        url: '/og-default.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Хлеба и букв — книжное сообщество',
+      },
+    ],
   },
 }
 
