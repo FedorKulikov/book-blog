@@ -14,7 +14,14 @@ export function safeInternalPath(value: string | null | undefined): string {
     const output = `${target.pathname}${target.search}${target.hash}`
     // URL нормализует сегменты пути и обратные слеши. Проверяем именно
     // результат нормализации: он тоже не должен стать protocol-relative URL.
-    if (!output.startsWith('/') || output.startsWith('//') || output.startsWith('/\\')) {
+    const decodedPath = decodeURIComponent(target.pathname)
+    if (
+      !output.startsWith('/') ||
+      output.startsWith('//') ||
+      output.startsWith('/\\') ||
+      decodedPath.startsWith('//') ||
+      decodedPath.startsWith('/\\')
+    ) {
       return '/'
     }
 
