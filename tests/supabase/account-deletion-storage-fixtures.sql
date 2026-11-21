@@ -40,7 +40,9 @@ alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
 
 -- Supabase manages ownership of storage.objects separately from public tables.
--- Create the test policies as its owner rather than changing managed ownership.
+-- Temporarily grant the local CI postgres role membership so it can create
+-- policies as the actual owner; revoke that membership before this transaction commits.
+grant supabase_storage_admin to postgres;
 set local role supabase_storage_admin;
 alter table storage.objects enable row level security;
 
@@ -127,5 +129,6 @@ create policy ci_chat_media_select_conversation_participants
   );
 
 reset role;
+revoke supabase_storage_admin from postgres;
 
 commit;
