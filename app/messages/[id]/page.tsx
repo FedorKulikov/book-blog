@@ -136,6 +136,8 @@ export default function ConversationPage() {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const readyRef = useRef(false)
+  const messagesRef = useRef<ChatMessage[]>([])
+  const lastMediaRefreshAtRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -287,6 +289,33 @@ export default function ConversationPage() {
 
     return () => clearInterval(timer)
   }, [uid, id, messages, fetchMessages, markRead])
+
+  // Keep the latest messages available to the signed-URL renewal callback.
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
+  const refreshMediaUrls = useCallback(async () => {
+    if (Date.now() - lastMediaRefreshAtRef.current < 45 * 60 * 1000) return
+    lastMediaRefreshAtRef.current = Date.now()
+
+    const refreshed = await signChatMediaMessages(messagesRef.current)
+    messagesRef.current = refreshed
+    setMessages(refreshed)
+  }, [])
+
+  // Signed links expire after one hour. Renew them before expiry and on tab return.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refreshMediaUrls()
+    }, 5 * 60 * 1000)
+    window.addEventListener('focus', refreshMediaUrls)
+
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshMediaUrls)
+    }
+  }, [refreshMediaUrls])
 
   // Автоскролл вниз
   useEffect(() => {
