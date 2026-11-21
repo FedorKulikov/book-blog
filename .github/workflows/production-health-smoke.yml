@@ -83,3 +83,11 @@ jobs:
           fi
 
           echo "Production application marker and SEO homepage metadata verified."
+
+          profile_headers="$RUNNER_TEMP/profile-headers.txt"
+          profile_status="$(curl --silent --show-error --location --max-time 25 --dump-header "$profile_headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/profile" || true)"
+          if [[ "$profile_status" != "200" ]] || ! grep -Eiq '^x-robots-tag:[[:space:]]*noindex,[[:space:]]*nofollow' "$profile_headers"; then
+            echo "::error::The private /profile dashboard must return HTTP 200 with X-Robots-Tag: noindex, nofollow (received HTTP $profile_status)."
+            exit 1
+          fi
+          echo "Private profile dashboard is excluded from search indexing."
