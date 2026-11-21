@@ -7,6 +7,8 @@ import {
   escapeEmailHtml,
   generateEmailRecoveryToken,
   hashEmailForRecovery,
+  getAuthEmailSiteUrl,
+  isEmailRecoveryConfigured,
   isValidEmailRecoveryToken,
   sendEmailViaResend,
 } from '../lib/email-recovery'
@@ -105,5 +107,78 @@ test('Resend delivery sends only the intended recipient and fails closed', async
       fakeFetch,
     ),
     /not configured/,
+  )
+})
+
+test('production email links are pinned to the verified domain', () => {
+  const previous = process.env.AUTH_EMAIL_SITE_URL
+  try {
+    process.env.AUTH_EMAIL_SITE_URL = 'https://bukleb.ru'
+    assert.equal(getAuthEmailSiteUrl(), 'https://bukleb.ru')
+
+    process.env.AUTH_EMAIL_SITE_URL = 'https://attacker.example'
+    assert.throws(() => getAuthEmailSiteUrl(), /verified production domain/)
+
+    process.env.AUTH_EMAIL_SITE_URL = 'http://bukleb.ru'
+    assert.throws(() => getAuthEmailSiteUrl(), /HTTPS/)
+  } finally {
+    if (previous === undefined) delete process.env.AUTH_EMAIL_SITE_URL
+    else process.env.AUTH_EMAIL_SITE_URL = previous
+  }
+})
+
+test('email recovery stays disabled unless every server prerequisite is present', () => {
+  const keys = [
+    'NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY',
+    'EMAIL_RECOVERY_SECRET',
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'AUTH_EMAIL_HOOK_SECRET',
+    'RESEND_API_KEY',
+    'AUTH_EMAIL_FROM',
+    'AUTH_EMAIL_SITE_URL',
+  ] as const
+  const previous = new Map(keys.map(key => [key, process.env[key]]))
+
+  try {
+    for (const key of keys) process.env[key] = 'configured-test-value'
+    process.env.NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY = 'true'
+    process.env.EMAIL_RECOVERY_SECRET = 'a'.repeat(64)
+    process.env.AUTH_EMAIL_SITE_URL = 'https://bukleb.ru'
+    assert.equal(isEmailRecoveryConfigured(), true)
+
+    delete process.env.RESEND_API_KEY
+    assert.equal(isEmailRecoveryConfigured(), false)
+  } finally {
+    for (const key of keys) {
+      const value = previous.get(key)
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+})
+
+test('Resend rejects provider failures without exposing response bodies', async () => {
+  const fakeFetch: typeof fetch = async () => new Response(
+    JSON.stringify({ message: 'sensitive provider response with recipient details' }),
+    { status: 500 },
+  )
+
+  await assert.rejects(
+    sendEmailViaResend(
+      {
+        to: 'reader@example.com',
+        subject: 'Reset',
+        html: '<p>Reset</p>',
+        text: 'Reset',
+      },
+      { apiKey: 're_test_key', from: 'Book Blog <no-reply@mail.bukleb.ru>' },
+      fakeFetch,
+    ),
+    error => {
+      assert.ok(error instanceof Error)
+      assert.match(error.message, /HTTP 500/)
+      assert.doesNotMatch(error.message, /recipient details/)
+      return true
+    },
   )
 })
