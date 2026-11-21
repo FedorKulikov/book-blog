@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation'
 import { getBook } from './getBook'
 import BookView from './BookView'
 import { truncate, toPlainText } from '@/lib/text'
+import { SITE_URL } from '@/lib/site'
+import JsonLd from '@/app/components/JsonLd'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,5 +74,32 @@ export default async function BookPage({
 
   if (!data) notFound()
 
-  return <BookView book={data.book} posts={data.posts} />
+  const bookUrl = `${SITE_URL}/book/${data.book.id}`
+
+  return (
+    <>
+      <JsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'Book',
+          '@id': `${bookUrl}#book`,
+          url: bookUrl,
+          name: data.book.title,
+          author: data.book.author
+            ? { '@type': 'Person', name: data.book.author }
+            : undefined,
+          datePublished: data.book.year ? String(data.book.year) : undefined,
+          description: toPlainText(data.book.description ?? '') || undefined,
+          image: data.book.cover_url || undefined,
+          inLanguage: 'ru-RU',
+          workExample: {
+            '@type': 'CreativeWork',
+            name: `Публикации читателей о книге «${data.book.title}»`,
+            url: bookUrl,
+          },
+        }}
+      />
+      <BookView book={data.book} posts={data.posts} />
+    </>
+  )
 }
