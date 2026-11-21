@@ -37,7 +37,8 @@ export function getPostAuthPath(search: string): string {
   if (!next) return '/welcome'
 
   const destination = safeInternalPath(next)
-  const pathname = new URL(destination, 'https://internal.invalid').pathname.replace(/\\/+$/, '') || '/'
+  let pathname = decodeURIComponent(new URL(destination, 'https://internal.invalid').pathname)
+  while (pathname.length > 1 && pathname.endsWith('/')) pathname = pathname.slice(0, -1)
   const authOnlyPaths = new Set([
     '/login',
     '/signup',
