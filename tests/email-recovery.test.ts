@@ -43,7 +43,7 @@ test('verification tokens contain 256 random bits and only valid URL-safe charac
 test('email verification URL contains only the single-use token', () => {
   const url = new URL(buildEmailVerificationUrl('https://bukleb.ru', 'abc_123'))
   assert.equal(url.origin, 'https://bukleb.ru')
-  assert.equal(url.pathname, '/api/email-recovery/confirm')
+  assert.equal(url.pathname, '/email-recovery/confirm')
   assert.equal(url.searchParams.get('token'), 'abc_123')
   assert.equal(url.searchParams.has('next'), false)
 })
