@@ -18,6 +18,23 @@ export const metadata: Metadata = {
   description:
     'Читайте книжные отзывы и обзоры, обсуждения прочитанного, рассказы, стихи и другие публикации участников сообщества «Хлеба и букв».',
   alternates: { canonical: '/posts' },
+  openGraph: {
+    type: 'website',
+    locale: 'ru_RU',
+    siteName: 'Хлеба и букв',
+    title: 'Отзывы о книгах, обзоры и публикации читателей',
+    description:
+      'Читайте книжные отзывы и обзоры, обсуждения прочитанного, рассказы, стихи и другие публикации участников сообщества «Хлеба и букв».',
+    url: '/posts',
+    images: [
+      {
+        url: '/og-default.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Хлеба и букв',
+      },
+    ],
+  },
 }
 
 export default async function AllPostsPage() {
