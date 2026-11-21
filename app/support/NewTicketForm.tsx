@@ -68,7 +68,7 @@ export default function NewTicketForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-cream-warm/25 border border-emerald-dark/10 rounded-2xl p-5 space-y-4"
+      className="ym-hide-content bg-cream-warm/25 border border-emerald-dark/10 rounded-2xl p-5 space-y-4"
     >
       <h2 className="font-playfair text-lg font-bold text-emerald-dark">
         Новое обращение
