@@ -53,7 +53,7 @@ export default function MessageBubble({
   } max-w-[220px] sm:max-w-[260px] max-h-[320px] w-auto h-auto object-cover cursor-zoom-in`
 
   return (
-    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+    <div className={`ym-hide-content flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`max-w-[80%] ${
           isOwn ? 'bg-wine text-white' : 'bg-cream-warm text-brown-dark'
