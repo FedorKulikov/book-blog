@@ -1,4 +1,4 @@
-// app/api/recovery/use/route.ts
+// app/api/recovery/redeem/route.ts
 //
 // Восстановление пароля по имени пользователя и резервному коду.
 // Работает без почты и без SMTP.
