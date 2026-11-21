@@ -29,6 +29,10 @@ export async function POST(request: Request) {
     return json({ error: 'not_available_on_preview' }, 404)
   }
 
+  if (!isEmailRecoveryConfigured()) {
+    return json({ error: 'Подтверждение email пока не настроено' }, 503)
+  }
+
   const expectedOrigin = getAuthEmailSiteUrl()
   if (request.headers.get('origin') !== expectedOrigin) {
     return json({ error: 'Запрос отклонён' }, 403)
@@ -41,10 +45,6 @@ export async function POST(request: Request) {
 
   if (!user) return json({ error: 'Требуется вход в аккаунт' }, 401)
   if (!user.email) return json({ error: 'У аккаунта нет email' }, 400)
-
-  if (!isEmailRecoveryConfigured()) {
-    return json({ error: 'Подтверждение email пока не настроено' }, 503)
-  }
 
   const admin = getAdminClient()
   const secret = getEmailRecoverySecret()
