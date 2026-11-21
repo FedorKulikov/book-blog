@@ -75,6 +75,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | да | Публичный ключ (RLS ограничивает доступ) |
 | `NEXT_PUBLIC_SITE_URL` | нет | Канонический домен для `metadataBase`, sitemap и OG-тегов |
 | `NEXT_PUBLIC_ENABLE_PASSKEYS` | только после настройки Supabase | Показывает вход и управление ключами доступа; включать только после настройки RP ID/origins в Supabase |
+| `NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY` | только после миграции и настройки Resend | Показывает подтверждение email и восстановление по подтверждённой почте |
 | `SUPABASE_DB_URL` | только в CI | Строка подключения для ночных бэкапов |
 
 ### 4. Запустить
@@ -198,7 +199,9 @@ proxy.ts                  refresh сессии + серверный guard для
 Hook заменяет встроенную отправку писем Supabase. `app/api/auth/email-hook`
 проверяет подпись по спецификации **Standard Webhooks** (`webhook-id`,
 `webhook-timestamp`, `webhook-signature`, HMAC-SHA256 по исходному телу, допуск
-±5 минут, constant-time сравнение) и подавляет восстановление.
+±5 минут, constant-time сравнение). Событие `recovery` отправляется через Resend
+только при совпадении HMAC-хеша текущего email с отдельно подтверждённой записью
+в закрытой схеме `private`.
 
 **Настройка:** Supabase → Authentication → Hooks → **Send Email Hook** → URL
 `https://bukleb.ru/api/auth/email-hook`, включить, скопировать секрет.
@@ -206,13 +209,15 @@ Hook заменяет встроенную отправку писем Supabase.
 
 | Событие | Ответ хука | Почему |
 |---|---|---|
-| `recovery` | 200, письма нет | адрес не подтверждён — ссылку сброса не отправляем |
+| `recovery` | 200, письмо только для заранее подтверждённого email | неподтверждённый адрес получает нейтральный ответ без письма |
 | `signup` | 200, письма нет | Confirm Email выключен, письмо не запрашивается |
 | `*_notification` | 200, письма нет | уведомления о безопасности не доставляются |
 | `magiclink`, `invite`, `email_change`, `reauthentication` | 501 | доставка не подключена — падаем заметно, а не молча |
 
-**Важно:** hook не имеет fallback на SMTP. Фактически письма в проекте не
-отправляются вообще; восстановление — только по резервным кодам.
+**Важно:** hook не имеет fallback на SMTP. Пока `NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY`
+не включён и Resend не настроен, письма сброса не отправляются. Новые
+пользовательские подтверждения не выставляют `email_confirmed_at` напрямую и
+не меняют текущий режим регистрации.
 
 ---
 
