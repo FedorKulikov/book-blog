@@ -17,7 +17,7 @@ jobs:
     # Keep the promotion action dormant so a later workflow edit cannot republish production.
     # One-time follow-up deployment completed for a6f7839a8920803141d544090eb70eebd55ebdf1.
     # Keep the production promotion workflow dormant after successful release.
-    if: "github.ref == 'refs/heads/main' && github.sha == 'a6f7839a8920803141d544090eb70eebd55ebdf1'"
+    if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ops: promote current main build to Layero production')"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
