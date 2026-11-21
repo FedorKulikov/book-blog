@@ -13,7 +13,9 @@ permissions:
 jobs:
   promote:
     # This workflow is intentionally gated to the dedicated release commit.
-    if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ops: promote current main build to Layero production')"
+    # One-time release completed successfully for aef52c23632e67492fa2a57e16025b18ef11a0ab.
+    # Keep the promotion action dormant so a later workflow edit cannot republish production.
+    if: "github.ref == 'refs/heads/main' && github.sha == 'aef52c23632e67492fa2a57e16025b18ef11a0ab'"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
