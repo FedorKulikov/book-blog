@@ -91,11 +91,13 @@ jobs:
             app/components/LikeButton.tsx \
             app/components/ConversationList.tsx \
             app/messages/page.tsx \
+            app/messages/'[id]'/layout.tsx \
             app/messages/'[id]'/page.tsx \
             app/news/new/page.tsx \
             app/news/new/NewsForm.tsx \
             app/books/add/page.tsx \
             app/profile/page.tsx \
+            app/profile/ProfileClient.tsx \
             app/profile/edit/page.tsx \
             app/profile/edit/EditProfileClient.tsx \
             app/support/'[id]'/page.tsx \
