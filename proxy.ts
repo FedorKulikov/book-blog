@@ -67,13 +67,15 @@ export async function proxy(request: NextRequest) {
     .some(({ name }) => name.includes('-auth-token'))
 
   if (!hasAuthCookie) {
-    // Гость на /admin уходит на логин сразу: ни клиента, ни запроса к БД.
-    // (Пускать его на страницу «чтобы сработала клиентская проверка» — лишний
-    // рендер админки в HTML плюс круг до Auth; редирект и безопаснее, и дешевле.)
-    // Форма создания новости тоже требует входа — редирект на сервере,
-    // а не в клиентском useEffect: иначе краулер видит «Загрузка…».
+    // Возвращаем пользователя к форме, из которой его отправили на вход.
+    // Админские маршруты не сохраняем как next: после обычного входа у читателя
+    // всё равно нет прав на админ-панель.
     if (adminRoute || authRoute) {
-      return NextResponse.redirect(new URL('/login', request.url))
+      const loginUrl = new URL('/login', request.url)
+      if (authRoute) {
+        loginUrl.searchParams.set('next', `${request.nextUrl.pathname}${request.nextUrl.search}`)
+      }
+      return NextResponse.redirect(loginUrl)
     }
     return response
   }
@@ -133,8 +135,12 @@ export async function proxy(request: NextRequest) {
   if (!adminRoute && !authRoute) return response
 
   if (!user) {
-    // Кука есть, но токен невалиден/просрочен — как аноним
-    return redirectWithCookies('/login', request, response)
+    // Кука есть, но токен невалиден/просрочен — как аноним.
+    const loginUrl = new URL('/login', request.url)
+    if (authRoute) {
+      loginUrl.searchParams.set('next', `${request.nextUrl.pathname}${request.nextUrl.search}`)
+    }
+    return redirectWithCookies(loginUrl.toString(), request, response)
   }
 
   // Форме /news/new роль не нужна
