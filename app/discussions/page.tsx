@@ -1,5 +1,13 @@
+import type { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
 import DiscussionsClient from './DiscussionsClient'
+
+export const metadata: Metadata = {
+  title: 'Обсуждения книг: мнения и читательские разговоры',
+  description:
+    'Обсуждайте прочитанные книги, делитесь впечатлениями, задавайте вопросы и отвечайте другим читателям в «Хлеба и букв».',
+  alternates: { canonical: '/discussions' },
+}
 
 // Отключаем кэширование, чтобы всегда показывать свежие обсуждения
 export const dynamic = 'force-dynamic'
