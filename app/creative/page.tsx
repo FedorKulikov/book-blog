@@ -1,5 +1,13 @@
+import type { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
 import CreativeClient from './CreativeClient'
+
+export const metadata: Metadata = {
+  title: 'Авторское творчество: рассказы, стихи и эссе',
+  description:
+    'Читайте рассказы, стихи, эссе и другие тексты участников книжного сообщества «Хлеба и букв» и делитесь собственным творчеством.',
+  alternates: { canonical: '/creative' },
+}
 
 // Отключаем кэширование, чтобы всегда показывать свежее творчество
 export const dynamic = 'force-dynamic'
