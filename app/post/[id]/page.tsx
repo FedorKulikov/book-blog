@@ -44,6 +44,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   const description = getDescription(post.content, post.title, post.type)
+  const plainContent = toPlainText(post.content ?? '')
+  const metaTitle = plainContent
+    ? `${post.title} — ${truncate(plainContent, 38)}`
+    : post.title
   const canonical = `/post/${post.id}`
   const images = post.post_images.slice(0, 4).map(image => ({
     url: image.url,
@@ -51,7 +55,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }))
 
   return {
-    title: post.title,
+    title: metaTitle,
     description,
     alternates: { canonical },
     robots: { index: true, follow: true },
@@ -60,7 +64,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       locale: 'ru_RU',
       siteName: 'Хлеба и букв',
       url: canonical,
-      title: post.title,
+      title: metaTitle,
       description,
       publishedTime: post.created_at,
       authors: post.profiles?.username
@@ -70,7 +74,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     },
     twitter: {
       card: 'summary_large_image',
-      title: post.title,
+      title: metaTitle,
       description,
       images: images.length ? images.map(image => image.url) : ['/og-default.jpg'],
     },
