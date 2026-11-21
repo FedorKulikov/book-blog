@@ -6,6 +6,8 @@ const CHAT_MEDIA_SIGNED_URL_TTL_SECONDS = 60 * 60
 type ChatMediaFields = {
   image_url: string | null
   audio_url: string | null
+  image_object_path?: string | null
+  audio_object_path?: string | null
   media_unavailable?: boolean
 }
 
@@ -20,8 +22,8 @@ export async function signChatMediaMessages<T extends ChatMediaFields>(
   const paths = Array.from(
     new Set(
       messages.flatMap(message => [
-        getChatMediaObjectPath(message.image_url),
-        getChatMediaObjectPath(message.audio_url),
+        message.image_object_path ?? getChatMediaObjectPath(message.image_url),
+        message.audio_object_path ?? getChatMediaObjectPath(message.audio_url),
       ]).filter((path): path is string => Boolean(path)),
     ),
   )
@@ -45,8 +47,8 @@ export async function signChatMediaMessages<T extends ChatMediaFields>(
   }
 
   return messages.map(message => {
-    const imagePath = getChatMediaObjectPath(message.image_url)
-    const audioPath = getChatMediaObjectPath(message.audio_url)
+    const imagePath = message.image_object_path ?? getChatMediaObjectPath(message.image_url)
+    const audioPath = message.audio_object_path ?? getChatMediaObjectPath(message.audio_url)
     const imageUrl = imagePath
       ? signedUrlByPath.get(imagePath) ?? null
       : message.image_url
@@ -58,6 +60,8 @@ export async function signChatMediaMessages<T extends ChatMediaFields>(
       ...message,
       image_url: imageUrl,
       audio_url: audioUrl,
+      image_object_path: imagePath,
+      audio_object_path: audioPath,
       media_unavailable: Boolean(
         (imagePath && !imageUrl) || (audioPath && !audioUrl),
       ),
