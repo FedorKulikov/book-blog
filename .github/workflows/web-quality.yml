@@ -289,3 +289,62 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname recovery_test --set ON_ERROR_STOP=1 --file tests/sql/chat-media-private-migration.test.sql
+
+  account-deletion-storage:
+    name: Supabase Auth + Storage integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 3.2.0
+
+      - name: Prepare isolated local project
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/account-deletion-supabase/supabase/migrations"
+          cp tests/supabase/config.toml "$RUNNER_TEMP/account-deletion-supabase/supabase/config.toml"
+
+      - name: Start local Supabase stack
+        working-directory: ${{ runner.temp }}/account-deletion-supabase
+        run: |
+          supabase start --exclude studio,mailpit,logflare,vector,supavisor,edge-runtime,imgproxy,realtime,postgres-meta
+
+      - name: Export local-only connection details
+        working-directory: ${{ runner.temp }}/account-deletion-supabase
+        run: |
+          supabase status --env --output-format text >> "$GITHUB_ENV"
+
+      - name: Apply isolated account deletion fixtures
+        run: |
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f tests/supabase/account-deletion-storage-fixtures.sql
+
+      - name: Test real Auth, Storage copy ownership, and participant RLS
+        run: npm run test:account-deletion-storage
+
+      - name: Stop and remove local Supabase containers
+        if: always()
+        working-directory: ${{ runner.temp }}/account-deletion-supabase
+        run: |
+          if command -v supabase >/dev/null 2>&1; then
+            supabase stop --no-backup || true
+          fi
+
