@@ -238,7 +238,6 @@ export default function SignupPage() {
     router.push(getPostAuthPath(window.location.search))
     router.refresh()
   }
-  }
 
   const submitDisabled =
     loading || usernameStatus === 'taken' || usernameStatus === 'checking'
