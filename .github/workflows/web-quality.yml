@@ -57,40 +57,44 @@ jobs:
       - name: TypeScript
         run: npx tsc --noEmit
 
-      # The repository-wide lint currently reports unrelated baseline issues.
-      # Lint every new page/component and check the two legacy files touched here,
-      # suppressing only their pre-existing rules (explicit any / state-in-effect).
+      # Keep auth, navigation, and main feed code under normal ESLint rules.
       - name: ESLint changed code
         run: |
           npx eslint \
             app/login/page.tsx \
+            app/signup/page.tsx \
             app/forgot-password/page.tsx \
             app/recover-account/page.tsx \
             app/auth/confirm/page.tsx \
             app/auth/reset/page.tsx \
             app/components/CodesReveal.tsx \
             app/components/BookmarkButton.tsx \
+            app/components/Comments.tsx \
+            app/components/LikeButton.tsx \
+            app/components/ConversationList.tsx \
             app/messages/page.tsx \
+            app/messages/'[id]'/page.tsx \
             app/news/new/page.tsx \
+            app/news/new/NewsForm.tsx \
             app/books/add/page.tsx \
+            app/profile/page.tsx \
             app/profile/edit/page.tsx \
             app/support/'[id]'/page.tsx \
             app/post/'[id]'/edit/page.tsx \
+            app/page.tsx \
+            app/HomeClient.tsx \
+            app/books/page.tsx \
+            app/posts/page.tsx \
+            app/creative/page.tsx \
+            app/discussions/page.tsx \
+            app/post/'[id]'/page.tsx \
+            app/book/'[id]'/page.tsx \
+            app/layout.tsx \
+            app/sitemap.ts \
+            app/components/JsonLd.tsx \
             lib/auth-navigation.ts \
-            proxy.ts
-          # These two legacy components contain pre-existing patterns; suppress only those specific rules.
-          npx eslint app/components/Comments.tsx --rule 'react-hooks/set-state-in-effect: off'
-          npx eslint app/components/LikeButton.tsx --rule 'react-hooks/immutability: off'
-          npx eslint app/signup/page.tsx --rule 'react-hooks/set-state-in-effect: off'
-          npx eslint app/profile/page.tsx --rule '@typescript-eslint/no-explicit-any: off'
-          npx eslint \
-            app/page.tsx app/books/page.tsx app/posts/page.tsx \
-            app/creative/page.tsx app/discussions/page.tsx \
-            'app/post/[id]/page.tsx' 'app/book/[id]/page.tsx' \
-            app/layout.tsx app/sitemap.ts app/components/JsonLd.tsx \
+            proxy.ts \
             next.config.ts
-          npx eslint app/HomeClient.tsx --rule '@typescript-eslint/no-explicit-any: off'
-
       - name: Production build
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
