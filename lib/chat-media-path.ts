@@ -1,16 +1,16 @@
-const PUBLIC_CHAT_MEDIA_PATH = '/storage/v1/object/public/chat-media/'
+const CHAT_MEDIA_MARKER = /\/storage\/v1\/object\/(?:public|sign)\/chat-media\//
 
 /**
- * Stored chat attachments used to be persisted as public Storage URLs.
- * New messages store the bucket-relative object path directly.
+ * New rows store a bucket-relative object path. Legacy rows and live client
+ * state may contain public or signed Storage URLs.
  */
 export function getChatMediaObjectPath(value: string | null): string | null {
   if (!value) return null
 
-  const markerIndex = value.indexOf(PUBLIC_CHAT_MEDIA_PATH)
-  if (markerIndex >= 0) {
+  const marker = CHAT_MEDIA_MARKER.exec(value)
+  if (marker?.index !== undefined) {
     const encodedPath = value
-      .slice(markerIndex + PUBLIC_CHAT_MEDIA_PATH.length)
+      .slice(marker.index + marker[0].length)
       .split(/[?#]/, 1)[0]
 
     if (!encodedPath) return null
@@ -22,7 +22,7 @@ export function getChatMediaObjectPath(value: string | null): string | null {
     }
   }
 
-  // New rows store a bucket-relative path, never an absolute external URL.
+  // New database values are bucket-relative paths, not external URLs.
   if (!/^https?:\/\//i.test(value) && !value.startsWith('/')) {
     return value
   }
