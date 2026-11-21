@@ -59,7 +59,8 @@ function NewPostContent() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
-        router.push('/login')
+        const currentPath = `${window.location.pathname}${window.location.search}`
+        router.push(`/login?next=${encodeURIComponent(currentPath)}`)
         return
       }
       setUser(data.user)
