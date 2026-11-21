@@ -50,6 +50,13 @@ const nextConfig: NextConfig = {
 
     return [
       { source: '/news/new', headers: noindex },
+      // Category filters are navigation states, not separate search landing pages;
+      // avoid indexing near-identical listings with the same meta description.
+      {
+        source: '/news',
+        has: [{ type: 'query', key: 'category' }],
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, follow' }],
+      },
       // Internal query results and client-only tag archives are not useful landing pages yet.
       { source: '/search', headers: noindex },
       { source: '/tag/:path*', headers: noindex },
