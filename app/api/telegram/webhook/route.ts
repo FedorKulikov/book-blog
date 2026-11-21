@@ -124,12 +124,13 @@ async function sendLatestPosts(chatId: number): Promise<void> {
 
 async function handleUpdate(update: TelegramUpdate): Promise<void> {
   const message = update.message
-  const chatId = message?.chat?.id
-  const chatType = message?.chat?.type
+  if (!message || typeof message.text !== 'string') return
+
+  const chatId = message.chat?.id
+  const chatType = message.chat?.type
 
   // Бот предназначен для личных диалогов: не отвечает в группах и каналах.
-  if (typeof chatId !== 'number' || chatType !== 'private' || message?.from?.is_bot) return
-  if (typeof message.text !== 'string') return
+  if (typeof chatId !== 'number' || chatType !== 'private' || message.from?.is_bot) return
 
   const command = message.text.trim().split(/\\s+/, 1)[0].split('@', 1)[0].toLowerCase()
 
