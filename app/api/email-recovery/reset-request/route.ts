@@ -18,6 +18,11 @@ export const dynamic = 'force-dynamic'
 const NEUTRAL_RESPONSE = { ok: true }
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+type GeneratedRecoveryLinkData = {
+  user?: { id?: string; email?: string | null } | null
+  properties?: { hashed_token?: unknown } | null
+}
+
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, {
     status,
@@ -99,23 +104,20 @@ export async function POST(request: Request) {
   // Generate a reset link without asking Supabase to send email. The Auth
   // Send Email Hook remains a defensive barrier for direct /auth/v1/recover
   // calls and intentionally does not send recovery messages.
-  let generated: Awaited<ReturnType<typeof admin.auth.admin.generateLink>>
+  let generatedData: GeneratedRecoveryLinkData | null = null
   try {
     const result = await admin.auth.admin.generateLink({
       type: 'recovery',
       email,
     })
     if (result.error || !result.data) return json(NEUTRAL_RESPONSE)
-    generated = result
+    generatedData = result.data as unknown as GeneratedRecoveryLinkData
   } catch {
     return json(NEUTRAL_RESPONSE)
   }
 
-  const generatedUser = generated.data.user
-  const properties = generated.data.properties as
-    | { hashed_token?: unknown }
-    | undefined
-  const hashedToken = properties?.hashed_token
+  const generatedUser = generatedData?.user
+  const hashedToken = generatedData?.properties?.hashed_token
 
   if (
     !generatedUser?.id ||
