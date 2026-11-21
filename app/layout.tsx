@@ -1,5 +1,6 @@
 import { Playfair_Display, Inter } from 'next/font/google'
 import { Metadata } from 'next'
+import Link from 'next/link'
 import { SITE_URL } from '@/lib/site'
 import Sidebar from './components/Header'
 import MobileNav from './components/MobileNav'
