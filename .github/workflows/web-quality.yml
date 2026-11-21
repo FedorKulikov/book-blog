@@ -332,7 +332,7 @@ jobs:
       - name: Export local-only connection details
         working-directory: ${{ runner.temp }}/account-deletion-supabase
         run: |
-          supabase status --env --output-format text >> "$GITHUB_ENV"
+          supabase status --output env >> "$GITHUB_ENV"
 
       - name: Apply isolated account deletion fixtures
         run: |
