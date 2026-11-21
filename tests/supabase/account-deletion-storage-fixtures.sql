@@ -42,6 +42,7 @@ alter table storage.objects enable row level security;
 
 grant usage on schema public to authenticated, service_role;
 grant select on public.conversations, public.messages to authenticated;
+grant insert on public.messages to authenticated;
 grant all on public.profiles, public.conversations, public.messages to service_role;
 
 drop policy if exists ci_conversations_read_participant on public.conversations;
