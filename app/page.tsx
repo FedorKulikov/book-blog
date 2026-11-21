@@ -1,5 +1,22 @@
+import type { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
+import { SITE_URL } from '@/lib/site'
+import JsonLd from './components/JsonLd'
 import HomeClient from './HomeClient'
+
+export const metadata: Metadata = {
+  title: 'Книжное сообщество для читателей',
+  description:
+    'Находите книги, читайте отзывы, обсуждайте прочитанное и публикуйте рассказы, стихи и заметки в сообществе «Хлеба и букв».',
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    title: 'Книжное сообщество для читателей — Хлеба и букв',
+    description:
+      'Отзывы о книгах, обсуждения прочитанного и авторское творчество в небольшом сообществе читателей.',
+    url: '/',
+  },
+}
 
 // Отключаем кэширование, чтобы лента всегда показывала свежие посты
 export const dynamic = 'force-dynamic'
@@ -31,6 +48,27 @@ export default async function HomePage() {
     )
   }
 
-  // Передаем данные в клиентский компонент
-  return <HomeClient initialPosts={data || []} />
+  // WebSite structured data helps search engines identify the canonical site name.
+  return (
+    <>
+      <JsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'WebSite',
+          '@id': `${SITE_URL}/#website`,
+          url: SITE_URL,
+          name: 'Хлеба и букв',
+          description:
+            'Книжное сообщество для читателей и авторов: отзывы, обсуждения книг и авторское творчество.',
+          inLanguage: 'ru-RU',
+          publisher: {
+            '@type': 'Organization',
+            name: 'Хлеба и букв',
+            url: SITE_URL,
+          },
+        }}
+      />
+      <HomeClient initialPosts={data || []} />
+    </>
+  )
 }
