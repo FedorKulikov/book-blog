@@ -31,7 +31,7 @@ export async function generateMetadata({
 
   const description = truncate(
     toPlainText(data.profile.bio ?? '') ||
-      `${name} в книжном сообществе «Хлеба и букв»: ${data.stats.posts} публикаций.`,
+      `${name} в книжном сообществе «Хлеба и букв»: ${data.publicPostsCount ?? data.stats.posts} публикаций.`,
     200,
   )
 
@@ -43,6 +43,8 @@ export async function generateMetadata({
   return {
     title,
     description,
+    // Profiles without public posts are useful to existing members but too thin for search.
+    ...(data.publicPostsCount === 0 ? { robots: { index: false, follow: true } } : {}),
     alternates: { canonical: `/profile/${name}` },
     openGraph: {
       type: 'profile',
