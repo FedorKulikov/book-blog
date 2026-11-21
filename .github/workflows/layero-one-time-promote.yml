@@ -41,9 +41,9 @@ jobs:
 
           npx --yes layero@latest projects list --json > "$PROJECTS_FILE"
 
-          node - "$PROJECTS_FILE" "$GITHUB_REPOSITORY" "$GITHUB_ENV" <<'NODE'
+          LAYERO_PROJECT_SLUG="$(node - "$PROJECTS_FILE" "$GITHUB_REPOSITORY" <<'NODE'
           const fs = require("node:fs");
-          const [file, repository, envFile] = process.argv.slice(2);
+          const [file, repository] = process.argv.slice(2);
           const events = fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
           const projects = events.filter((e) => e.event === "projects").flatMap((e) => e.projects || []);
           const matches = projects.filter((p) => (p.repo || "").toLowerCase() === repository.toLowerCase());
@@ -56,9 +56,12 @@ jobs:
             console.error("Layero returned an invalid project slug. No production change was made.");
             process.exit(1);
           }
-          fs.appendFileSync(envFile, `LAYERO_PROJECT_SLUG=${p.slug}\n`);
-          console.log(`Resolved the linked Layero project: ${p.slug} (${p.source_type || "source type unavailable"}).`);
+          console.error(`Resolved the linked Layero project: ${p.slug} (${p.source_type || "source type unavailable"}).`);
+          process.stdout.write(p.slug);
           NODE
+          )"
+          export LAYERO_PROJECT_SLUG
+          printf 'LAYERO_PROJECT_SLUG=%s\n' "$LAYERO_PROJECT_SLUG" >> "$GITHUB_ENV"
 
           npx --yes layero@latest domains list --project "$LAYERO_PROJECT_SLUG" --json > "$DOMAINS_FILE"
           node - "$DOMAINS_FILE" <<'NODE'
