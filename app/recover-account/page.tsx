@@ -6,6 +6,7 @@
 // Ни письма, ни SMTP здесь не участвуют.
 import { useState } from 'react'
 import Link from 'next/link'
+import { passkeysEnabled } from '@/lib/passkeys'
 
 const MIN_PASSWORD = 8
 
@@ -185,9 +186,13 @@ export default function RecoverAccountPage() {
         </form>
 
         <p className="mt-4 text-sm text-brown/60">
-          Восстановление по ссылке из email сейчас отключено. Здесь нужен
-          именно резервный код, сохранённый заранее.
+          Восстановление по email сейчас отключено. Здесь нужен именно резервный код, сохранённый заранее.
         </p>
+        {passkeysEnabled && (
+          <p className="mt-2 text-sm text-brown/70">
+            Есть ключ доступа? Вернитесь на <Link href="/login" className="text-wine hover:underline">страницу входа</Link> и войдите с ним, затем смените пароль в настройках профиля.
+          </p>
+        )}
         <p className="mt-2 text-sm text-brown/70">
           Вспомнили пароль?{' '}
           <Link href="/login" className="text-wine hover:underline">
