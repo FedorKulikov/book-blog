@@ -25,6 +25,8 @@ export async function generateMetadata({
   }
 
   const { book, posts } = data
+  const publicPosts = posts.filter(post => post.status === 'approved')
+  const isIndexable = publicPosts.length > 0
 
   const title = book.title.trim() || 'Книга'
   const meta = [book.author, book.year].filter(Boolean).join(', ')
@@ -32,7 +34,7 @@ export async function generateMetadata({
   const description = truncate(
     toPlainText(book.description ?? '') ||
       `${meta ? `${meta}. ` : ''}Посты об этой книге в сообществе «Хлеба и букв»${
-        posts.length > 0 ? `: ${posts.length}` : ''
+        publicPosts.length > 0 ? `: ${publicPosts.length}` : ''
       }.`,
     200,
   )
@@ -46,6 +48,7 @@ export async function generateMetadata({
     title,
     description,
     alternates: { canonical: `/book/${book.id}` },
+    robots: { index: isIndexable, follow: true },
     openGraph: {
       type: 'book',
       locale: 'ru_RU',
@@ -75,10 +78,11 @@ export default async function BookPage({
   if (!data) notFound()
 
   const bookUrl = `${SITE_URL}/book/${data.book.id}`
+  const isIndexable = data.posts.some(post => post.status === 'approved')
 
   return (
     <>
-      <JsonLd
+      {isIndexable && <JsonLd
         data={{
           '@context': 'https://schema.org',
           '@type': 'Book',
@@ -98,7 +102,7 @@ export default async function BookPage({
             url: bookUrl,
           },
         }}
-      />
+      />}
       <BookView book={data.book} posts={data.posts} />
     </>
   )
