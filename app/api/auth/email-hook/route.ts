@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { isPreviewRequest } from '@/lib/env-guard'
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -99,7 +100,6 @@ function actionOf(payload: EmailHookPayload): string | null {
   const action = payload.email_data?.email_action_type ?? payload.email_action_type
   return typeof action === 'string' ? action : null
 }
-
 
 export async function POST(request: Request) {
   if (isPreviewRequest(request)) {
