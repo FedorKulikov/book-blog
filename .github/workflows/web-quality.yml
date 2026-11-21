@@ -53,9 +53,7 @@ jobs:
       - name: TypeScript
         run: npx tsc --noEmit
 
-      # The repository-wide lint currently reports unrelated baseline issues.
-      # Lint every new page/component and check the two legacy files touched here,
-      # suppressing only their pre-existing rules (explicit any / state-in-effect).
+      # Lint the new guide and all existing SEO files touched by this PR.
       - name: ESLint changed code
         run: |
           npx eslint \
@@ -69,6 +67,7 @@ jobs:
             app/layout.tsx \
             app/sitemap.ts \
             app/components/JsonLd.tsx \
+            'app/guides/kak-napisat-retsenziyu-na-knigu/page.tsx' \
             next.config.ts
           npx eslint app/HomeClient.tsx --rule '@typescript-eslint/no-explicit-any: off'
 

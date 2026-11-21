@@ -20,7 +20,7 @@ const sectionLabels: Record<string, string> = {
 
 function getDescription(content: string | null, title: string, type: string) {
   const plain = toPlainText(content ?? '')
-  if (plain) return truncate(plain, 170)
+  if (plain) return truncate(plain, 155)
   return `${sectionLabels[type] ?? 'Публикация'} «${title}» в книжном сообществе «Хлеба и букв».`
 }
 

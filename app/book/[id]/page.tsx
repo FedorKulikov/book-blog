@@ -36,7 +36,7 @@ export async function generateMetadata({
       `${meta ? `${meta}. ` : ''}Посты об этой книге в сообществе «Хлеба и букв»${
         publicPosts.length > 0 ? `: ${publicPosts.length}` : ''
       }.`,
-    200,
+    155,
   )
 
   const images: { url: string; alt: string; width?: number; height?: number }[] =
