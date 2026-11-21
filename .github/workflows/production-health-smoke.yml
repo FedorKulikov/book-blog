@@ -107,3 +107,10 @@ jobs:
             exit 1
           fi
           echo "Main /news landing page remains indexable."
+
+          rules_status="$(curl --silent --show-error --location --max-time 25 --output "$RUNNER_TEMP/rules.html" --write-out '%{http_code}' "${SITE_URL%/}/rules" || true)"
+          if [[ "$rules_status" != "200" ]] || ! grep -Fq 'Правила сообщества' "$RUNNER_TEMP/rules.html"; then
+            echo "::error::The community rules page must return HTTP 200 and contain its expected heading (received HTTP $rules_status)."
+            exit 1
+          fi
+          echo "Public community rules page is reachable."
