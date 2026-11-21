@@ -20,6 +20,8 @@ export type ProfilePageData = {
   profile: ProfileRow & { username: string }
   posts: PostCardData[]
   stats: { posts: number; likes: number; comments: number }
+  // Number of published posts visible to the public; null means the count query failed.
+  publicPostsCount: number | null
 }
 
 export const getProfile = cache(
@@ -84,10 +86,22 @@ export const getProfile = cache(
       comments = commentsCount ?? 0
     }
 
+    const { count: approvedPostsCount, error: approvedPostsCountError } =
+      await supabase
+        .from('posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', profile.id)
+        .eq('status', 'approved')
+
+    if (approvedPostsCountError) {
+      console.error('[getProfile] approved post count failed:', approvedPostsCountError.message)
+    }
+
     return {
       profile,
       posts,
       stats: { posts: posts.length, likes, comments },
+      publicPostsCount: approvedPostsCountError ? null : approvedPostsCount ?? 0,
     }
   },
 )
