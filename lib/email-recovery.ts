@@ -92,7 +92,7 @@ export function getAuthEmailSiteUrl(): string {
 }
 
 export function buildEmailVerificationUrl(siteUrl: string, token: string): string {
-  const url = new URL('/api/email-recovery/confirm', siteUrl)
+  const url = new URL('/email-recovery/confirm', siteUrl)
   url.searchParams.set('token', token)
   return url.toString()
 }
