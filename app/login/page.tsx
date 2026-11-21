@@ -6,11 +6,13 @@ import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
 import { getPostAuthPath, safeInternalPath } from '@/lib/auth-navigation'
+import { passkeyErrorMessage, passkeysEnabled } from '@/lib/passkeys'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
@@ -31,6 +33,28 @@ export default function LoginPage() {
       const next = getPostAuthPath(window.location.search, '/')
       router.replace(next)
       router.refresh()
+    }
+  }
+
+  async function handlePasskeyLogin() {
+    setPasskeyLoading(true)
+    setError(null)
+
+    try {
+      const { error: passkeyError } = await supabase.auth.signInWithPasskey()
+
+      if (passkeyError) {
+        setError(passkeyErrorMessage(passkeyError))
+        return
+      }
+
+      const next = getPostAuthPath(window.location.search, '/')
+      router.replace(next)
+      router.refresh()
+    } catch (passkeyError) {
+      setError(passkeyErrorMessage(passkeyError))
+    } finally {
+      setPasskeyLoading(false)
     }
   }
 
@@ -82,12 +106,30 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || passkeyLoading}
             className="w-full bg-emerald-mid text-cream py-2 rounded hover:bg-emerald-dark disabled:opacity-50 transition-colors"
           >
             {loading ? 'Входим…' : 'Войти'}
           </button>
         </form>
+
+        {passkeysEnabled && (
+          <div className="mt-4">
+            <div className="relative flex items-center">
+              <div className="flex-grow border-t border-emerald-dark/15" />
+              <span className="px-3 text-xs text-brown/50">или</span>
+              <div className="flex-grow border-t border-emerald-dark/15" />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handlePasskeyLogin()}
+              disabled={loading || passkeyLoading}
+              className="mt-3 w-full rounded-full border border-emerald-dark/20 px-5 py-2.5 text-sm text-brown-dark hover:border-emerald-mid disabled:opacity-50 transition-colors"
+            >
+              {passkeyLoading ? 'Проверяем ключ доступа…' : 'Войти с ключом доступа'}
+            </button>
+          </div>
+        )}
 
         <p className="mt-4 text-sm text-brown/70">
           Нет аккаунта?{' '}
@@ -110,7 +152,7 @@ export default function LoginPage() {
           <Link href="/forgot-password" className="text-wine hover:underline">
             Забыли пароль?
           </Link>
-          {' '}Восстановление доступно по резервному коду.
+          {' '}Восстановление по резервному коду{passkeysEnabled ? ' или вход с ключом доступа' : ''}.
         </p>
       </div>
     </main>
