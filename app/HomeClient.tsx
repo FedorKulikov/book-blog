@@ -182,13 +182,13 @@ export default function HomeClient({ initialPosts }: { initialPosts: any[] }) {
         </h2>
         <p className="mt-3 text-sm leading-7 text-brown/75">
           «Хлеба и букв» — место, где можно находить книги, читать отзывы и
-          обзоры других людей, обсуждать прочитанное и знакомиться с авторами.
+          обзоры и статьи о книгах, обсуждать прочитанное и знакомиться с авторами.
           Здесь также можно делиться собственными рассказами, стихами, эссе и
           заметками о книгах.
         </p>
         <p className="mt-2 text-sm leading-7 text-brown/75">
           Начните с <Link href="/books" className="text-wine underline underline-offset-2">каталога книг</Link>,
-          посмотрите <Link href="/posts" className="text-wine underline underline-offset-2">публикации читателей</Link>,
+          посмотрите <Link href="/posts" className="text-wine underline underline-offset-2">публикации читателей и статьи о книгах</Link>,
           присоединитесь к <Link href="/discussions" className="text-wine underline underline-offset-2">обсуждениям книг</Link>
           {' '}или загляните в раздел <Link href="/creative" className="text-wine underline underline-offset-2">авторского творчества</Link>.
         </p>
