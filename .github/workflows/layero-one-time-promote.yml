@@ -13,7 +13,7 @@ permissions:
 jobs:
   promote:
     # This workflow is intentionally one-shot; future main pushes cannot republish production.
-    if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ops: promote current main build to Layero production')
+    if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ops: promote current main build to Layero production')"
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
