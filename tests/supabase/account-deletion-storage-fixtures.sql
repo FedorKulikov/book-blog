@@ -38,6 +38,10 @@ create table public.messages (
 alter table public.profiles enable row level security;
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
+
+-- Supabase manages ownership of storage.objects separately from public tables.
+-- Create the test policies as its owner rather than changing managed ownership.
+set local role supabase_storage_admin;
 alter table storage.objects enable row level security;
 
 grant usage on schema public to authenticated, service_role;
@@ -121,5 +125,7 @@ create policy ci_chat_media_select_conversation_participants
       )
     )
   );
+
+reset role;
 
 commit;
