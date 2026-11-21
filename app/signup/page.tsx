@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
 import CodesReveal from '@/app/components/CodesReveal'
+import { getPostAuthPath } from '@/lib/auth-navigation'
 
 type UsernameStatus = 'idle' | 'checking' | 'free' | 'taken'
 
@@ -37,6 +38,11 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [codes, setCodes] = useState<string[] | null>(null)
+  const [recoveryUnavailable, setRecoveryUnavailable] = useState(false)
+  const [recoveryError, setRecoveryError] = useState<string | null>(null)
+  const [recoveryPassword, setRecoveryPassword] = useState('')
+  const [recoveryLoading, setRecoveryLoading] = useState(false)
+  const [acknowledgedRecoveryRisk, setAcknowledgedRecoveryRisk] = useState(false)
 
   // Живая проверка занятости имени (с дебаунсом, чтобы не дёргать БД на каждый символ)
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle')
@@ -143,28 +149,95 @@ export default function SignupPage() {
       return
     }
 
-    // Почта в проекте не подтверждается, поэтому резервные коды — единственный
-    // способ вернуть доступ. Выдаём их сразу; если сервер восстановления не
-    // настроен, регистрация всё равно завершается успешно.
+    // Резервные коды — единственный доступный пользователю способ
+    // самостоятельно восстановить пароль, поэтому ошибку нельзя скрывать.
     try {
       const res = await fetch('/api/recovery/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       })
-      const data = (await res.json().catch(() => ({}))) as { codes?: string[] }
+      const data = (await res.json().catch(() => ({}))) as {
+        codes?: string[]
+        saved?: number
+        error?: string
+      }
 
-      if (res.ok && Array.isArray(data.codes)) {
+      if (
+        res.ok &&
+        Array.isArray(data.codes) &&
+        data.codes.length === 10 &&
+        data.saved === data.codes.length
+      ) {
         setCodes(data.codes)
         setLoading(false)
         return
       }
+
+      setRecoveryError(
+        data.error ||
+          'Не удалось сохранить полный набор резервных кодов. Попробуйте ещё раз.',
+      )
     } catch {
-      // не блокируем регистрацию из-за кодов
+      setRecoveryError(
+        'Не удалось связаться с сервисом резервных кодов. Проверьте соединение и повторите попытку.',
+      )
     }
 
-    router.push('/welcome')
+    // Аккаунт уже создан и пользователь вошёл. Не отправляем его дальше
+    // молча: сначала явно сообщаем, что восстановление пока не настроено.
+    setPassword('')
+    setRecoveryUnavailable(true)
+    setLoading(false)
+  }
+
+  async function retryRecoveryCodes(e: React.FormEvent) {
+    e.preventDefault()
+    setRecoveryError(null)
+    setRecoveryLoading(true)
+
+    try {
+      const res = await fetch('/api/recovery/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: recoveryPassword }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        codes?: string[]
+        saved?: number
+        error?: string
+      }
+
+      if (
+        !res.ok ||
+        !Array.isArray(data.codes) ||
+        data.codes.length !== 10 ||
+        data.saved !== data.codes.length
+      ) {
+        setRecoveryError(
+          data.error ||
+            'Не удалось сохранить полный набор резервных кодов. Проверьте пароль и попробуйте ещё раз.',
+        )
+        return
+      }
+
+      setCodes(data.codes)
+      setRecoveryUnavailable(false)
+      setRecoveryPassword('')
+      setAcknowledgedRecoveryRisk(false)
+    } catch {
+      setRecoveryError(
+        'Не удалось связаться с сервисом резервных кодов. Проверьте соединение и повторите попытку.',
+      )
+    } finally {
+      setRecoveryLoading(false)
+    }
+  }
+
+  function finishSignup() {
+    router.push(getPostAuthPath(window.location.search))
     router.refresh()
+  }
   }
 
   const submitDisabled =
@@ -185,11 +258,70 @@ export default function SignupPage() {
           <CodesReveal
             codes={codes}
             doneLabel="Продолжить"
-            onDone={() => {
-              router.push('/welcome')
-              router.refresh()
-            }}
+            onDone={finishSignup}
           />
+        </div>
+      </main>
+    )
+  }
+
+  if (recoveryUnavailable) {
+    return (
+      <main className="p-4 md:p-8 flex justify-center">
+        <div className="w-full max-w-md">
+          <h1 className="text-2xl font-bold mb-3 text-wine">
+            Аккаунт создан, но резервные коды не выданы
+          </h1>
+          <p className="text-sm text-brown/75 mb-4">
+            Вы уже вошли в аккаунт. Сейчас самостоятельное восстановление
+            пароля не настроено, пока не удастся сохранить резервные коды.
+            Попробуйте повторить выдачу сейчас.
+          </p>
+
+          <form onSubmit={retryRecoveryCodes} className="space-y-3">
+            <label htmlFor="recovery-retry-password" className="block text-sm font-medium text-brown-dark">
+              Подтвердите пароль
+            </label>
+            <input
+              id="recovery-retry-password"
+              type="password"
+              value={recoveryPassword}
+              onChange={e => setRecoveryPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
+              placeholder="Пароль, который вы только что задали"
+            />
+            {recoveryError && <p role="alert" className="text-sm text-wine">{recoveryError}</p>}
+            <button
+              type="submit"
+              disabled={recoveryLoading}
+              className="w-full bg-emerald-mid text-cream py-2 rounded hover:bg-emerald-dark disabled:opacity-50"
+            >
+              {recoveryLoading ? 'Пробуем ещё раз…' : 'Повторить выдачу кодов'}
+            </button>
+          </form>
+
+          <label className="mt-5 flex items-start gap-2 text-sm text-brown/70">
+            <input
+              type="checkbox"
+              checked={acknowledgedRecoveryRisk}
+              onChange={e => setAcknowledgedRecoveryRisk(e.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              Я понимаю, что без сохранённого резервного кода не смогу
+              самостоятельно восстановить пароль, если забуду его.
+            </span>
+          </label>
+          <button
+            type="button"
+            disabled={!acknowledgedRecoveryRisk}
+            onClick={finishSignup}
+            className="mt-4 w-full rounded-full border border-emerald-dark/20 px-5 py-2.5 text-sm text-brown-dark disabled:opacity-40"
+          >
+            Продолжить без кодов
+          </button>
         </div>
       </main>
     )
@@ -260,6 +392,7 @@ export default function SignupPage() {
             <input
               id="signup-email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -278,6 +411,7 @@ export default function SignupPage() {
             <input
               id="signup-password"
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
