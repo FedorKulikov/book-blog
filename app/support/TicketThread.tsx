@@ -140,7 +140,7 @@ export default function TicketThread({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 ym-hide-content">
       {isStaff && (
         <div className="flex flex-wrap items-center gap-3 bg-cream-warm/25 border border-emerald-dark/10 rounded-xl px-4 py-3">
           <span className="text-xs text-brown/60">Статус обращения</span>
