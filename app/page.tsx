@@ -5,7 +5,9 @@ import JsonLd from './components/JsonLd'
 import HomeClient from './HomeClient'
 
 export const metadata: Metadata = {
-  title: 'Книжное сообщество для читателей',
+  title: {
+    absolute: 'Хлеба и букв — книжное сообщество для читателей',
+  },
   description:
     'Находите книги, читайте статьи о книгах и отзывы, обсуждайте прочитанное и публикуйте рассказы, стихи и заметки в сообществе «Хлеба и букв».',
   alternates: { canonical: '/' },
@@ -13,7 +15,7 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'ru_RU',
     siteName: 'Хлеба и букв',
-    title: 'Книжное сообщество для читателей — Хлеба и букв',
+    title: 'Хлеба и букв — книжное сообщество для читателей',
     description:
       'Статьи и отзывы о книгах, обсуждения прочитанного и авторское творчество в сообществе «Хлеба и букв».',
     url: '/',
