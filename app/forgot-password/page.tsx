@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { passkeysEnabled } from '@/lib/passkeys'
+import EmailRecoveryResetForm from '@/app/components/EmailRecoveryResetForm'
 
 export default function ForgotPasswordPage() {
   return (
@@ -40,6 +41,8 @@ export default function ForgotPasswordPage() {
           </Link>
         </div>
 
+        <EmailRecoveryResetForm />
+
         {passkeysEnabled && (
           <p className="mt-6 text-sm text-brown/70">
             Ранее добавляли ключ доступа? На странице входа выберите «Войти с ключом доступа». После входа откройте настройки профиля, смените пароль и создайте новый набор резервных кодов.
@@ -47,10 +50,7 @@ export default function ForgotPasswordPage() {
         )}
 
         <p className="mt-4 text-sm text-brown/60">
-          Восстановление по ссылке из email сейчас отключено: отправка писем и
-          подтверждение владения адресом не настроены. Если потеряны пароль,
-          все резервные коды и все ключи доступа, безопасного самостоятельного
-          восстановления пока нет. Публичная заявка на такую проверку ещё не реализована.
+          Email-восстановление доступно только после отдельного подтверждения адреса в настройках профиля. Старые отметки Supabase о подтверждении здесь не учитываются. Если вы потеряли пароль и резервные коды до подтверждения адреса, используйте заранее сохранённый passkey или потребуется ручная проверка.
         </p>
       </div>
     </main>
