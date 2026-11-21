@@ -92,21 +92,44 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error('[sitemap] posts fetch failed:', e)
   }
 
-  // Книги
+  // Книги: в sitemap попадают только страницы с одобренными публикациями.
+  // Пустые карточки остаются доступны в каталоге, но не предлагаются поисковикам
+  // как самостоятельные результаты до появления содержательного обсуждения.
   let bookPages: MetadataRoute.Sitemap = []
   try {
-    const { data: books } = await supabase
-      .from('books')
-      .select('id, created_at')
+    const { data: linkedPosts, error: linkedPostsError } = await supabase
+      .from('posts')
+      .select('book_id, created_at')
+      .eq('status', 'approved')
+      .not('book_id', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(500)
+      .limit(5000)
 
-    bookPages = (books || []).map(b => ({
-      url: `${SITE_URL}/book/${b.id}`,
-      lastModified: new Date(b.created_at),
-      changeFrequency: 'monthly' as const,
-      priority: 0.6,
-    }))
+    if (linkedPostsError) throw linkedPostsError
+
+    const latestPostByBook = new Map<string, string>()
+    for (const post of linkedPosts ?? []) {
+      if (post.book_id && !latestPostByBook.has(post.book_id)) {
+        latestPostByBook.set(post.book_id, post.created_at)
+      }
+    }
+
+    const bookIds = Array.from(latestPostByBook.keys()).slice(0, 500)
+    if (bookIds.length > 0) {
+      const { data: books, error: booksError } = await supabase
+        .from('books')
+        .select('id')
+        .in('id', bookIds)
+
+      if (booksError) throw booksError
+
+      bookPages = (books ?? []).map(book => ({
+        url: `${SITE_URL}/book/${book.id}`,
+        lastModified: new Date(latestPostByBook.get(book.id) ?? new Date()),
+        changeFrequency: 'monthly' as const,
+        priority: 0.6,
+      }))
+    }
   } catch (e) {
     console.error('[sitemap] books fetch failed:', e)
   }
