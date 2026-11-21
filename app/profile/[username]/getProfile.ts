@@ -21,7 +21,7 @@ export type ProfilePageData = {
   posts: PostCardData[]
   stats: { posts: number; likes: number; comments: number }
   // Number of published posts visible to the public; null means the count query failed.
-  publicPostsCount: number | null
+  publicPostsCount?: number | null
 }
 
 export const getProfile = cache(
