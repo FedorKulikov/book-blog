@@ -101,6 +101,18 @@ export async function POST(request: Request) {
     return json(NEUTRAL_RESPONSE)
   }
 
+  // Check the custom verified-email index before generating an Auth token.
+  // This avoids invalidating a valid reset token when an attacker requests a
+  // link for an unverified mailbox.
+  const { data: hasVerifiedEmail, error: verifiedEmailError } = await admin.rpc(
+    'email_recovery_email_hash_verified',
+    { p_email_hash: emailHash },
+  )
+
+  if (verifiedEmailError || hasVerifiedEmail !== true) {
+    return json(NEUTRAL_RESPONSE)
+  }
+
   // Generate a reset link without asking Supabase to send email. The Auth
   // Send Email Hook remains a defensive barrier for direct /auth/v1/recover
   // calls and intentionally does not send recovery messages.
