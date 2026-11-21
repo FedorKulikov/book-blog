@@ -84,13 +84,35 @@ jobs:
 
           echo "Production application marker and SEO homepage metadata verified."
 
-          profile_headers="$RUNNER_TEMP/profile-headers.txt"
-          profile_status="$(curl --silent --show-error --location --max-time 25 --dump-header "$profile_headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/profile" || true)"
-          if [[ "$profile_status" != "200" ]] || ! grep -Eiq '^x-robots-tag:[[:space:]]*noindex,[[:space:]]*nofollow' "$profile_headers"; then
-            echo "::error::The private /profile dashboard must return HTTP 200 with X-Robots-Tag: noindex, nofollow (received HTTP $profile_status)."
-            exit 1
-          fi
-          echo "Private profile dashboard is excluded from search indexing."
+          check_guest_login_redirect() {
+            local route="$1"
+            local expected_next="$2"
+            local headers="$RUNNER_TEMP/guest-${route//\//_}.headers"
+            local status location
+            status="$(curl --silent --show-error --max-time 25 --dump-header "$headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${route}" || true)"
+            location="$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { sub(/^[^:]*:[[:space:]]*/, ""); gsub(/\r/, ""); print; exit }' "$headers")"
+            if [[ ! "$status" =~ ^30[1278]$ ]] || [[ "$location" != *"/login?next="* ]] || [[ "$location" != *"$expected_next"* ]]; then
+              echo "::error::Guest route $route must redirect to /login with its return path (HTTP $status; Location: $location)."
+              exit 1
+            fi
+            echo "Guest route $route redirects to login and preserves its return path."
+          }
+
+          check_guest_login_redirect "/profile" "%2Fprofile"
+          check_guest_login_redirect "/messages" "%2Fmessages"
+          check_guest_login_redirect "/messages/00000000-0000-0000-0000-000000000000" "%2Fmessages%2F00000000-0000-0000-0000-000000000000"
+          check_guest_login_redirect "/profile/edit" "%2Fprofile%2Fedit"
+          check_guest_login_redirect "/books/add" "%2Fbooks%2Fadd"
+          check_guest_login_redirect "/news/new" "%2Fnews%2Fnew"
+
+          for public_route in "/login" "/signup" "/forgot-password" "/recover-account" "/support"; do
+            public_status="$(curl --silent --show-error --location --max-time 25 --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${public_route}" || true)"
+            if [[ "$public_status" != "200" ]]; then
+              echo "::error::Public guest route $public_route must return HTTP 200 (received $public_status)."
+              exit 1
+            fi
+            echo "Public guest route $public_route is reachable."
+          done
 
           filter_headers="$RUNNER_TEMP/news-filter-headers.txt"
           filter_status="$(curl --silent --show-error --location --max-time 25 --dump-header "$filter_headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/news?category=contest" || true)"

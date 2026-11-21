@@ -1,4 +1,5 @@
 name: One-time Layero production deployment
+# Explicit second run for the profile/chat server-side guest-auth guards release.
 
 # This workflow is deliberately opt-in by a dedicated marker path.
 # It deploys the exact main checkout only when this workflow/marker is added
