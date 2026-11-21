@@ -20,6 +20,8 @@ export type ProfilePageData = {
   profile: ProfileRow & { username: string }
   posts: PostCardData[]
   stats: { posts: number; likes: number; comments: number }
+  // Number of published posts visible to the public; null means the count query failed.
+  publicPostsCount?: number | null
 }
 
 export const getProfile = cache(
@@ -84,10 +86,16 @@ export const getProfile = cache(
       comments = commentsCount ?? 0
     }
 
+    // Query above already contains only approved posts for visitors, and approved +
+    // owner's own posts for the profile owner. Derive the public count from that
+    // same result instead of issuing a second COUNT request on every profile view.
+    const publicPostsCount = (postsData ?? []).filter(post => post.status === 'approved').length
+
     return {
       profile,
       posts,
       stats: { posts: posts.length, likes, comments },
+      publicPostsCount,
     }
   },
 )

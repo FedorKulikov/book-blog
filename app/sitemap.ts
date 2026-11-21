@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { SITE_URL } from '@/lib/site'
 
 type ProfileRow = {
+  id: string
   username: string | null
   created_at: string | null
 }
@@ -122,33 +123,49 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error('[sitemap] books fetch failed:', e)
   }
 
-  // Публичные профили: username задан и аккаунт не забанен.
-  // Пустой username и невидимые под RLS профили просто не попадут в выборку.
+  // Публичные профили: включаем только авторов с опубликованными постами.
+  // Пустые профили получают noindex и не должны занимать места в sitemap.
   let profilePages: MetadataRoute.Sitemap = []
   try {
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('username, created_at')
-      .not('username', 'is', null)
-      .eq('is_banned', false)
+    const { data: publishedPosts, error: publishedPostsError } = await supabase
+      .from('posts')
+      .select('user_id, created_at')
+      .eq('status', 'approved')
       .order('created_at', { ascending: false })
-      .limit(500)
+      .limit(5000)
 
-    if (error) {
-      console.error('[sitemap] profiles select failed:', error.message)
+    if (publishedPostsError) throw publishedPostsError
+
+    const latestPostByAuthor = new Map<string, string>()
+    for (const post of publishedPosts ?? []) {
+      if (post.user_id && !latestPostByAuthor.has(post.user_id)) {
+        latestPostByAuthor.set(post.user_id, post.created_at)
+      }
     }
 
-    profilePages = ((profiles ?? []) as unknown as ProfileRow[])
-      .filter(
-        (p): p is ProfileRow & { username: string } =>
-          typeof p.username === 'string' && p.username.trim().length > 0,
-      )
-      .map(p => ({
-        url: `${SITE_URL}/profile/${encodeURIComponent(p.username)}`,
-        lastModified: p.created_at ? new Date(p.created_at) : new Date(),
-        changeFrequency: 'weekly' as const,
-        priority: 0.6,
-      }))
+    const authorIds = Array.from(latestPostByAuthor.keys()).slice(0, 500)
+    if (authorIds.length > 0) {
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('id, username, created_at')
+        .in('id', authorIds)
+        .not('username', 'is', null)
+        .eq('is_banned', false)
+
+      if (error) throw error
+
+      profilePages = ((profiles ?? []) as unknown as ProfileRow[])
+        .filter(
+          (p): p is ProfileRow & { username: string } =>
+            typeof p.username === 'string' && p.username.trim().length > 0,
+        )
+        .map(p => ({
+          url: `${SITE_URL}/profile/${encodeURIComponent(p.username)}`,
+          lastModified: new Date(latestPostByAuthor.get(p.id) ?? p.created_at ?? new Date()),
+          changeFrequency: 'weekly' as const,
+          priority: 0.6,
+        }))
+    }
   } catch (e) {
     console.error('[sitemap] profiles fetch failed:', e)
   }
