@@ -69,6 +69,7 @@ jobs:
             app/forgot-password/page.tsx \
             app/api/email-recovery/status/route.ts \
             app/api/email-recovery/request/route.ts \
+            app/api/email-recovery/reset-request/route.ts \
             app/api/email-recovery/confirm/route.ts \
             app/api/auth/email-hook/route.ts \
             app/components/EmailRecoverySecurity.tsx \
