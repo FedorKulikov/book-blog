@@ -34,5 +34,22 @@ export function safeInternalPath(value: string | null | undefined): string {
 export function getPostAuthPath(search: string): string {
   const params = new URLSearchParams(search)
   const next = params.get('next')
-  return next ? safeInternalPath(next) : '/welcome'
+  if (!next) return '/welcome'
+
+  const destination = safeInternalPath(next)
+  const pathname = new URL(destination, 'https://internal.invalid').pathname.replace(/\\/+$/, '') || '/'
+  const authOnlyPaths = new Set([
+    '/login',
+    '/signup',
+    '/forgot-password',
+    '/recover-account',
+  ])
+
+  // После успешной авторизации нельзя возвращать пользователя на экран,
+  // который снова требует авторизацию или начинает recovery-flow.
+  if (authOnlyPaths.has(pathname) || pathname.startsWith('/auth/')) {
+    return '/welcome'
+  }
+
+  return destination
 }
