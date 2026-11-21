@@ -27,6 +27,15 @@ test('decodes URL-encoded object names and strips query strings', () => {
   )
 })
 
+test('extracts object paths from signed URLs so they can be renewed', () => {
+  assert.equal(
+    getChatMediaObjectPath(
+      'https://project.supabase.co/storage/v1/object/sign/chat-media/user-1/photo.jpg?token=secret',
+    ),
+    'user-1/photo.jpg',
+  )
+})
+
 test('does not reinterpret unrelated or external URLs as private chat paths', () => {
   assert.equal(getChatMediaObjectPath('https://cdn.example.com/photo.jpg'), null)
   assert.equal(getChatMediaObjectPath('/images/photo.jpg'), null)
