@@ -352,11 +352,14 @@ async function main() {
       .eq('id', testConversationId)
     check('participant cannot change conversation membership', Boolean(changeParticipants.error), safeError(changeParticipants.error))
 
-    const verifyConversation = await bobClient
+    const verifyConversation = (await bobClient
       .from('conversations')
       .select('user1_id, user2_id')
       .eq('id', testConversationId)
-      .single()
+      .single()) as unknown as {
+        data: { user1_id: string; user2_id: string } | null
+        error: { code?: string; status?: number } | null
+      }
     check(
       'conversation participants remain unchanged',
       !verifyConversation.error &&
