@@ -14,6 +14,23 @@ export const metadata: Metadata = {
   description:
     'Ищите книги по названию и автору, знакомьтесь с отзывами читателей и находите публикации об интересующих вас произведениях в «Хлеба и букв».',
   alternates: { canonical: '/books' },
+  openGraph: {
+    type: 'website',
+    locale: 'ru_RU',
+    siteName: 'Хлеба и букв',
+    title: 'Каталог книг: отзывы, обзоры и обсуждения',
+    description:
+      'Ищите книги по названию и автору, знакомьтесь с отзывами читателей и находите публикации об интересующих вас произведениях в «Хлеба и букв».',
+    url: '/books',
+    images: [
+      {
+        url: '/og-default.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Хлеба и букв',
+      },
+    ],
+  },
 }
 
 export default async function BooksPage({
