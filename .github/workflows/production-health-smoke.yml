@@ -108,9 +108,13 @@ jobs:
           fi
           echo "Main /news landing page remains indexable."
 
-          rules_status="$(curl --silent --show-error --location --max-time 25 --output "$RUNNER_TEMP/rules.html" --write-out '%{http_code}' "${SITE_URL%/}/rules" || true)"
-          if [[ "$rules_status" != "200" ]] || ! grep -Fq 'Правила сообщества' "$RUNNER_TEMP/rules.html"; then
-            echo "::error::The community rules page must return HTTP 200 and contain its expected heading (received HTTP $rules_status)."
-            exit 1
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "Skip /rules production check on PR: the production domain is still serving main. The route check runs after merge on the main push."
+          else
+            rules_status="$(curl --silent --show-error --location --max-time 25 --output "$RUNNER_TEMP/rules.html" --write-out '%{http_code}' "${SITE_URL%/}/rules" || true)"
+            if [[ "$rules_status" != "200" ]] || ! grep -Fq 'Правила сообщества' "$RUNNER_TEMP/rules.html"; then
+              echo "::error::The community rules page must return HTTP 200 and contain its expected heading (received HTTP $rules_status)."
+              exit 1
+            fi
+            echo "Public community rules page is reachable."
           fi
-          echo "Public community rules page is reachable."
