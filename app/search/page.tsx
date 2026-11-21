@@ -238,7 +238,16 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<main className="p-8 max-w-7xl mx-auto">Загрузка…</main>}>
+    <Suspense
+      fallback={
+        <main className="p-8 max-w-7xl mx-auto">
+          <h1 className="font-playfair text-2xl md:text-3xl font-bold text-emerald-dark mb-6">
+            Поиск по постам и людям
+          </h1>
+          <p className="text-brown/70">Загрузка…</p>
+        </main>
+      }
+    >
       <SearchContent />
     </Suspense>
   )
