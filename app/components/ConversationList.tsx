@@ -98,7 +98,8 @@ export default function ConversationList({
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        router.push('/login')
+        const currentPath = `${window.location.pathname}${window.location.search}`
+        router.push(`/login?next=${encodeURIComponent(currentPath)}`)
         return
       }
       setUid(user.id)
