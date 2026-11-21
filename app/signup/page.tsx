@@ -442,6 +442,14 @@ export default function SignupPage() {
         </form>
 
         <p className="mt-4 text-sm text-brown/70">
+          Перед началом использования ознакомьтесь с{' '}
+          <Link href="/rules" className="text-wine hover:underline">
+            Правилами сообщества
+          </Link>
+          .
+        </p>
+
+        <p className="mt-4 text-sm text-brown/70">
           Уже есть аккаунт?{' '}
           <Link href="/login" className="text-wine hover:underline">
             Войти
