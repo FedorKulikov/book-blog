@@ -21,12 +21,17 @@ export default function MobileNav() {
       <div className="flex items-center justify-around h-16">
         {items.map(({ href, Icon, label, accent }) => {
           const isActive =
-            href === '/' ? pathname === '/' : pathname.startsWith(href)
+            href === '/'
+              ? pathname === '/'
+              : href === '/news' || href === '/news/new'
+                ? pathname === href
+                : pathname === href || pathname.startsWith(`${href}/`)
 
           return (
             <Link
               key={href}
               href={href}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex flex-col items-center gap-1 px-3 py-2 text-[10px] transition-colors ${
                 isActive
                   ? 'text-wine'

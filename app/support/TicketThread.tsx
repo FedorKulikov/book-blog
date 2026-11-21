@@ -20,6 +20,7 @@ type Props = {
   currentUserId: string
   /** 'user' — обычный автор тикета, 'staff' — админ/модератор */
   viewerRole: 'user' | 'staff'
+  initialError?: string | null
 }
 
 /**
@@ -33,13 +34,14 @@ export default function TicketThread({
   status,
   currentUserId,
   viewerRole,
+  initialError = null,
 }: Props) {
   const router = useRouter()
 
   const [messages, setMessages] = useState<TicketMessageRow[]>(initialMessages)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(initialError)
   const [savingStatus, setSavingStatus] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
@@ -104,7 +106,7 @@ export default function TicketThread({
 
     if (insertError) {
       console.error('[support] insert message failed:', insertError.message)
-      setError('Не удалось отправить: ' + insertError.message)
+      setError('Не удалось отправить сообщение. Проверьте соединение и попробуйте ещё раз.')
       setSending(false)
       return
     }
@@ -130,7 +132,7 @@ export default function TicketThread({
 
     if (updateError) {
       console.error('[support] update status failed:', updateError.message)
-      setError('Не удалось изменить статус: ' + updateError.message)
+      setError('Не удалось изменить статус. Обновите страницу и повторите попытку.')
       return
     }
 
@@ -166,7 +168,7 @@ export default function TicketThread({
       )}
 
       <div className="bg-cream-warm/15 border border-emerald-dark/10 rounded-2xl p-4 min-h-[240px] space-y-3">
-        {messages.length === 0 && (
+        {messages.length === 0 && !error && (
           <p className="text-sm text-brown/50 text-center py-8">Пока нет сообщений.</p>
         )}
 
@@ -206,7 +208,10 @@ export default function TicketThread({
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={3}
+            minLength={2}
             maxLength={5000}
+            required
+            aria-label={isStaff ? 'Ответ от поддержки' : 'Ваш ответ'}
             placeholder={isStaff ? 'Ответ от поддержки…' : 'Ваш ответ…'}
             className="w-full border border-emerald-dark/15 rounded-lg px-3 py-2 text-sm bg-cream-warm/40 focus:outline-none focus:border-emerald-mid resize-y"
           />

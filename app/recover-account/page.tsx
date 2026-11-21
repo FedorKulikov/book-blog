@@ -9,6 +9,8 @@ import Link from 'next/link'
 import { passkeysEnabled } from '@/lib/passkeys'
 
 const MIN_PASSWORD = 8
+const emailRecoveryEnabled =
+  process.env.NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY === 'true'
 
 export default function RecoverAccountPage() {
   const [username, setUsername] = useState('')
@@ -185,9 +187,19 @@ export default function RecoverAccountPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-sm text-brown/60">
-          Восстановление по email сейчас отключено. Здесь нужен именно резервный код, сохранённый заранее.
-        </p>
+        {emailRecoveryEnabled ? (
+          <p className="mt-4 text-sm text-brown/60">
+            Также можно запросить ссылку на странице{' '}
+            <Link href="/forgot-password" className="text-wine hover:underline">
+              «Забыли пароль?»
+            </Link>
+            . Этот способ работает только для email, отдельно подтверждённого в настройках профиля, и при настроенном сервисе отправки писем.
+          </p>
+        ) : (
+          <p className="mt-4 text-sm text-brown/60">
+            Восстановление по email сейчас отключено. Здесь нужен именно резервный код, сохранённый заранее.
+          </p>
+        )}
         {passkeysEnabled && (
           <p className="mt-2 text-sm text-brown/70">
             Есть ключ доступа? Вернитесь на <Link href="/login" className="text-wine hover:underline">страницу входа</Link> и войдите с ним, затем смените пароль в настройках профиля.

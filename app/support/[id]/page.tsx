@@ -92,6 +92,11 @@ export default async function TicketPage({
         status={ticket.status}
         currentUserId={user.id}
         viewerRole={viewerRole}
+        initialError={
+          messagesError
+            ? 'Не удалось загрузить историю переписки. Обновите страницу, чтобы повторить попытку.'
+            : null
+        }
       />
     </main>
   )

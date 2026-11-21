@@ -30,7 +30,7 @@ export default async function SupportPage() {
       <main className="p-4 md:p-8 max-w-3xl mx-auto">
         <Hero
           title="Поддержка"
-          subtitle="Пишите нам напрямую — отвечаем в этом же диалоге."
+          subtitle="Войдите, чтобы создать обращение и вести переписку с поддержкой."
           image="/hero-home.jpg"
         />
 
@@ -66,7 +66,7 @@ export default async function SupportPage() {
     <main className="p-4 md:p-8 max-w-7xl mx-auto">
       <Hero
         title="Поддержка"
-        subtitle="Пишите нам напрямую — отвечаем в этом же диалоге."
+        subtitle="Создайте обращение — ответ и дальнейшая переписка появятся здесь."
         image="/hero-home.jpg"
       />
 
@@ -78,10 +78,16 @@ export default async function SupportPage() {
             <h2 className="font-playfair text-xl font-bold text-emerald-dark">
               Мои обращения
             </h2>
-            <span className="text-xs text-brown/45">Всего: {tickets.length}</span>
+            {!error && <span className="text-xs text-brown/45">Всего: {tickets.length}</span>}
           </div>
 
-          {tickets.length === 0 ? (
+          {error ? (
+            <div role="alert" className="bg-cream-warm/15 border border-wine/20 rounded-2xl p-6 text-center">
+              <p className="text-sm text-wine">
+                Не удалось загрузить обращения. Обновите страницу, чтобы повторить попытку.
+              </p>
+            </div>
+          ) : tickets.length === 0 ? (
             <div className="bg-cream-warm/15 border border-emerald-dark/10 rounded-2xl p-8 text-center">
               <p className="text-sm text-brown/60">
                 Обращений пока нет. Если что-то сломалось или есть идея — заполните форму слева.
