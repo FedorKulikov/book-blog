@@ -50,9 +50,18 @@ export const metadata: Metadata = {
   },
   // Подтверждение прав на сайт в Google Search Console.
   // Если переменная задана — Next.js выведет <meta name="google-site-verification" content="..." />.
-  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
-    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
-    : undefined,
+  verification:
+    process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION ||
+    process.env.NEXT_PUBLIC_YANDEX_WEBMASTER_VERIFICATION
+      ? {
+          ...(process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+            ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+            : {}),
+          ...(process.env.NEXT_PUBLIC_YANDEX_WEBMASTER_VERIFICATION
+            ? { yandex: process.env.NEXT_PUBLIC_YANDEX_WEBMASTER_VERIFICATION }
+            : {}),
+        }
+      : undefined,
 }
 
 export default function RootLayout({

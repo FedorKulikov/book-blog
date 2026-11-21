@@ -84,8 +84,8 @@ export default function BooksClient({
   return (
     <main className="p-4 md:p-8 max-w-7xl mx-auto">
       <Hero
-        title="Книги"
-        subtitle="Все книги, о которых пишут в «Хлеба и букв»"
+        title="Каталог книг"
+        subtitle="Ищите книги по названию и автору, читайте публикации и обсуждения о прочитанном."
         image="/hero-books.jpg"
       />
 

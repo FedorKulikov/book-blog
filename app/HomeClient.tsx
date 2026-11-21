@@ -87,6 +87,21 @@ export default function HomeClient({ initialPosts }: { initialPosts: any[] }) {
         image="/hero-home.jpg"
       />
 
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row">
+        <Link
+          href={user ? '/news/new' : '/signup'}
+          className="inline-flex min-h-11 items-center justify-center rounded-full bg-wine px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-wine-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine"
+        >
+          {user ? 'Опубликовать первый пост' : 'Присоединиться к сообществу'}
+        </Link>
+        <Link
+          href="/books"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-emerald-dark/20 px-6 py-3 text-sm font-medium text-emerald-dark transition-colors hover:bg-cream-warm/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-dark"
+        >
+          Сначала посмотреть каталог
+        </Link>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
         <Link
           href="/books"
@@ -154,6 +169,30 @@ export default function HomeClient({ initialPosts }: { initialPosts: any[] }) {
           </p>
         </Link>
       </div>
+
+      <section
+        aria-labelledby="community-intro-heading"
+        className="mb-10 max-w-4xl"
+      >
+        <h2
+          id="community-intro-heading"
+          className="font-playfair text-xl font-bold text-emerald-dark md:text-2xl"
+        >
+          Книжное сообщество для читателей и авторов
+        </h2>
+        <p className="mt-3 text-sm leading-7 text-brown/75">
+          «Хлеба и букв» — место, где можно находить книги, читать отзывы и
+          обзоры и статьи о книгах, обсуждать прочитанное и знакомиться с авторами.
+          Здесь также можно делиться собственными рассказами, стихами, эссе и
+          заметками о книгах.
+        </p>
+        <p className="mt-2 text-sm leading-7 text-brown/75">
+          Начните с <Link href="/books" className="text-wine underline underline-offset-2">каталога книг</Link>,
+          посмотрите <Link href="/posts" className="text-wine underline underline-offset-2">публикации читателей и статьи о книгах</Link>,
+          присоединитесь к <Link href="/discussions" className="text-wine underline underline-offset-2">обсуждениям книг</Link>
+          {' '}или загляните в раздел <Link href="/creative" className="text-wine underline underline-offset-2">авторского творчества</Link>.
+        </p>
+      </section>
 
       {/* Фильтры ленты */}
       <div className="flex flex-wrap gap-2 mb-5">
