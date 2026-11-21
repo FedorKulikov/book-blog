@@ -2,6 +2,7 @@
 // Общая лента: ВСЕ посты без фильтра по типу (news / creative / discussion).
 // Первую порцию рендерит сервер (для поисковиков), дальше — «Показать ещё»
 // в клиентском PostList (курсорная пагинация по created_at).
+import Link from 'next/link'
 import type { Metadata } from 'next'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { fetchPostsPage, PAGE_SIZE } from './postsQuery'
@@ -58,6 +59,28 @@ export default async function AllPostsPage() {
         subtitle="Отзывы и обзоры читателей, обсуждения прочитанного, книжные новости и авторские тексты."
         image="/hero-home.jpg"
       />
+
+      <section
+        aria-labelledby="review-guide-title"
+        className="mb-8 rounded-2xl border border-emerald-dark/10 bg-cream-warm p-5 md:p-6"
+      >
+        <h2
+          id="review-guide-title"
+          className="mb-2 font-playfair text-xl font-bold text-emerald-dark"
+        >
+          Хотите написать рецензию на книгу?
+        </h2>
+        <p className="mb-3 max-w-3xl text-sm leading-7 text-brown-dark">
+          Разобрали простую структуру рецензии: как сформулировать главную мысль,
+          аргументировать впечатление и не пересказывать сюжет вместо собственного мнения.
+        </p>
+        <Link
+          href="/guides/kak-napisat-retsenziyu-na-knigu"
+          className="font-semibold text-wine underline decoration-wine/40 underline-offset-4 hover:decoration-wine"
+        >
+          Читать руководство по написанию рецензии
+        </Link>
+      </section>
 
       {posts.length === 0 ? (
         <EmptyState
