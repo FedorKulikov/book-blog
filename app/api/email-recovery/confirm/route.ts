@@ -31,7 +31,13 @@ export async function POST(request: Request) {
     return json({ error: 'Подтверждение email пока не настроено' }, 503)
   }
 
-  const expectedOrigin = getAuthEmailSiteUrl()
+  let expectedOrigin: string
+  try {
+    expectedOrigin = getAuthEmailSiteUrl()
+  } catch {
+    return json({ error: 'Подтверждение email пока не настроено' }, 503)
+  }
+
   if (request.headers.get('origin') !== expectedOrigin) {
     return json({ error: 'Запрос отклонён' }, 403)
   }
