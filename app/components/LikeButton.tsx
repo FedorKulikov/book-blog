@@ -40,29 +40,39 @@ export default function LikeButton({ postId }: { postId: string }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
-    loadLikes()
-  }, [postId])
+    let alive = true
 
-  async function loadLikes() {
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    async function loadLikes() {
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      if (!alive) return
+      setUser(currentUser)
 
-    const { count: total } = await supabase
-      .from('likes')
-      .select('*', { count: 'exact', head: true })
-      .eq('post_id', postId)
-    setCount(total || 0)
-
-    if (currentUser) {
-      const { data } = await supabase
+      const { count: total } = await supabase
         .from('likes')
-        .select('*')
+        .select('*', { count: 'exact', head: true })
         .eq('post_id', postId)
-        .eq('user_id', currentUser.id)
-        .maybeSingle()
-      setLiked(!!data)
+      if (!alive) return
+      setCount(total || 0)
+
+      if (currentUser) {
+        const { data } = await supabase
+          .from('likes')
+          .select('*')
+          .eq('post_id', postId)
+          .eq('user_id', currentUser.id)
+          .maybeSingle()
+        if (!alive) return
+        setLiked(!!data)
+      } else {
+        setLiked(false)
+      }
     }
-  }
+
+    void loadLikes()
+    return () => {
+      alive = false
+    }
+  }, [postId])
 
   async function toggleLike() {
     if (busy) return

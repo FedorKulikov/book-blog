@@ -44,20 +44,26 @@ export default function SignupPage() {
   const [recoveryLoading, setRecoveryLoading] = useState(false)
   const [acknowledgedRecoveryRisk, setAcknowledgedRecoveryRisk] = useState(false)
 
-  // Живая проверка занятости имени (с дебаунсом, чтобы не дёргать БД на каждый символ)
-  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle')
+  // Храним результат проверки вместе с проверенным именем. Для нового
+  // значения статус checking вычисляется без синхронного setState в эффекте.
+  const [usernameCheck, setUsernameCheck] = useState<{
+    username: string
+    status: Exclude<UsernameStatus, 'checking'>
+  }>({ username: '', status: 'idle' })
+  const cleanUsernameValue = username.trim()
+  const usernameStatus: UsernameStatus =
+    cleanUsernameValue.length < 3
+      ? 'idle'
+      : usernameCheck.username !== cleanUsernameValue
+        ? 'checking'
+        : usernameCheck.status
 
   const router = useRouter()
 
   useEffect(() => {
     const clean = username.trim()
 
-    if (clean.length < 3) {
-      setUsernameStatus('idle')
-      return
-    }
-
-    setUsernameStatus('checking')
+    if (clean.length < 3) return
     let alive = true
 
     const timer = setTimeout(async () => {
@@ -74,11 +80,11 @@ export default function SignupPage() {
         // RLS мог не дать прочитать profiles — не мешаем заполнять форму,
         // окончательное решение примет UNIQUE-констрейнт при регистрации
         console.warn('[signup] username check failed:', checkError.message)
-        setUsernameStatus('idle')
+        setUsernameCheck({ username: clean, status: 'idle' })
         return
       }
 
-      setUsernameStatus(data ? 'taken' : 'free')
+      setUsernameCheck({ username: clean, status: data ? 'taken' : 'free' })
     }, 500)
 
     return () => {
@@ -119,7 +125,7 @@ export default function SignupPage() {
       console.warn('[signup] username pre-check failed:', checkError.message)
     } else if (taken) {
       setError('Это имя уже занято. Попробуйте другое.')
-      setUsernameStatus('taken')
+      setUsernameCheck({ username: cleanUsername, status: 'taken' })
       setLoading(false)
       return
     }
@@ -166,7 +172,7 @@ export default function SignupPage() {
       if (
         res.ok &&
         Array.isArray(data.codes) &&
-        data.codes.length === 10 &&
+        data.codes.length > 0 &&
         data.saved === data.codes.length
       ) {
         setCodes(data.codes)
@@ -211,7 +217,7 @@ export default function SignupPage() {
       if (
         !res.ok ||
         !Array.isArray(data.codes) ||
-        data.codes.length !== 10 ||
+        data.codes.length === 0 ||
         data.saved !== data.codes.length
       ) {
         setRecoveryError(

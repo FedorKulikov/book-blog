@@ -71,6 +71,10 @@ function explainCommentError(message: string): string {
 }
 
 export default function Comments({ postId }: { postId: string }) {
+  return <CommentsContent key={postId} postId={postId} />
+}
+
+function CommentsContent({ postId }: { postId: string }) {
   const [roots, setRoots] = useState<CommentRow[]>([])
   const [replies, setReplies] = useState<CommentRow[]>([])
   const [hasMore, setHasMore] = useState(false)
@@ -215,12 +219,9 @@ export default function Comments({ postId }: { postId: string }) {
     }
   }, [])
 
-  // Первая загрузка при смене поста
+  // Компонент обёрнут в key={postId}: при смене публикации состояние
+  // создаётся заново, поэтому синхронные setState в эффекте не нужны.
   useEffect(() => {
-    setLoading(true)
-    setRoots([])
-    setReplies([])
-    setExpanded(new Set())
     reloadRef.current('initial')
   }, [postId])
 

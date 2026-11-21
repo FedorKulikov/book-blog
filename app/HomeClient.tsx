@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 import Hero from './components/Hero'
-import PostCard from './components/PostCard'
+import PostCard, { type PostCardData } from './components/PostCard'
 import TopAuthors from './components/TopAuthors'
 import PopularPosts from './components/PopularPosts'
 import ExternalNewsBlock from './components/ExternalNewsBlock'
@@ -37,10 +38,10 @@ const FEED_HEADINGS: Record<FeedFilter, string> = {
   discussion: 'Новые обсуждения',
 }
 
-export default function HomeClient({ initialPosts }: { initialPosts: any[] }) {
-  const [posts, setPosts] = useState<any[]>(initialPosts)
+export default function HomeClient({ initialPosts }: { initialPosts: PostCardData[] }) {
+  const [posts, setPosts] = useState<PostCardData[]>(initialPosts)
   const [loading, setLoading] = useState(false)
-  const [user, setUser] = useState<any>(undefined)
+  const [user, setUser] = useState<User | null | undefined>(undefined)
   const [filter, setFilter] = useState<FeedFilter>('all')
   const initialRender = useRef(true)
 

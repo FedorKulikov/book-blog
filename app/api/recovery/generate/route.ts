@@ -101,8 +101,12 @@ export async function POST(request: Request) {
     return json({ error: 'Не удалось сохранить коды. Попробуйте ещё раз.' }, 500)
   }
 
-  const saved = typeof data === 'number' ? data : hashes.length
+  // RPC обязан вернуть число реально вставленных строк. Не выдаём открытые
+  // коды, если контракт ответа нарушен или сохранён неполный набор.
+  if (!Number.isInteger(data) || data !== CODES_PER_BATCH) {
+    return json({ error: 'Не удалось подтвердить сохранение полного набора кодов.' }, 500)
+  }
 
   // Открытые коды покидают сервер ровно один раз — в этом ответе.
-  return json({ codes, saved })
+  return json({ codes, saved: data })
 }

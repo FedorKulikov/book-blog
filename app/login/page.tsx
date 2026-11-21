@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
-import { safeInternalPath } from '@/lib/auth-navigation'
+import { getPostAuthPath, safeInternalPath } from '@/lib/auth-navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -28,7 +28,7 @@ export default function LoginPage() {
       setError(humanizeError(error.message))
       setLoading(false)
     } else {
-      const next = safeInternalPath(new URLSearchParams(window.location.search).get('next'))
+      const next = getPostAuthPath(window.location.search)
       router.replace(next)
       router.refresh()
     }
