@@ -31,8 +31,8 @@ export default function DiscussionsClient({ initialPosts }: { initialPosts: any[
   return (
     <main className="p-4 md:p-8 max-w-7xl mx-auto">
       <Hero
-        title="Обсуждения"
-        subtitle="Делитесь мнениями, задавайте вопросы, обсуждайте книги."
+        title="Обсуждения книг"
+        subtitle="Мнения читателей, вопросы и разговоры о прочитанных книгах в сообществе «Хлеба и букв»."
         image="/hero-discussions.jpg"
       />
 

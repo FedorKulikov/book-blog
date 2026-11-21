@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation'
 import { getBook } from './getBook'
 import BookView from './BookView'
 import { truncate, toPlainText } from '@/lib/text'
+import { SITE_URL } from '@/lib/site'
+import JsonLd from '@/app/components/JsonLd'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +25,8 @@ export async function generateMetadata({
   }
 
   const { book, posts } = data
+  const publicPosts = posts.filter(post => post.status === 'approved')
+  const isIndexable = publicPosts.length > 0
 
   const title = book.title.trim() || 'Книга'
   const meta = [book.author, book.year].filter(Boolean).join(', ')
@@ -30,7 +34,7 @@ export async function generateMetadata({
   const description = truncate(
     toPlainText(book.description ?? '') ||
       `${meta ? `${meta}. ` : ''}Посты об этой книге в сообществе «Хлеба и букв»${
-        posts.length > 0 ? `: ${posts.length}` : ''
+        publicPosts.length > 0 ? `: ${publicPosts.length}` : ''
       }.`,
     200,
   )
@@ -44,6 +48,7 @@ export async function generateMetadata({
     title,
     description,
     alternates: { canonical: `/book/${book.id}` },
+    robots: { index: isIndexable, follow: true },
     openGraph: {
       type: 'book',
       locale: 'ru_RU',
@@ -72,5 +77,33 @@ export default async function BookPage({
 
   if (!data) notFound()
 
-  return <BookView book={data.book} posts={data.posts} />
+  const bookUrl = `${SITE_URL}/book/${data.book.id}`
+  const isIndexable = data.posts.some(post => post.status === 'approved')
+
+  return (
+    <>
+      {isIndexable && <JsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'Book',
+          '@id': `${bookUrl}#book`,
+          url: bookUrl,
+          name: data.book.title,
+          author: data.book.author
+            ? { '@type': 'Person', name: data.book.author }
+            : undefined,
+          datePublished: data.book.year ? String(data.book.year) : undefined,
+          description: toPlainText(data.book.description ?? '') || undefined,
+          image: data.book.cover_url || undefined,
+          inLanguage: 'ru-RU',
+          workExample: {
+            '@type': 'CreativeWork',
+            name: `Публикации читателей о книге «${data.book.title}»`,
+            url: bookUrl,
+          },
+        }}
+      />}
+      <BookView book={data.book} posts={data.posts} />
+    </>
+  )
 }

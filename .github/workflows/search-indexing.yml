@@ -1,0 +1,99 @@
+name: Search indexing notification
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'lib/**'
+      - 'public/**'
+      - 'next.config.ts'
+      - '.github/workflows/search-indexing.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: search-indexing
+  cancel-in-progress: true
+
+jobs:
+  notify:
+    name: Notify IndexNow-compatible search engines
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out site key
+        uses: actions/checkout@v4
+
+      - name: Notify search engines about public landing pages
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          KEY='b2a77443-8227-437a-afef-c8122f234441'
+          KEY_FILE="public/${KEY}.txt"
+          KEY_URL="https://bukleb.ru/${KEY}.txt"
+
+          if [[ ! -f "${KEY_FILE}" ]] || [[ "$(tr -d '\r\n' < "${KEY_FILE}")" != "${KEY}" ]]; then
+            echo "::warning::IndexNow key file is missing or does not match. No URLs submitted."
+            exit 0
+          fi
+
+          verified=0
+          for attempt in {1..12}; do
+            body="$(mktemp)"
+            status="$(curl --silent --show-error --location --max-time 15 \
+              --output "${body}" --write-out '%{http_code}' "${KEY_URL}" || true)"
+            if [[ "${status}" == "200" ]] && [[ "$(tr -d '\r\n' < "${body}")" == "${KEY}" ]]; then
+              verified=1
+              rm -f "${body}"
+              break
+            fi
+            rm -f "${body}"
+            echo "Public key file not ready yet (attempt ${attempt}/12, HTTP ${status:-unknown})."
+            sleep 15
+          done
+
+          if [[ "${verified}" -ne 1 ]]; then
+            echo "::warning::The live key file is not available yet. IndexNow notification skipped; deployment is not blocked."
+            exit 0
+          fi
+
+          urls='[
+            "https://bukleb.ru/",
+            "https://bukleb.ru/books",
+            "https://bukleb.ru/posts",
+            "https://bukleb.ru/news",
+            "https://bukleb.ru/creative",
+            "https://bukleb.ru/discussions"
+          ]'
+
+          payload="$(jq -n \
+            --arg host "bukleb.ru" \
+            --arg key "${KEY}" \
+            --arg keyLocation "${KEY_URL}" \
+            --argjson urlList "${urls}" \
+            '{host: $host, key: $key, keyLocation: $keyLocation, urlList: $urlList}')"
+
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 30 \
+            --request POST \
+            --header 'Content-Type: application/json; charset=utf-8' \
+            --data-binary "${payload}" \
+            --output "${response_file}" \
+            --write-out '%{http_code}' \
+            'https://api.indexnow.org/indexnow' || true)"
+
+          case "${status}" in
+            200|202)
+              echo "IndexNow accepted the public landing-page URLs (HTTP ${status})."
+              ;;
+            *)
+              echo "::warning::IndexNow did not accept the submission (HTTP ${status:-unknown}). Response omitted from logs."
+              ;;
+          esac
+
+          rm -f "${response_file}"

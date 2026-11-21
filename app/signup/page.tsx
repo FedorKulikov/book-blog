@@ -37,6 +37,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [codes, setCodes] = useState<string[] | null>(null)
+  const [acceptedDocs, setAcceptedDocs] = useState(false)
 
   // Живая проверка занятости имени (с дебаунсом, чтобы не дёргать БД на каждый символ)
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle')
@@ -85,6 +86,11 @@ export default function SignupPage() {
     e.preventDefault()
     setError(null)
 
+    if (!acceptedDocs) {
+      setError('Примите правила сообщества и подтвердите ознакомление с политикой конфиденциальности.')
+      return
+    }
+
     const cleanUsername = username.trim()
 
     if (password.length < MIN_PASSWORD) {
@@ -122,7 +128,13 @@ export default function SignupPage() {
     const { error: signUpError } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { username: cleanUsername } },
+      options: {
+        data: {
+          username: cleanUsername,
+          terms_accepted_at: new Date().toISOString(),
+          terms_version: '2026-11-21',
+        },
+      },
     })
 
     if (signUpError) {
@@ -168,7 +180,7 @@ export default function SignupPage() {
   }
 
   const submitDisabled =
-    loading || usernameStatus === 'taken' || usernameStatus === 'checking'
+    loading || !acceptedDocs || usernameStatus === 'taken' || usernameStatus === 'checking'
 
   if (codes) {
     return (
@@ -285,6 +297,20 @@ export default function SignupPage() {
               className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
               placeholder={`Минимум ${MIN_PASSWORD} символов`}
             />
+          </div>
+
+          <div className="flex items-start gap-2">
+            <input
+              id="signup-docs"
+              type="checkbox"
+              checked={acceptedDocs}
+              onChange={(e) => setAcceptedDocs(e.target.checked)}
+              required
+              className="mt-1 h-4 w-4 shrink-0 accent-emerald-mid"
+            />
+            <label htmlFor="signup-docs" className="text-xs leading-5 text-brown/70">
+              Я принимаю <Link href="/rules" className="text-wine underline underline-offset-2">Правила сообщества</Link> и ознакомился(ась) с <Link href="/privacy" className="text-wine underline underline-offset-2">Политикой конфиденциальности</Link>.
+            </label>
           </div>
 
           {error && <p className="text-wine text-sm">Ошибка: {error}</p>}

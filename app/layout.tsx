@@ -1,5 +1,6 @@
 import { Playfair_Display, Inter } from 'next/font/google'
 import { Metadata } from 'next'
+import Link from 'next/link'
 import { SITE_URL } from '@/lib/site'
 import Sidebar from './components/Header'
 import MobileNav from './components/MobileNav'
@@ -50,9 +51,18 @@ export const metadata: Metadata = {
   },
   // Подтверждение прав на сайт в Google Search Console.
   // Если переменная задана — Next.js выведет <meta name="google-site-verification" content="..." />.
-  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
-    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
-    : undefined,
+  verification:
+    process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION ||
+    process.env.NEXT_PUBLIC_YANDEX_WEBMASTER_VERIFICATION
+      ? {
+          ...(process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+            ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+            : {}),
+          ...(process.env.NEXT_PUBLIC_YANDEX_WEBMASTER_VERIFICATION
+            ? { yandex: process.env.NEXT_PUBLIC_YANDEX_WEBMASTER_VERIFICATION }
+            : {}),
+        }
+      : undefined,
 }
 
 export default function RootLayout({
@@ -106,7 +116,18 @@ export default function RootLayout({
           <Sidebar />
           {/* div, а не main: каждая страница приносит свой <main>,
               а вложенные основные области ломают landmark-навигацию */}
-          <div className="main-content pb-16 lg:pb-0">{children}</div>
+          <div className="main-content pb-16 lg:pb-0">
+            {children}
+            <footer className="border-t border-emerald-dark/10 px-4 py-6 md:px-8">
+              <nav aria-label="Правовая информация" className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-2 text-xs text-brown/60">
+                <Link href="/privacy" className="transition-colors hover:text-emerald-dark">Конфиденциальность</Link>
+                <Link href="/rules" className="transition-colors hover:text-emerald-dark">Правила сообщества</Link>
+                <Link href="/privacy#cookies" className="transition-colors hover:text-emerald-dark">Файлы cookie и аналитика</Link>
+                <Link href="/support" className="transition-colors hover:text-emerald-dark">Поддержка</Link>
+              </nav>
+              <p className="mx-auto mt-3 max-w-7xl text-[11px] text-brown/40">© Хлеба и букв</p>
+            </footer>
+          </div>
           <MobileNav />
         </div>
         {/* Яндекс.Метрика: скрипт грузится после интерактива, ID из NEXT_PUBLIC_YANDEX_METRIKA_ID */}
