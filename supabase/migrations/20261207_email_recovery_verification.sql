@@ -79,7 +79,7 @@ returns boolean
 language sql
 set search_path = ''
 as 'with issued as (
-  insert into private.email_recovery_tokens (
+  insert into private.email_recovery_tokens as existing (
     user_id, email_hash, token_hash, created_at, expires_at, consumed_at
   )
   select p_user_id, p_email_hash, p_token_hash, now(), p_expires_at, null
@@ -97,9 +97,9 @@ as 'with issued as (
          created_at = now(),
          expires_at = excluded.expires_at,
          consumed_at = null
-   where private.email_recovery_tokens.created_at <= now() - interval ''1 minute''
-      or private.email_recovery_tokens.expires_at <= now()
-      or private.email_recovery_tokens.consumed_at is not null
+   where existing.created_at <= now() - interval ''1 minute''
+      or existing.expires_at <= now()
+      or existing.consumed_at is not null
   returning user_id
 )
 select exists (select 1 from issued)';
