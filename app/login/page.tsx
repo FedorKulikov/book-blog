@@ -28,7 +28,7 @@ export default function LoginPage() {
       setError(humanizeError(error.message))
       setLoading(false)
     } else {
-      const next = getPostAuthPath(window.location.search)
+      const next = getPostAuthPath(window.location.search, '/')
       router.replace(next)
       router.refresh()
     }
