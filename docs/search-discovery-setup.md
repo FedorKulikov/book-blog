@@ -293,3 +293,28 @@ Workflow `.github/workflows/search-indexing.yml` теперь проверяет
 - обе публикации `«Живые персонажи»` всё ещё с одинаковым title.
 
 Это выборка из 10 URL, а не полный аудит. Она показывает, что новый SEO build пока не активирован на production; это не доказательство отсутствия URL в поисковом индексе.
+
+
+## 12. Одноразовая публикация SEO-релиза через Layero CLI
+
+21 ноября 2026 года объединён PR #23: [ops: one-time guarded Layero production promotion](https://github.com/FedorKulikov/book-blog/pull/23), main-коммит `29843ce271a267e661c11c6b47d567787aa79a81`.
+
+В репозитории добавлен одноразовый workflow `.github/workflows/layero-one-time-promote.yml`. Он срабатывает только на main-коммите с сообщением, начинающимся с `ops: promote current main build to Layero production`. Это не постоянный deploy workflow.
+
+### Что нужно сделать один раз
+
+1. Открыть [настройки CI-токена Layero](https://app.layero.ru/settings/cli) и создать CI token для этого репозитория.
+2. В GitHub открыть [Secrets and variables → Actions](https://github.com/FedorKulikov/book-blog/settings/secrets/actions).
+3. Создать repository secret с точным именем `LAYERO_TOKEN` и вставить значение CI token. Токен нельзя отправлять в чат, issue, PR, commit или workflow log.
+4. Открыть [неудачный запуск одноразового workflow](https://github.com/FedorKulikov/book-blog/actions/runs/44884164813) и выбрать **Re-run all jobs**. Текущий запуск завершился до обращения к Layero, потому что secret отсутствует; production не менялся.
+
+### Что workflow проверит перед публикацией
+
+- ровно один проект Layero связан с `FedorKulikov/book-blog`;
+- `bukleb.ru` прикреплён к найденному проекту, верифицирован и имеет активный TLS;
+- на ветке `main` есть готовая сборка для точного коммита, который запускает workflow;
+- только эта готовая сборка будет продвинута командой `layero promote <commit-sha>`.
+
+После Promote workflow проверит метаданные главной, разделов `/creative` и `/discussions`, sitemap и публичный IndexNow key file, а затем отправит шесть основных URL в IndexNow. Если хотя бы одна предварительная проверка не пройдёт, workflow остановится и не будет продвигать случайную сборку.
+
+**Не запускать `layero deploy` для этой задачи и не создавать новый Layero project:** это другой путь публикации, который может создать отдельную среду или проект. Нужен именно Promote готовой сборки связанного репозитория.
