@@ -1,0 +1,185 @@
+name: One-time Layero production promotion
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/layero-one-time-promote.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    # This workflow is intentionally one-shot; future main pushes cannot republish production.
+    if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'ops: promote current main build to Layero production')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      LAYERO_TOKEN: ${{ secrets.LAYERO_TOKEN }}
+      LAYERO_NO_UPDATE_CHECK: '1'
+    steps:
+      - name: Check out the exact main commit
+        uses: actions/checkout@v4
+
+      - name: Resolve the existing Layero project and promote this main build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${LAYERO_TOKEN:-}" ]]; then
+            echo "::error::Missing repository secret LAYERO_TOKEN. Create a CI token at https://app.layero.ru/settings/cli and add it in GitHub → Settings → Secrets and variables → Actions. No production change was made."
+            exit 1
+          fi
+
+          export LAYERO_JSON=1
+          PROJECTS_FILE="$RUNNER_TEMP/layero-projects.jsonl"
+          DOMAINS_FILE="$RUNNER_TEMP/layero-domains.jsonl"
+          DEPLOYS_FILE="$RUNNER_TEMP/layero-deploys.jsonl"
+          PROMOTE_FILE="$RUNNER_TEMP/layero-promote.jsonl"
+
+          npx --yes layero@latest projects list --json > "$PROJECTS_FILE"
+
+          node - "$PROJECTS_FILE" "$GITHUB_REPOSITORY" "$GITHUB_ENV" <<'NODE'
+          const fs = require("node:fs");
+          const [file, repository, envFile] = process.argv.slice(2);
+          const events = fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const projects = events.filter((e) => e.event === "projects").flatMap((e) => e.projects || []);
+          const matches = projects.filter((p) => (p.repo || "").toLowerCase() === repository.toLowerCase());
+          if (matches.length !== 1) {
+            console.error(`Expected exactly one Layero project linked to ${repository}; found ${matches.length}. No production change was made.`);
+            process.exit(1);
+          }
+          const p = matches[0];
+          if (!p.slug || !/^[a-z0-9-]+$/.test(p.slug)) {
+            console.error("Layero returned an invalid project slug. No production change was made.");
+            process.exit(1);
+          }
+          fs.appendFileSync(envFile, `LAYERO_PROJECT_SLUG=${p.slug}\n`);
+          console.log(`Resolved the linked Layero project: ${p.slug} (${p.source_type || "source type unavailable"}).`);
+          NODE
+
+          npx --yes layero@latest domains list --project "$LAYERO_PROJECT_SLUG" --json > "$DOMAINS_FILE"
+          node - "$DOMAINS_FILE" <<'NODE'
+          const fs = require("node:fs");
+          const events = fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const domains = events.filter((e) => e.event === "domains").flatMap((e) => e.domains || []);
+          const matches = domains.filter((d) => (d.domain || "").toLowerCase() === "bukleb.ru");
+          if (matches.length !== 1 || matches[0].verified !== true || matches[0].ssl_status !== "active") {
+            console.error("The linked Layero project does not show bukleb.ru as verified with active TLS. No production change was made.");
+            process.exit(1);
+          }
+          console.log("Confirmed bukleb.ru is attached to this project with active TLS.");
+          NODE
+
+          ready=0
+          for attempt in $(seq 1 30); do
+            npx --yes layero@latest deploys list --project "$LAYERO_PROJECT_SLUG" --branch main --limit 50 --json > "$DEPLOYS_FILE"
+            state="$(node - "$DEPLOYS_FILE" "$GITHUB_SHA" <<'NODE'
+          const fs = require("node:fs");
+          const [file, sha] = process.argv.slice(2);
+          const events = fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const hits = events.filter((e) => e.event === "deploy" && e.commit_sha === sha);
+          if (hits.some((d) => d.status === "ready")) process.stdout.write("ready");
+          else if (hits.length && hits.every((d) => d.status === "failed")) process.stdout.write("failed");
+          else if (hits.length) process.stdout.write(hits[0].status || "pending");
+          else process.stdout.write("missing");
+          NODE
+            )"
+            if [[ "$state" == "ready" ]]; then
+              ready=1
+              break
+            fi
+            if [[ "$state" == "failed" ]]; then
+              echo "::error::Layero reports the main build as failed. No production change was made."
+              exit 1
+            fi
+            echo "Waiting for Layero main build for ${GITHUB_SHA:0:12} (attempt $attempt/30; state=$state)."
+            sleep 10
+          done
+
+          if [[ "$ready" -ne 1 ]]; then
+            echo "::error::No ready Layero build found for the exact main commit ${GITHUB_SHA}. Check the repository webhook and Layero build log. No production change was made."
+            exit 1
+          fi
+
+          npx --yes layero@latest promote "$GITHUB_SHA" --project "$LAYERO_PROJECT_SLUG" --branch main --yes --json > "$PROMOTE_FILE"
+          node - "$PROMOTE_FILE" <<'NODE'
+          const fs = require("node:fs");
+          const events = fs.readFileSync(process.argv[2], "utf8").split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const promoted = events.find((e) => e.event === "promoted");
+          if (!promoted || !promoted.url || !promoted.deploy_id) {
+            console.error("Layero did not confirm the production pointer change.");
+            process.exit(1);
+          }
+          console.log(`Layero confirmed production promotion: ${promoted.url} (deploy ${promoted.deploy_id}).`);
+          NODE
+
+          homepage="$RUNNER_TEMP/homepage.html"
+          creative="$RUNNER_TEMP/creative.html"
+          discussions="$RUNNER_TEMP/discussions.html"
+          sitemap="$RUNNER_TEMP/sitemap.xml"
+          key_body="$RUNNER_TEMP/indexnow-key.txt"
+
+          verified=0
+          for attempt in $(seq 1 12); do
+            home_status="$(curl --silent --show-error --location --max-time 25 --output "$homepage" --write-out '%{http_code}' 'https://bukleb.ru/' || true)"
+            if [[ "$home_status" == "200" ]] && grep -Fq 'Книжное сообщество для читателей' "$homepage"; then
+              verified=1
+              break
+            fi
+            echo "Waiting for promoted SEO HTML (attempt $attempt/12; HTTP $home_status)."
+            sleep 5
+          done
+          if [[ "$verified" -ne 1 ]]; then
+            echo "::error::Production was promoted but the expected homepage title was not verified. Check Layero runtime/build logs before retrying."
+            exit 1
+          fi
+
+          creative_status="$(curl --silent --show-error --location --max-time 25 --output "$creative" --write-out '%{http_code}' 'https://bukleb.ru/creative' || true)"
+          discussions_status="$(curl --silent --show-error --location --max-time 25 --output "$discussions" --write-out '%{http_code}' 'https://bukleb.ru/discussions' || true)"
+          if [[ "$creative_status" != "200" ]] || ! grep -Fq 'Авторское творчество: рассказы, стихи и эссе' "$creative"; then
+            echo "::error::The /creative page does not expose the new section metadata."
+            exit 1
+          fi
+          if [[ "$discussions_status" != "200" ]] || ! grep -Fq 'Обсуждения книг: мнения и читательские разговоры' "$discussions"; then
+            echo "::error::The /discussions page does not expose the new section metadata."
+            exit 1
+          fi
+
+          sitemap_status="$(curl --silent --show-error --location --max-time 25 --output "$sitemap" --write-out '%{http_code}' 'https://bukleb.ru/sitemap.xml' || true)"
+          if [[ "$sitemap_status" != "200" ]] || ! grep -Fq 'https://bukleb.ru/' "$sitemap"; then
+            echo "::error::Production sitemap is unavailable or does not contain the canonical domain."
+            exit 1
+          fi
+
+          KEY='7846d99d4d624f7699036567738094ae'
+          key_status="$(curl --silent --show-error --location --max-time 25 --output "$key_body" --write-out '%{http_code}' "https://bukleb.ru/${KEY}.txt" || true)"
+          if [[ "$key_status" != "200" ]] || [[ "$(tr -d '\r\n' < "$key_body")" != "$KEY" ]]; then
+            echo "::error::The live IndexNow key file is missing or has the wrong content."
+            exit 1
+          fi
+
+          urls='[
+            "https://bukleb.ru/",
+            "https://bukleb.ru/books",
+            "https://bukleb.ru/posts",
+            "https://bukleb.ru/news",
+            "https://bukleb.ru/creative",
+            "https://bukleb.ru/discussions"
+          ]'
+          payload="$(jq -n --arg host "bukleb.ru" --arg key "$KEY" --arg keyLocation "https://bukleb.ru/${KEY}.txt" --argjson urlList "$urls" '{host:$host,key:$key,keyLocation:$keyLocation,urlList:$urlList}')"
+          indexnow_response="$RUNNER_TEMP/indexnow-response.txt"
+          indexnow_status="$(curl --silent --show-error --max-time 30 --request POST --header 'Content-Type: application/json; charset=utf-8' --data-binary "$payload" --output "$indexnow_response" --write-out '%{http_code}' 'https://api.indexnow.org/indexnow' || true)"
+          case "$indexnow_status" in
+            200|202)
+              echo "IndexNow accepted six updated public URLs (HTTP $indexnow_status)."
+              ;;
+            *)
+              echo "::error::Layero production is live, but IndexNow rejected the submission (HTTP ${indexnow_status:-unknown})."
+              exit 1
+              ;;
+          esac
+
+          echo "SEO release verified on bukleb.ru and the six public landing pages were submitted to IndexNow."
