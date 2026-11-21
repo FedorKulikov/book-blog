@@ -49,7 +49,6 @@ jobs:
         run: |
           npx eslint \
             app/page.tsx \
-            app/HomeClient.tsx \
             app/books/page.tsx \
             app/posts/page.tsx \
             app/creative/page.tsx \
