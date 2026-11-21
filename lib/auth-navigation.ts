@@ -10,7 +10,15 @@ export function safeInternalPath(value: string | null | undefined): string {
   try {
     const target = new URL(value, 'https://internal.invalid')
     if (target.origin !== 'https://internal.invalid') return '/'
-    return `${target.pathname}${target.search}${target.hash}`
+
+    const output = `${target.pathname}${target.search}${target.hash}`
+    // URL нормализует сегменты пути и обратные слеши. Проверяем именно
+    // результат нормализации: он тоже не должен стать protocol-relative URL.
+    if (!output.startsWith('/') || output.startsWith('//') || output.startsWith('/\\')) {
+      return '/'
+    }
+
+    return output
   } catch {
     return '/'
   }
