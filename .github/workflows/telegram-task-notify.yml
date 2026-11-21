@@ -1,0 +1,56 @@
+name: Telegram task notification
+
+on:
+  push:
+    branches:
+      - ops/telegram-task-notifications-2026-11
+    paths:
+      - 'notifications/ping.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check out notification marker
+        uses: actions/checkout@v4
+
+      - name: Send Telegram notification
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${TG_BOT_TOKEN}" || -z "${TG_CHAT_ID}" ]]; then
+            echo "::error::Add TG_BOT_TOKEN and TG_CHAT_ID in repository Actions secrets."
+            exit 1
+          fi
+
+          case "$(tr -d '[:space:]' < notifications/ping.txt)" in
+            done)
+              message="✅ Задача завершена. Вернись в исходный диалог ChatGPT — подробный результат уже там."
+              ;;
+            blocked)
+              message="⚠️ Задача остановлена из-за проблемы. Вернись в исходный диалог ChatGPT — там причина и дальнейшие действия."
+              ;;
+            needs_input)
+              message="✋ Для продолжения задачи нужно твоё участие. Вернись в исходный диалог ChatGPT — там подробности."
+              ;;
+            *)
+              echo "::error::Unknown notification marker."
+              exit 1
+              ;;
+          esac
+
+          payload="$(jq -n --arg chat_id "${TG_CHAT_ID}" --arg text "${message}" '{chat_id: $chat_id, text: $text}')"
+
+          curl --fail-with-body --silent --show-error --max-time 20 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --data-binary "${payload}" \
+            "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage"
