@@ -63,8 +63,32 @@ const nextConfig: NextConfig = {
       { source: '/login', headers: noindex },
       { source: '/signup', headers: noindex },
       { source: '/forgot-password', headers: noindex },
-      { source: '/auth/confirm', headers: noindex },
-      { source: '/auth/reset', headers: noindex },
+      // One-time authentication tokens must not leak through Referer headers
+      // or be retained by shared/browser caches.
+      {
+        source: '/auth/confirm',
+        headers: [
+          ...noindex,
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'Cache-Control', value: 'no-store' },
+        ],
+      },
+      {
+        source: '/auth/reset',
+        headers: [
+          ...noindex,
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'Cache-Control', value: 'no-store' },
+        ],
+      },
+      {
+        source: '/email-recovery/confirm',
+        headers: [
+          ...noindex,
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'Cache-Control', value: 'no-store' },
+        ],
+      },
       { source: '/recover-account', headers: noindex },
       { source: '/welcome', headers: noindex },
       // /profile is the authenticated account dashboard; public profiles use /profile/:username.
