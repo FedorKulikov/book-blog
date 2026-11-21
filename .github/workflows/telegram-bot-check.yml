@@ -1,0 +1,45 @@
+name: Telegram bot checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/api/telegram/**'
+      - 'scripts/set-telegram-webhook.mjs'
+      - '.github/workflows/telegram-bot-check.yml'
+      - 'lib/site.ts'
+      - 'lib/env-guard.ts'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      NEXT_PUBLIC_SITE_URL: https://bukleb.ru
+      RECOVERY_CODE_SECRET: ci-build-only-not-for-production-012345678901234567890123456789
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Validate webhook setup script syntax
+        run: node --check scripts/set-telegram-webhook.mjs
+
+      - name: Production build
+        run: npm run build
