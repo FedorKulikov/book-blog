@@ -88,9 +88,20 @@ jobs:
             local route="$1"
             local expected_next="$2"
             local headers="$RUNNER_TEMP/guest-${route//\//_}.headers"
+            local request_url="${SITE_URL%/}${route}"
             local status location
-            status="$(curl --silent --show-error --max-time 25 --dump-header "$headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${route}" || true)"
+            status="$(curl --silent --show-error --max-time 25 --dump-header "$headers" --output /dev/null --write-out '%{http_code}' "$request_url" || true)"
             location="$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { sub(/^[^:]*:[[:space:]]*/, ""); gsub(/\r/, ""); print; exit }' "$headers")"
+
+            # Layero's project alias canonically redirects to the custom domain.
+            # Follow only that known 301 manually so the final login redirect can
+            # be inspected without automatically following it to the login page.
+            if [[ "$status" == "301" && "$location" == "https://bukleb.ru${route}" ]]; then
+              request_url="$location"
+              status="$(curl --silent --show-error --max-time 25 --dump-header "$headers" --output /dev/null --write-out '%{http_code}' "$request_url" || true)"
+              location="$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { sub(/^[^:]*:[[:space:]]*/, ""); gsub(/\r/, ""); print; exit }' "$headers")"
+            fi
+
             if [[ ! "$status" =~ ^30[1278]$ ]] || [[ "$location" != *"/login?next="* ]] || [[ "$location" != *"$expected_next"* ]]; then
               echo "::error::Guest route $route must redirect to /login with its return path (HTTP $status; Location: $location)."
               exit 1
