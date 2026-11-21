@@ -2,7 +2,7 @@
 
 export default function CookieSettingsButton() {
   const counterId = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID
-  const analyticsEnabled = Boolean(counterId && /^\\d+$/.test(counterId))
+  const analyticsEnabled = Boolean(counterId && /^\d+$/.test(counterId))
 
   if (!analyticsEnabled) {
     return (
