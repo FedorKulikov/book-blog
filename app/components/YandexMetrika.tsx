@@ -74,14 +74,21 @@ export default function YandexMetrika() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    let storedConsent: Consent = null
     try {
       const stored = window.localStorage.getItem(CONSENT_KEY)
-      setConsent(stored === 'accepted' || stored === 'rejected' ? stored : null)
+      storedConsent = stored === 'accepted' || stored === 'rejected' ? stored : null
     } catch {
       // If storage is unavailable, do not initialize optional analytics.
-      setConsent('rejected')
+      storedConsent = 'rejected'
     }
-    setReady(true)
+
+    // Defer hydration of the saved choice to avoid a synchronous state update
+    // inside the effect and to prevent the banner flashing for returning users.
+    const hydrateTimer = window.setTimeout(() => {
+      setConsent(storedConsent)
+      setReady(true)
+    }, 0)
 
     const openSettings = () => {
       if (validId) disableMetrika(validId)
@@ -94,7 +101,10 @@ export default function YandexMetrika() {
     }
 
     window.addEventListener(SETTINGS_EVENT, openSettings)
-    return () => window.removeEventListener(SETTINGS_EVENT, openSettings)
+    return () => {
+      window.clearTimeout(hydrateTimer)
+      window.removeEventListener(SETTINGS_EVENT, openSettings)
+    }
   }, [validId])
 
   useEffect(() => {
