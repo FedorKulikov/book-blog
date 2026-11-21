@@ -73,6 +73,8 @@ jobs:
             app/api/auth/email-hook/route.ts \
             app/components/EmailRecoverySecurity.tsx \
             app/components/EmailRecoveryResetForm.tsx \
+            app/email-recovery/confirm/page.tsx \
+            app/email-recovery/confirm/EmailRecoveryConfirmClient.tsx \
             app/recover-account/page.tsx \
             app/auth/confirm/page.tsx \
             app/auth/reset/page.tsx \
