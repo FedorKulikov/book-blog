@@ -10,9 +10,9 @@ import BooksClient from './BooksClient'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Книги',
+  title: 'Каталог книг: отзывы, обзоры и обсуждения',
   description:
-    'Каталог книг книжного сообщества «Хлеба и букв»: обзоры, обсуждения и авторы.',
+    'Ищите книги по названию и автору, знакомьтесь с отзывами читателей и находите публикации об интересующих вас произведениях в «Хлеба и букв».',
   alternates: { canonical: '/books' },
 }
 
