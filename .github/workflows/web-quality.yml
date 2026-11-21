@@ -359,6 +359,18 @@ jobs:
             printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
           done
 
+      - name: Inspect isolated Storage role ownership
+        run: |
+          psql "$DB_URL" -X -A -t -F '|' -v ON_ERROR_STOP=1 -c "
+            select
+              current_user,
+              current_setting('server_version'),
+              (select rolsuper::text from pg_roles where rolname = current_user),
+              (select rolcreaterole::text from pg_roles where rolname = current_user),
+              (select rolcanlogin::text from pg_roles where rolname = 'supabase_admin'),
+              pg_has_role(current_user, 'supabase_storage_admin', 'MEMBER')::text;
+          "
+
       - name: Apply isolated account deletion fixtures
         run: |
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f tests/supabase/account-deletion-storage-fixtures.sql
