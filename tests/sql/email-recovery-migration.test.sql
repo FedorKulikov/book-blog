@@ -57,8 +57,8 @@ begin
     raise exception 'could not issue valid email verification token';
   end if;
 
-  if not public.email_recovery_email_hash_verified(v_email_hash) then
-    raise exception 'email hash preflight failed to find issued address record';
+  if public.email_recovery_email_hash_verified(v_email_hash) then
+    raise exception 'mailbox was marked verified before the owner consumed the token';
   end if;
 
   if not public.consume_email_recovery_token(v_token_hash) then
@@ -67,6 +67,10 @@ begin
 
   if not public.email_recovery_is_verified(v_user_id, v_email_hash) then
     raise exception 'consumed token did not verify the exact user/email pair';
+  end if;
+
+  if not public.email_recovery_email_hash_verified(v_email_hash) then
+    raise exception 'email hash preflight did not find the confirmed address';
   end if;
 
   if public.email_recovery_is_verified(v_user_id, repeat('c', 64)) then
