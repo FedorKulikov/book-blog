@@ -74,13 +74,13 @@ test('production email verification links are pinned to bukleb.ru', () => {
   }
 })
 
-test('email recovery stays disabled unless server-only prerequisites are present', () => {
+test('email verification stays disabled unless all server prerequisites are present', () => {
   const keys = [
     'NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY',
     'EMAIL_RECOVERY_SECRET',
     'SUPABASE_SECRET_KEY',
     'NEXT_PUBLIC_SUPABASE_URL',
-    'AUTH_EMAIL_SITE_URL',
+    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   ] as const
   const previous = new Map(keys.map(key => [key, process.env[key]]))
 
@@ -89,10 +89,9 @@ test('email recovery stays disabled unless server-only prerequisites are present
     process.env.NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY = 'true'
     process.env.EMAIL_RECOVERY_SECRET = 'a'.repeat(64)
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co'
-    process.env.AUTH_EMAIL_SITE_URL = 'https://bukleb.ru'
     assert.equal(isEmailRecoveryConfigured(), true)
 
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    delete process.env.SUPABASE_SECRET_KEY
     assert.equal(isEmailRecoveryConfigured(), false)
   } finally {
     for (const key of keys) {
@@ -107,14 +106,12 @@ test('Edge mailer config is server-side and restricted to the project URL', () =
   const keys = [
     'SUPABASE_SECRET_KEY',
     'NEXT_PUBLIC_SUPABASE_URL',
-    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   ] as const
   const previous = new Map(keys.map(key => [key, process.env[key]]))
 
   try {
-    process.env.SUPABASE_SERVICE_ROLE_KEY = 'server-service-role-test'
+    process.env.SUPABASE_SECRET_KEY = 'sb_secret_test'
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co'
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'public-test-key'
     assert.deepEqual(getEdgeMailerConfig(), {
       supabaseUrl: 'https://project.supabase.co',
       secretKey: 'sb_secret_test',
@@ -180,7 +177,7 @@ test('verification email is sent through the protected Supabase Edge Function', 
   assert.equal(hasTimeout, true)
 })
 
-test('Edge mailer provider errors never expose response bodies', async () => {
+test('Edge mailer errors never expose response bodies', async () => {
   const fakeFetch: typeof fetch = async () => new Response(
     JSON.stringify({ message: 'recipient private data and token' }),
     { status: 502 },
@@ -196,8 +193,7 @@ test('Edge mailer provider errors never expose response bodies', async () => {
       },
       {
         supabaseUrl: 'https://project.supabase.co',
-        publishableKey: 'sb_publishable_test',
-        serviceRoleKey: 'server-service-role-test',
+        secretKey: 'sb_secret_test',
       },
       fakeFetch,
     ),
