@@ -64,6 +64,9 @@ jobs:
       - name: Chat media path tests
         run: npm run test:chat-media-paths
 
+      - name: Account deletion authentication tests
+        run: npm run test:account-deletion-auth
+
       - name: TypeScript
         run: npx tsc --noEmit
 

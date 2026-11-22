@@ -11,7 +11,8 @@
     "test:auth-navigation": "tsx --test tests/auth-navigation.test.ts",
     "test:email-recovery": "tsx --test tests/email-recovery.test.ts",
     "test:chat-media-paths": "tsx --test tests/chat-media-path.test.ts",
-    "test:account-deletion-storage": "tsx tests/account-deletion-storage.integration.ts"
+    "test:account-deletion-storage": "tsx tests/account-deletion-storage.integration.ts",
+    "test:account-deletion-auth": "tsx --test tests/account-deletion-auth.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

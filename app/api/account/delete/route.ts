@@ -9,6 +9,7 @@ import {
 } from '@/lib/account-deletion'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { requiresMfaStepUp } from '@/lib/account-deletion-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -71,8 +72,37 @@ export async function POST(request: Request) {
   const authTime = Number(claimsData?.claims?.auth_time)
   const now = Math.floor(Date.now() / 1000)
 
+  if (claimsError) {
+    return json(
+      { error: 'Не удалось проверить свежесть входа. Повторите аутентификацию.', code: 'RECENT_AUTH_REQUIRED' },
+      403,
+    )
+  }
+
+  const { data: assuranceData, error: assuranceError } =
+    await userClient.auth.mfa.getAuthenticatorAssuranceLevel()
+
+  if (assuranceError || !assuranceData) {
+    return json(
+      { error: 'Не удалось проверить второй фактор. Удаление временно недоступно.', code: 'MFA_CHECK_FAILED' },
+      503,
+    )
+  }
+
   if (
-    claimsError ||
+    requiresMfaStepUp({
+      currentLevel: assuranceData.currentLevel,
+      nextLevel: assuranceData.nextLevel,
+      jwtAssuranceLevel: claimsData?.claims?.aal as 'aal1' | 'aal2' | undefined,
+    })
+  ) {
+    return json(
+      { error: 'Для этого аккаунта требуется подтвердить второй фактор MFA.', code: 'MFA_REQUIRED' },
+      403,
+    )
+  }
+
+  if (
     !Number.isFinite(authTime) ||
     authTime <= 0 ||
     authTime > now + 30 ||

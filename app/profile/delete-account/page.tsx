@@ -7,6 +7,12 @@ import { supabase } from '@/lib/supabase'
 
 type ChatMode = 'preserve' | 'delete_own_messages'
 type Blocker = { code: string; label: string; count: number }
+type MfaFactor = {
+  id: string
+  factor_type: 'totp' | 'phone'
+  friendly_name: string | null
+  phone?: string
+}
 
 const CONFIRMATION = 'УДАЛИТЬ АККАУНТ'
 
@@ -21,6 +27,11 @@ export default function DeleteAccountPage() {
   const [blockers, setBlockers] = useState<Blocker[]>([])
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [mfaFactors, setMfaFactors] = useState<MfaFactor[]>([])
+  const [mfaFactorId, setMfaFactorId] = useState('')
+  const [mfaChallengeId, setMfaChallengeId] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
+  const [mfaRequired, setMfaRequired] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -45,39 +56,7 @@ export default function DeleteAccountPage() {
     }
   }, [router])
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setError(null)
-    setBlockers([])
-
-    if (!accountId || !email) {
-      setError('Не удалось определить текущий аккаунт. Обновите страницу и войдите заново.')
-      return
-    }
-    if (confirmation !== CONFIRMATION) {
-      setError(`Введите точную фразу: ${CONFIRMATION}`)
-      return
-    }
-    if (!password) {
-      setError('Введите текущий пароль для повторного подтверждения личности.')
-      return
-    }
-
-    setSubmitting(true)
-
-    // Password is sent only to Supabase Auth for step-up authentication. It is
-    // never sent to the account deletion API or written to application logs.
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (authError || !authData.user || authData.user.id !== accountId) {
-      setSubmitting(false)
-      setError('Не удалось повторно подтвердить этот аккаунт. Проверьте пароль.')
-      return
-    }
-
+  async function sendDeletionRequest() {
     const response = await fetch('/api/account/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -104,6 +83,11 @@ export default function DeleteAccountPage() {
       return
     }
 
+    if (response.status === 403 && result.code === 'MFA_REQUIRED') {
+      setError('Подтвердите второй фактор MFA, затем повторите удаление.')
+      return
+    }
+
     if (!response.ok) {
       setError(
         typeof result.error === 'string'
@@ -115,6 +99,137 @@ export default function DeleteAccountPage() {
 
     await supabase.auth.signOut({ scope: 'local' })
     window.location.assign('/login?deleted=1')
+  }
+
+  async function startMfaChallenge() {
+    if (!mfaFactorId) {
+      setError('Выберите подтверждённый фактор MFA.')
+      return
+    }
+
+    setError(null)
+    setSubmitting(true)
+    const { data, error: challengeError } = await supabase.auth.mfa.challenge({
+      factorId: mfaFactorId,
+    })
+
+    if (challengeError || !data?.id) {
+      setSubmitting(false)
+      setError('Не удалось подготовить проверку MFA. Попробуйте ещё раз.')
+      return
+    }
+
+    setMfaChallengeId(data.id)
+    setMfaCode('')
+    setSubmitting(false)
+    setError(
+      'Введите одноразовый код из приложения-аутентификатора или SMS, в зависимости от выбранного фактора.',
+    )
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError(null)
+    setBlockers([])
+
+    if (!accountId || !email) {
+      setError('Не удалось определить текущий аккаунт. Обновите страницу и войдите заново.')
+      return
+    }
+    if (confirmation !== CONFIRMATION) {
+      setError(`Введите точную фразу: ${CONFIRMATION}`)
+      return
+    }
+
+    setSubmitting(true)
+
+    // If a factor challenge is active, verify it before invoking the server.
+    // The route independently validates the signed AAL claim.
+    if (mfaRequired) {
+      if (!mfaChallengeId || !mfaFactorId || !mfaCode.trim()) {
+        setSubmitting(false)
+        setError('Сначала подготовьте проверку MFA и введите одноразовый код.')
+        return
+      }
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId: mfaFactorId,
+        challengeId: mfaChallengeId,
+        code: mfaCode.trim(),
+      })
+
+      if (verifyError) {
+        setSubmitting(false)
+        setError('Код MFA не принят. Проверьте его и повторите попытку.')
+        return
+      }
+
+      setMfaChallengeId('')
+      setMfaCode('')
+      await sendDeletionRequest()
+      return
+    }
+
+    if (!password) {
+      setSubmitting(false)
+      setError('Введите текущий пароль для повторного подтверждения личности.')
+      return
+    }
+
+    // Password is sent only to Supabase Auth. It is never sent to our deletion
+    // API or logged by the application.
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (authError || !authData.user || authData.user.id !== accountId) {
+      setSubmitting(false)
+      setError('Не удалось повторно подтвердить этот аккаунт. Проверьте пароль.')
+      return
+    }
+
+    const { data: assurance, error: assuranceError } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+
+    if (assuranceError || !assurance) {
+      setSubmitting(false)
+      setError('Не удалось проверить второй фактор. Повторите вход позже.')
+      return
+    }
+
+    if (assurance.nextLevel === 'aal2' && assurance.currentLevel !== 'aal2') {
+      const { data: listed, error: listError } = await supabase.auth.mfa.listFactors()
+      if (listError || !listed) {
+        setSubmitting(false)
+        setError('Не удалось получить список подтверждённых факторов MFA.')
+        return
+      }
+
+      const verifiedFactors = [...listed.totp, ...listed.phone].filter(
+        factor => factor.status === 'verified',
+      ) as MfaFactor[]
+
+      if (verifiedFactors.length === 0) {
+        setSubmitting(false)
+        setError('Для аккаунта требуется MFA, но подтверждённый фактор не найден. Удаление остановлено.')
+        return
+      }
+
+      // Prefer TOTP; use a verified phone factor if no authenticator factor exists.
+      const preferredFactor =
+        verifiedFactors.find(factor => factor.factor_type === 'totp') ?? verifiedFactors[0]
+
+      setMfaFactors(verifiedFactors)
+      setMfaFactorId(preferredFactor.id)
+      setMfaRequired(true)
+      setPassword('')
+      setSubmitting(false)
+      setError('Пароль подтверждён. Подтвердите второй фактор MFA, чтобы продолжить.')
+      return
+    }
+
+    await sendDeletionRequest()
   }
 
   if (loadingAccount) {
@@ -192,24 +307,78 @@ export default function DeleteAccountPage() {
           />
         </div>
 
-        <div>
-          <label htmlFor="current-password" className="block text-sm font-medium text-brown-dark">
-            Текущий пароль для повторного входа
-          </label>
-          <input
-            id="current-password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={event => setPassword(event.target.value)}
-            className="mt-1 w-full rounded-xl border border-emerald-dark/15 bg-cream px-3 py-2 text-sm outline-none focus:border-emerald-mid"
-            required
-          />
-          <p className="mt-1 text-xs text-brown/55">
-            Пароль проверяется Supabase Auth и не передаётся в обработчик удаления.
-            Для аккаунтов без пароля потребуется отдельная повторная аутентификация.
-          </p>
-        </div>
+        {!mfaRequired ? (
+          <div>
+            <label htmlFor="current-password" className="block text-sm font-medium text-brown-dark">
+              Текущий пароль для повторного входа
+            </label>
+            <input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={event => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-emerald-dark/15 bg-cream px-3 py-2 text-sm outline-none focus:border-emerald-mid"
+              required
+            />
+            <p className="mt-1 text-xs text-brown/55">
+              Пароль проверяется Supabase Auth и не передаётся в обработчик удаления.
+              Для аккаунтов без пароля потребуется отдельный способ повторного входа.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3 rounded-xl border border-emerald-dark/15 bg-cream-warm/50 p-4">
+            <p className="text-sm font-semibold text-brown-dark">Дополнительная проверка MFA</p>
+            <label htmlFor="mfa-factor" className="block text-sm text-brown-dark">
+              Подтверждённый фактор
+            </label>
+            <select
+              id="mfa-factor"
+              value={mfaFactorId}
+              onChange={event => {
+                setMfaFactorId(event.target.value)
+                setMfaChallengeId('')
+                setMfaCode('')
+              }}
+              className="w-full rounded-xl border border-emerald-dark/15 bg-cream px-3 py-2 text-sm"
+            >
+              {mfaFactors.map(factor => (
+                <option key={factor.id} value={factor.id}>
+                  {factor.factor_type === 'totp' ? 'Приложение-аутентификатор' : 'SMS'}
+                  {factor.friendly_name ? ` — ${factor.friendly_name}` : ''}
+                  {factor.factor_type === 'phone' && factor.phone ? ` (${factor.phone})` : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void startMfaChallenge()}
+              disabled={submitting || !mfaFactorId}
+              className="rounded-full border border-emerald-dark/20 px-4 py-2 text-sm font-medium text-emerald-dark disabled:opacity-50"
+            >
+              {mfaChallengeId ? 'Отправить новый код / обновить проверку' : 'Подготовить проверку MFA'}
+            </button>
+            {mfaChallengeId && (
+              <>
+                <label htmlFor="mfa-code" className="block text-sm text-brown-dark">
+                  Одноразовый код MFA
+                </label>
+                <input
+                  id="mfa-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={event => setMfaCode(event.target.value.replace(/\s/g, ''))}
+                  className="w-full rounded-xl border border-emerald-dark/15 bg-cream px-3 py-2 text-sm"
+                  required
+                />
+              </>
+            )}
+            <p className="text-xs leading-5 text-brown/60">
+              Удаление не начнётся, пока Supabase Auth не подтвердит выбранный фактор.
+            </p>
+          </div>
+        )}
 
         <div>
           <label htmlFor="delete-confirmation" className="block text-sm font-medium text-brown-dark">
@@ -253,10 +422,10 @@ export default function DeleteAccountPage() {
 
         <button
           type="submit"
-          disabled={submitting || !accountId || !email}
+          disabled={submitting || !accountId || !email || (mfaRequired && (!mfaChallengeId || !mfaCode.trim()))}
           className="w-full rounded-full bg-wine px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-wine/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {submitting ? 'Выполняется безопасное удаление…' : 'Подтвердить удаление аккаунта'}
+          {submitting ? 'Проверяем данные…' : mfaRequired ? 'Подтвердить MFA и удалить аккаунт' : 'Подтвердить удаление аккаунта'}
         </button>
       </form>
     </main>
