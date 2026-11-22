@@ -501,3 +501,11 @@
 **Проверки добавлены:** unit-тесты server flow (422 без checkbox, отказ rate-limit/consent RPC, успешный insert с server-auth user, игнорирование клиентского user_id); PostgreSQL 17-тест с A/B, no-session, own consent, foreign-user isolation, revoke и повторным запретом; обновлён manual client-write smoke. CI ожидается. Production migration, live post, тестовую публикацию и изменения пользователя ещё не выполняли.
 
 **Границы:** /privacy и recovery/Hook/mailer_autoconfirm/secrets не менялись; SUPABASE_SERVICE_ROLE_KEY не добавлялся.
+
+## 2026-11-23 — B12, этап 2: дополнительная защита public storage
+
+**Обнаружено:** production bucket `post-images` имеет `public=true` и публичную SELECT policy. Значит, одной блокировки INSERT в `posts` недостаточно: само изображение становилось доступным по public URL при загрузке до отправки формы.
+
+**Исправлено:** отдельный consent checkbox расположен выше ImageUploader; загрузка разрешена только после установки флажка. На время загрузки блокируются checkbox и Submit. Пока публичные изображения прикреплены, снятие согласия блокируется до удаления каждого объекта из Storage. Удаление проверяет ошибку Storage; общий лимит — пять файлов на публикацию; при частичном сбое выполняется попытка cleanup, неубранные пути остаются доступны пользователю для удаления.
+
+**Smoke:** проверка триггера была преждевременно включена в live pre-deployment smoke, запускаемый до применения migration к production. Этот assertion убран из live smoke; то же поведение и изоляция A/B проверяются изолированным PostgreSQL 17 job. Сам production не модифицировался. Новый CI после последней правки ожидается.
