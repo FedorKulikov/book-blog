@@ -208,3 +208,18 @@
   - Web quality checks: PostgreSQL 17 migration, Supabase Auth + Storage integration, actionlint, regression tests, TypeScript, ESLint и production build — success.
 - Локально запустить `deno test` не удалось: в рабочей среде нет исполняемого файла Deno. Deno suite успешно выполнен runner GitHub Actions.
 - PR #69 остаётся открытым; `main` не изменялась. Production email delivery/signup не тестировались. `mailer_autoconfirm`, Supabase Hook config/secrets, SMTP, `RECOVERY_CODE_SECRET` и таблица резервных кодов не менялись.
+
+
+## 2026-11-22 — B8, шаг 4: документация email password recovery приведена к актуальному Hook flow
+
+**Требовалось:** убрать утверждения, что email-сброс отключён или событие `recovery` подавляется; описать текущий поток через форму `/forgot-password`, Supabase Auth и общий Send Email Hook; не оставлять в README старую инструкцию через серверный маршрут `/api/email-recovery/reset-request`.
+
+**Сделано:**
+- В `docs/email-confirmation-rollout.md` сброс по email описан как включённый в реализации для подтверждённых адресов. Обновлены действия `auth-email-hook`: `recovery` отправляет письмо через `resend-mailer` на `user.email`, ссылка ведёт к `/auth/reset`; задокументирован мягкий отказ signup (`200 {}`) и прежний `502` для recovery/email_change при сбое mailer.
+- В `README.md` переписан раздел «Восстановление пароля»: форма вызывает `supabase.auth.resetPasswordForEmail(email.trim())`, отвечает нейтрально и использует тот же Hook, что и подтверждение регистрации. Описание старого custom reset endpoint заменено на актуальный поток; старый feature flag `NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY` убран из таблицы переменных.
+- В README обновлены разделы резервных кодов и Send Email Hook; устаревшие заявления, что почта/подтверждение выключены и recovery подавляется, удалены. Ссылка на актуальную инструкцию ведёт на `docs/email-confirmation-rollout.md`.
+- В rollout-документе отдельно указано: реализация находится в открытом PR #69, а production-активация конкретной версии Edge Functions зависит от merge и deploy.
+
+**Проверено:** после записи повторно прочитаны оба файла. Проверено, что старые фразы `Сброс пароля по email остаётся отключённым`, `Email recovery также выключен по умолчанию`, `NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY` и ссылка на старый rollout guide отсутствуют. В README путь `/api/email-recovery/reset-request` упоминается только как явно неиспользуемый старый маршрут; основной описанный путь — `supabase.auth.resetPasswordForEmail`.
+
+**Не выполнено / ограничения:** CI для новых документальных коммитов ещё должен завершиться. PR #69 не слит; production email recovery E2E не выполнялся. `mailer_autoconfirm`, Supabase Auth Hook configuration/secrets, SMTP, `RECOVERY_CODE_SECRET` и таблица резервных кодов не менялись.
