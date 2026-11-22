@@ -224,8 +224,8 @@ create policy ci_chat_media_insert_own_path
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
-drop policy if exists ci_chat_media_select_conversation_participants on storage.objects;
-create policy ci_chat_media_select_conversation_participants
+drop policy if exists chat_media_select_conversation_participants on storage.objects;
+create policy chat_media_select_conversation_participants
   on storage.objects
   for select
   to authenticated
