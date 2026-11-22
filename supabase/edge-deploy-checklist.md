@@ -26,6 +26,9 @@
 
 ## 3. Подготовить секреты
 
+- В серверном окружении приложения (Layero) должен быть установлен `SUPABASE_SECRET_KEY` нового формата для service-to-service вызова Edge mailer. Не использовать legacy JWT как `apikey`; значение не должно начинаться с `NEXT_PUBLIC_`. Наличие в Layero сейчас не проверено.
+- `RESEND_API_KEY` должен быть добавлен вручную владельцем только в Supabase Function Secrets. Наличие имени этого секрета в Supabase на текущий момент не проверено; до подтверждения тестовую отправку не запускать.
+
 - В GitHub Actions Secret должен находиться стабильный `AUTH_EMAIL_HOOK_SECRET` формата Standard Webhooks. Workflow только читает его и переносит в Supabase Function Secrets; он не генерирует новый ключ. Существующее значение не ротировать.
 - То же значение должно быть указано в Supabase Auth Hook config.
 - `RESEND_API_KEY` владелец добавляет вручную только в Supabase → Edge Function Secrets после verified домена. Перед запуском deploy/delivery владелец должен подтвердить наличие имени секрета в Dashboard; его значение не выводить.
