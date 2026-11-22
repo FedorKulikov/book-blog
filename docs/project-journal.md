@@ -110,3 +110,11 @@
 - Доступные GitHub/Supabase tools не умеют безопасно перечислять имена Actions Secrets и Supabase Function Secrets. Поэтому факт наличия RESEND_API_KEY в runtime/secret stores и AUTH_EMAIL_HOOK_SECRET пока не подтверждён. Никакие значения секретов не читались и не раскрывались.
 - Не создавались домен/API key; не менялись Selectel DNS, GitHub Secrets, Supabase secrets, Hook config или Edge Functions; тестовое письмо не отправлялось.
 - B остановлена на шаге 1: нужно подтвердить правильный Resend account и добавить/выбрать bukleb.ru для получения DNS records. Только после этого можно перейти к анализу точных DNS записей и Selectel.
+
+
+### 2026-11-22 — B: шаг 1 — домен создан в Resend, ожидаются DNS-записи владельца
+
+- Resend domain `bukleb.ru` создан, ID `f7a3e373-1d49-4c08-bef2-4a8bacdd32b2`, статус `not_started`; регион по умолчанию API — `us-east-1` (США), sending включён, receiving и click/open tracking выключены.
+- DNS: TXT `resend._domainkey` = `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDExUvBGqr9OyRiduyI/xAWgbv7DSq6YLAzJrhUa7mw1kAYv7DJ+4dQYQgKeSRvfxH9LBOihbCObdmlbNVXcBiHpmvEIXN/WE1KtbY3Iei8nd+7PG/pbVtR5p4yf+unUYSc+EzZCCISeusinhT5n0dpzrYRzIvT1RJWspALAv0mZwIDAQAB` (TTL Auto); MX `send` = `feedback-smtp.us-east-1.amazonses.com` (TTL Auto, priority 10); TXT `send` = `v=spf1 include:amazonses.com ~all` (TTL Auto); CNAME `rsend` = `send.forge.rmta.net` (TTL Auto).
+- Ожидается, что владелец добавит именно четыре новые записи в Selectel, не меняя _layero-verify, apex A, SOA, NS, www CNAME, yandex-verification TXT и корневой SPF. Имена send/resend._domainkey/rsend относятся к соответствующим поддоменам bukleb.ru.
+- Не запускать verify до сообщения владельца о добавлении DNS. Не создавать/менять секреты, Hook или отправку писем до статуса `verified`. Ключ Resend не читался и не раскрывался.
