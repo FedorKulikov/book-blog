@@ -475,3 +475,13 @@
 **Security Advisor:** INFO о таблице private без RLS policies ожидаем и соответствует default-deny плюс отсутствию прямых grants. Предупреждения по существующим view-counter SECURITY DEFINER функциям и настройке leaked password protection не относятся к этой миграции и не изменялись.
 
 **Границы:** восстановление, Edge Function `recovery`, Send Email Hook, `mailer_autoconfirm`, секреты, приложение и политика не изменялись.
+
+## 2026-11-23 — B12, этап 1.5: authenticated RPC wrappers
+
+**Требовалось:** дать пользовательскому приложению безопасный способ записывать, отзывать и читать только собственные согласия, поскольку старые RPC этапа 1 доступны только service_role.
+
+**Сделано:** добавлена миграция 20261210_distribution_consent_user_rpcs.sql с record_my_distribution_consent, revoke_my_distribution_consent и my_distribution_consents. Все функции используют auth.uid(), не принимают user_id, имеют SECURITY DEFINER и пустой search_path; функция чтения — STABLE. Функции без пользовательской сессии завершаются SQLSTATE 28000; запись валидирует scope, категории и версию. EXECUTE выдан authenticated и service_role, отозван у PUBLIC и anon. Прямой доступ к private-таблице не выдавался.
+
+**Проверки добавлены:** чистая PostgreSQL 17 fixture теперь предоставляет auth.uid(); отдельный SQL-тест проверяет поведение без сессии, отсутствие параметра user_id, изоляцию двух пользователей A/B, чтение только своих строк, невозможность отозвать чужую строку, разрешённые роли, владельца/SECURITY DEFINER/search_path и STABLE. Фактический результат CI пока ожидается.
+
+**Документация и границы:** перед этапом слит PR #77 после 4/4 успешных CI jobs (merge commit 37793c9ef8f77664b4018f0506bbabee08dc79ac). Текущий кодовый PR создаётся отдельно. Production-миграция ещё не применялась; пользовательские строки не создавались. Этап 2 не начинался. Не менялись /privacy, recovery, Hook, mailer_autoconfirm и secrets; service-role key в app не добавлялся.
