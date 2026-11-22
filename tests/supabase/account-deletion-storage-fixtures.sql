@@ -47,6 +47,45 @@ create table public.external_news (
   created_by uuid
 );
 
+-- Minimal content/support tables for the deletion preflight and write lock.
+-- They deliberately start empty: the migration must refuse deletion when
+-- retention-sensitive rows exist.
+create table public.posts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.comments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.tickets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.ticket_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.action_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  actor_id uuid not null references public.profiles(id) on delete cascade
+);
+
 grant all on public.external_news to service_role;
 
 -- Mirror the production message/conversation guards from
