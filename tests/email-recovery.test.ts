@@ -191,6 +191,7 @@ test('Edge mailer errors never expose response bodies', async () => {
         subject: 'Verify',
         html: '<p>Verify</p>',
         text: 'Verify',
+        idempotencyKey: 'email-recovery-verify/user-1/failure',
       },
       {
         supabaseUrl: 'https://project.supabase.co',
