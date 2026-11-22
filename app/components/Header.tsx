@@ -114,6 +114,7 @@ export default function Sidebar() {
     { href: '/messages', label: 'Сообщения', Icon: Mail, badge: true },
     { href: '/support', label: 'Поддержка', Icon: LifeBuoy },
     { href: '/rules', label: 'Правила сообщества', Icon: Shield },
+    { href: '/privacy', label: 'Политика конфиденциальности', Icon: Shield },
   ]
 
   const isStaff = profile?.role === 'admin' || profile?.role === 'moderator'

@@ -330,11 +330,14 @@ export default function SignupPage() {
         </form>
 
         <p className="mt-4 text-sm text-brown/70">
-          Перед началом использования ознакомьтесь с{' '}
+          Перед регистрацией ознакомьтесь с{' '}
           <Link href="/rules" className="text-wine hover:underline">
             Правилами сообщества
-          </Link>
-          .
+          </Link>{' '}
+          и{' '}
+          <Link href="/privacy" className="text-wine hover:underline">
+            информацией об обработке персональных данных
+          </Link>.
         </p>
 
         <p className="mt-4 text-sm text-brown/70">

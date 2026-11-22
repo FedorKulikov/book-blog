@@ -132,6 +132,10 @@ jobs:
             app/sitemap.ts \
             app/components/JsonLd.tsx \
             app/components/Header.tsx \
+            app/components/YandexMetrika.tsx \
+            app/components/CookieSettingsButton.tsx \
+            app/privacy/page.tsx \
+            app/support/NewTicketForm.tsx \
             app/rules/page.tsx \
             lib/auth-navigation.ts \
             lib/email-recovery.ts \
