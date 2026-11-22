@@ -46,6 +46,8 @@ export default function ImageUploader({ onUploaded, enabled = true, onUploadingC
 
     setUploading(true)
     onUploadingChange?.(true)
+    const newUrls: string[] = []
+    const newPaths: string[] = []
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -54,18 +56,15 @@ export default function ImageUploader({ onUploaded, enabled = true, onUploadingC
         return
       }
 
-      const newUrls: string[] = []
-      const newPaths: string[] = []
-
       for (const file of batch) {
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-      const fileName = `${user.id}/${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}.${ext}`
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+        const fileName = `${user.id}/${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}.${ext}`
 
-      const { error: uploadError } = await supabase.storage
-        .from('post-images')
-        .upload(fileName, file, { contentType: file.type })
+        const { error: uploadError } = await supabase.storage
+          .from('post-images')
+          .upload(fileName, file, { contentType: file.type })
 
         if (uploadError) {
           setError('Ошибка загрузки: ' + uploadError.message)
@@ -86,7 +85,16 @@ export default function ImageUploader({ onUploaded, enabled = true, onUploadingC
       setUrls(allUrls)
       onUploaded(allUrls)
     } catch {
-      setError('Не удалось загрузить фотографии. Проверьте соединение и попробуйте ещё раз.')
+      if (newPaths.length > 0) {
+        const { error: cleanupError } = await supabase.storage.from('post-images').remove(newPaths)
+        if (cleanupError) {
+          setError('Загрузка прервалась. Не удалось удалить часть файлов из публичного хранилища; обратитесь к оператору.')
+        } else {
+          setError('Не удалось загрузить фотографии. Временные файлы удалены; попробуйте ещё раз.')
+        }
+      } else {
+        setError('Не удалось загрузить фотографии. Проверьте соединение и попробуйте ещё раз.')
+      }
     } finally {
       setUploading(false)
       onUploadingChange?.(false)
