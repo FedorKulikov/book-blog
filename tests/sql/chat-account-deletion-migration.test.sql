@@ -138,6 +138,7 @@ begin
     where not tgisinternal
       and tgenabled <> 'D'
       and tgname in (
+        'profiles_block_deleting_user_writes',
         'posts_block_deleting_user_writes',
         'comments_block_deleting_user_writes',
         'tickets_block_deleting_user_writes',
@@ -154,7 +155,7 @@ begin
         'external_news_block_deleting_user_references',
         'books_block_deleting_user_references'
       )
-  ) <> 15 then
+  ) <> 16 then
     raise exception 'all retention-sensitive write-lock triggers must be enabled';
   end if;
 
