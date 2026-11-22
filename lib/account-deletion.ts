@@ -39,6 +39,9 @@ type StorageEntry = {
   metadata?: unknown
 }
 
+const ACCOUNT_DELETION_PAGE_SIZE = 500
+const ACCOUNT_DELETION_MAX_MESSAGE_ROWS = 100_000
+
 /**
  * Returns aggregate blockers only. No user content or message text is read.
  * Any query error fails closed: account deletion must not proceed on an
@@ -203,21 +206,43 @@ async function copyChatMediaIfMissing(
   return destinationPath
 }
 
+async function readAllOwnedMediaMessageReferences(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<MessageMediaReference[]> {
+  const userPathPrefix = `${userId}/%`
+  const userPathInUrl = `%/${userId}/%`
+  const rows: MessageMediaReference[] = []
+
+  for (
+    let offset = 0;
+    offset < ACCOUNT_DELETION_MAX_MESSAGE_ROWS;
+    offset += ACCOUNT_DELETION_PAGE_SIZE
+  ) {
+    const { data, error } = await admin
+      .from('messages')
+      .select('id, sender_id, image_url, audio_url')
+      .or(`image_url.ilike.${userPathPrefix},audio_url.ilike.${userPathPrefix},image_url.ilike.${userPathInUrl},audio_url.ilike.${userPathInUrl}`)
+      .order('id', { ascending: true })
+      .range(offset, offset + ACCOUNT_DELETION_PAGE_SIZE - 1)
+
+    if (error) throw new Error('could not inspect chat-media references')
+
+    const page = (data ?? []) as MessageMediaReference[]
+    rows.push(...page)
+
+    if (page.length < ACCOUNT_DELETION_PAGE_SIZE) return rows
+  }
+
+  throw new Error('chat-media reference count exceeds the safe account deletion limit')
+}
+
 async function rehomeRemainingReferences(
   admin: SupabaseClient,
   userId: string,
   mode: ChatDeletionMode,
 ): Promise<void> {
-  const userPathPrefix = `${userId}/%`
-  const userPathInUrl = `%/${userId}/%`
-  const { data, error } = await admin
-    .from('messages')
-    .select('id, sender_id, image_url, audio_url')
-    .or(`image_url.ilike.${userPathPrefix},audio_url.ilike.${userPathPrefix},image_url.ilike.${userPathInUrl},audio_url.ilike.${userPathInUrl}`)
-
-  if (error) throw new Error('could not inspect chat-media references')
-
-  const rows = (data ?? []) as MessageMediaReference[]
+  const rows = await readAllOwnedMediaMessageReferences(admin, userId)
   const ownedSources = new Set<string>()
 
   for (const row of rows) {
@@ -275,15 +300,36 @@ async function deleteOwnMessagesAndEmptyConversations(
   admin: SupabaseClient,
   userId: string,
 ): Promise<void> {
-  const { data, error: readError } = await admin
-    .from('messages')
-    .select('id, conversation_id')
-    .eq('sender_id', userId)
+  const conversationIds = new Set<string>()
+  let totalRows = 0
 
-  if (readError) throw new Error('could not list messages selected for deletion')
-  const conversationIds = Array.from(
-    new Set((data ?? []).map((row) => row.conversation_id as string)),
-  )
+  for (
+    let offset = 0;
+    offset < ACCOUNT_DELETION_MAX_MESSAGE_ROWS;
+    offset += ACCOUNT_DELETION_PAGE_SIZE
+  ) {
+    const { data, error } = await admin
+      .from('messages')
+      .select('conversation_id')
+      .eq('sender_id', userId)
+      .order('conversation_id', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + ACCOUNT_DELETION_PAGE_SIZE - 1)
+
+    if (error) throw new Error('could not list messages selected for deletion')
+
+    const page = data ?? []
+    totalRows += page.length
+    for (const row of page) {
+      conversationIds.add(row.conversation_id as string)
+    }
+
+    if (page.length < ACCOUNT_DELETION_PAGE_SIZE) break
+  }
+
+  if (totalRows >= ACCOUNT_DELETION_MAX_MESSAGE_ROWS) {
+    throw new Error('account message count exceeds the safe account deletion limit')
+  }
 
   const { error: deleteError } = await admin
     .from('messages')
