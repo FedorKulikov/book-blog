@@ -151,9 +151,10 @@ begin
         'follows_block_deleting_user_writes',
         'user_blocks_block_deleting_user_writes',
         'post_images_block_deleting_user_references',
-        'external_news_block_deleting_user_references'
+        'external_news_block_deleting_user_references',
+        'books_block_deleting_user_references'
       )
-  ) <> 14 then
+  ) <> 15 then
     raise exception 'all retention-sensitive write-lock triggers must be enabled';
   end if;
 end;
