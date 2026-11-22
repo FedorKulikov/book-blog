@@ -1529,6 +1529,25 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
     .single()
   checkError('read original preserved message by ID', retainedOriginalMessageError)
 
+  // The remaining participant must still be able to mark anonymized messages
+  // as read. The old sender_id is NULL, so the read-protection trigger must
+  // treat the active participant as the recipient rather than the old sender.
+  const { data: markedReadRows, error: markReadError } = await counterpart.client
+    .from('messages')
+    .update({ read_at: new Date().toISOString() })
+    .eq('id', messageId)
+    .is('read_at', null)
+    .select('id, read_at')
+  checkError('mark anonymized message as read', markReadError)
+  assert.equal(markedReadRows?.length, 1, 'the surviving participant must be able to mark a retained message as read')
+  assert.ok(markedReadRows?.[0]?.read_at, 'the read timestamp must be persisted')
+
+  const { error: clearReadAtError } = await counterpart.client
+    .from('messages')
+    .update({ read_at: null })
+    .eq('id', messageId)
+  assert.ok(clearReadAtError, 'a participant must not clear an existing read timestamp')
+
   const retainedPhoto = retainedOriginalMessage?.image_url as string
   const retainedAudio = retainedOriginalMessage?.audio_url as string
   assert.ok(retainedPhoto.startsWith('retained/'), 'original photo must use a neutral path')
