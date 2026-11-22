@@ -1692,7 +1692,7 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     .from('messages')
     .insert(bulkOwnMessageRows)
   checkError('insert more than one PostgREST page of own messages', bulkOwnMessagesError)
-  await createMessage({
+  const counterpartMessageId = await createMessage({
     client: counterpart.client,
     conversationId,
     senderId: counterpart.id,
@@ -1700,6 +1700,39 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     text: 'This message belongs to the surviving participant',
     imageUrl: sharedPath,
   })
+
+  // Simulate the deleting user's message being the newest item in the chat.
+  // After removing that message, last_message_at must move back to the
+  // surviving participant's latest message, not remain a stale future value.
+  const latestOwnMessageAt = new Date(Date.now() + 60_000).toISOString()
+  const { error: latestOwnMessageError } = await admin.from('messages').insert({
+    conversation_id: conversationId,
+    sender_id: author.id,
+    sender_label: 'Service Remove Author',
+    text: 'This latest message must be removed and must not keep the conversation at the top',
+    image_url: sharedPath,
+    created_at: latestOwnMessageAt,
+  })
+  checkError('insert a synthetic latest message for conversation-order regression', latestOwnMessageError)
+
+  const { data: conversationBeforeDeletion, error: conversationBeforeError } = await admin
+    .from('conversations')
+    .select('last_message_at')
+    .eq('id', conversationId)
+    .single()
+  checkError('read conversation ordering before own-message deletion', conversationBeforeError)
+  assert.equal(
+    Date.parse(conversationBeforeDeletion.last_message_at),
+    Date.parse(latestOwnMessageAt),
+    'the deleting account message must become the current conversation timestamp before deletion',
+  )
+
+  const { data: counterpartMessageBeforeDeletion, error: counterpartMessageBeforeError } = await admin
+    .from('messages')
+    .select('created_at')
+    .eq('id', counterpartMessageId)
+    .single()
+  checkError('read surviving counterpart message timestamp before own-message deletion', counterpartMessageBeforeError)
 
   await beginAccountDeletion(admin, author.id, 'delete_own_messages')
   assert.deepEqual(await inspectAccountDeletionBlockers(admin, author.id), [])
@@ -1718,6 +1751,18 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
   const retainedSharedPath = remainingMessages?.[0]?.image_url as string
   assert.ok(retainedSharedPath.startsWith('retained/'), 'a shared object referenced by the counterpart must be re-homed')
   await expectDownload(counterpart.client, retainedSharedPath, true, 'counterpart retains shared file after own-message deletion')
+
+  const { data: conversationAfterDeletion, error: conversationAfterError } = await admin
+    .from('conversations')
+    .select('last_message_at')
+    .eq('id', conversationId)
+    .single()
+  checkError('read conversation ordering after own-message deletion', conversationAfterError)
+  assert.equal(
+    Date.parse(conversationAfterDeletion.last_message_at),
+    Date.parse(counterpartMessageBeforeDeletion.created_at),
+    'last_message_at must point to the newest surviving message after own-message deletion',
+  )
 
   await deleteAuthUser(counterpart.id, 'service-remove-counterpart')
 
