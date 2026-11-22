@@ -11,6 +11,7 @@
 - Не менять и не перегенерировать `RECOVERY_CODE_SECRET`. Он обслуживает активные резервные коды.
 - `RESEND_API_KEY` хранится только в Supabase Function Secrets. Он не добавляется в GitHub Secrets, Layero, клиентский код или репозиторий.
 - `AUTH_EMAIL_HOOK_SECRET` — один стабильный секрет: GitHub Actions Secret, Supabase Function Secret и signing secret в конфигурации Supabase Auth Hook должны совпадать. В Layero его не добавлять.
+- `SUPABASE_SECRET_KEY` нового формата нужен также в серверном окружении Next.js/Layero как caller credential для mailer; он не имеет префикса `NEXT_PUBLIC_`. Проверить наличие переменной, не раскрывая значение.
 
 ## 1. Проверить текущий Auth Hook
 
@@ -25,9 +26,9 @@
 
 ## 3. Подготовить секреты
 
-- В GitHub Actions Secret должен находиться стабильный `AUTH_EMAIL_HOOK_SECRET` формата Standard Webhooks. Генерировать один раз только если он ещё не создан; существующее значение не ротировать.
+- В GitHub Actions Secret должен находиться стабильный `AUTH_EMAIL_HOOK_SECRET` формата Standard Webhooks. Workflow только читает его и переносит в Supabase Function Secrets; он не генерирует новый ключ. Существующее значение не ротировать.
 - То же значение должно быть указано в Supabase Auth Hook config.
-- `RESEND_API_KEY` владелец добавляет вручную только в Supabase → Edge Function Secrets после verified домена.
+- `RESEND_API_KEY` владелец добавляет вручную только в Supabase → Edge Function Secrets после verified домена. Перед запуском deploy/delivery владелец должен подтвердить наличие имени секрета в Dashboard; его значение не выводить.
 - Существующий `RECOVERY_CODE_SECRET` не читать, не генерировать, не копировать повторно и не перезаписывать. Workflow его не синхронизирует.
 
 ## 4. Deploy Edge Functions
@@ -37,21 +38,21 @@ Workflow deploys:
 - `auth-email-hook` — проверка Standard Webhooks, recovery-событие подавляется;
 - `resend-mailer` — отправка HTTPS API Resend.
 
-Для `resend-mailer` включена gateway JWT verification (`verify_jwt = true`); обработчик дополнительно разрешает только claim `role=service_role`. Отправитель фиксирован: `Хлеба и букв <no-reply@bukleb.ru>`.
+Для `resend-mailer` новые Supabase secret API keys не являются JWT: в `supabase/config.toml` задано `verify_jwt = false`, а handler сверяет заголовок `apikey` со значением `default` из платформенной `SUPABASE_SECRET_KEYS` constant-time сравнением. Без точного совпадения mailer отвечает 401. В Next.js серверном окружении должен быть `SUPABASE_SECRET_KEY` нового формата; он передаётся только в `apikey` заголовке. Отправитель фиксирован: `Хлеба и букв <no-reply@bukleb.ru>`.
 Не использовать `--prune`; не менять настройки Email provider/SMTP.
 
 ## 5. Проверить безопасные ответы
 
 - `recovery?op=status` без JWT → 401.
 - `auth-email-hook` без подписи → 401; без секрета → 500 (fail closed).
-- `resend-mailer` без JWT → 401 на gateway; обычный пользовательский JWT → 403 в обработчике.
+- `resend-mailer` без заголовка `apikey` или с неверным ключом → 401 в обработчике; обычный user JWT не даёт доступа.
 - Deno unit tests покрывают Resend вызов, фиксированный From, idempotency key, 10-секундный timeout и отсутствие раскрытия provider response.
 - Проверить, что workflow не содержит `RECOVERY_CODE_SECRET` и не передаёт его в `supabase secrets set`.
 
 ## 6. Отправка писем и защита пароля
 
 - Письмо подтверждения владения email отправляется только из `resend-mailer` через Resend HTTPS API.
-- Next.js серверный маршрут вызывает Edge Function с service-role JWT; Resend key остаётся в Function Secrets.
+- Next.js серверный маршрут вызывает Edge Function с новым `SUPABASE_SECRET_KEY` только в заголовке `apikey`; Resend key остаётся в Function Secrets.
 - Provider timeout ≤10 секунд; логи содержат только статические ошибки, без email, тела письма или токена.
 - Verification link ведёт на `https://bukleb.ru/email-recovery/confirm`.
 - Password-reset email links запрещены. `/api/email-recovery/reset-request` отвечает нейтрально и не отправляет письмо; сброс пароля остаётся по резервным кодам/passkeys.
