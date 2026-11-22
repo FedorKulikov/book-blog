@@ -125,6 +125,12 @@ jobs:
             lib/chat-media-path.ts \
             app/messages/'[id]'/page.tsx \
             app/components/MessageBubble.tsx \
+            app/api/account/delete/route.ts \
+            app/profile/delete-account/page.tsx \
+            lib/account-deletion.ts \
+            lib/account-deletion-auth.ts \
+            tests/account-deletion-auth.test.ts \
+            tests/account-deletion-storage.integration.ts \
             proxy.ts \
             next.config.ts
       - name: Production build
