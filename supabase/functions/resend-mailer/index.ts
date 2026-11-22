@@ -1,11 +1,14 @@
 // supabase/functions/resend-mailer/index.ts
 //
-// Server-to-server mail delivery through Resend.
-// Gateway JWT verification is enabled in supabase/config.toml. The caller
-// must present the server-only Supabase service-role JWT; ordinary user JWTs
-// are rejected here even though the gateway accepts valid project JWTs.
+// Private service-to-service mail delivery through Resend.
 //
-// The Resend API key exists only in Supabase Function Secrets. The sender is
+// Supabase's new secret API keys are opaque values, not JWTs. The platform
+// gateway therefore has verify_jwt=false for this function. Before processing
+// any payload, this handler compares the request's apikey header against the
+// project's default key in SUPABASE_SECRET_KEYS. No email is sent to callers
+// that do not present that exact server-only key.
+//
+// RESEND_API_KEY exists only in Supabase Function Secrets. The sender is
 // fixed to the verified bukleb.ru domain; callers cannot spoof the From field.
 
 const FROM = 'Хлеба и букв <no-reply@bukleb.ru>'
@@ -22,6 +25,7 @@ export type MailMessage = {
 
 type Dependencies = {
   apiKey?: string | null
+  supabaseSecretKey?: string | null
   fetcher?: typeof fetch
 }
 
@@ -35,29 +39,37 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-/**
- * Supabase verifies the JWT signature before invoking this function because
- * verify_jwt=true. We additionally require the service_role claim so a normal
- * signed-in user cannot use this endpoint as an arbitrary email relay.
- */
-function hasServiceRole(request: Request): boolean {
-  const authorization = request.headers.get('authorization')
-  if (!authorization) return false
+function constantTimeEqual(actual: string, expected: string): boolean {
+  const actualBytes = new TextEncoder().encode(actual)
+  const expectedBytes = new TextEncoder().encode(expected)
+  if (actualBytes.length !== expectedBytes.length) return false
 
-  const match = /^Bearer\s+([^\s]+)$/i.exec(authorization.trim())
-  if (!match) return false
+  let difference = 0
+  for (let index = 0; index < actualBytes.length; index++) {
+    difference |= actualBytes[index] ^ expectedBytes[index]
+  }
+  return difference === 0
+}
 
-  const parts = match[1].split('.')
-  if (parts.length !== 3) return false
+function defaultSupabaseSecretKey(): string {
+  const raw = Deno.env.get('SUPABASE_SECRET_KEYS')
+  if (!raw) return ''
 
   try {
-    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4)
-    const payload = JSON.parse(atob(padded)) as { role?: unknown }
-    return payload.role === 'service_role'
+    const keys = JSON.parse(raw) as Record<string, unknown>
+    const value = keys.default
+    return typeof value === 'string' ? value : ''
   } catch {
-    return false
+    return ''
   }
+}
+
+function hasServiceAuthorization(
+  request: Request,
+  expectedKey: string,
+): boolean {
+  const provided = request.headers.get('apikey')?.trim() ?? ''
+  return Boolean(provided && expectedKey && constantTimeEqual(provided, expectedKey))
 }
 
 function parseMessage(value: unknown): MailMessage | null {
@@ -94,16 +106,21 @@ export async function handle(
     return json({ error: 'method_not_allowed' }, 405)
   }
 
-  if (!hasServiceRole(request)) {
-    return json({ error: 'service_role_required' }, 403)
+  const expectedKey =
+    dependencies.supabaseSecretKey === undefined
+      ? defaultSupabaseSecretKey()
+      : dependencies.supabaseSecretKey ?? ''
+
+  if (!hasServiceAuthorization(request, expectedKey)) {
+    return json({ error: 'service_authorization_required' }, 401)
   }
 
-  const apiKey =
+  const resendApiKey =
     dependencies.apiKey === undefined
       ? Deno.env.get('RESEND_API_KEY')?.trim() ?? ''
       : dependencies.apiKey?.trim() ?? ''
 
-  if (!apiKey) return json({ error: 'mailer_not_configured' }, 503)
+  if (!resendApiKey) return json({ error: 'mailer_not_configured' }, 503)
 
   const contentLength = Number(request.headers.get('content-length') ?? '0')
   if (Number.isFinite(contentLength) && contentLength > 150_000) {
@@ -126,7 +143,7 @@ export async function handle(
     const response = await fetcher('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${resendApiKey}`,
         'Content-Type': 'application/json',
         'Idempotency-Key': message.idempotencyKey,
       },
@@ -152,6 +169,4 @@ export async function handle(
   }
 }
 
-if (import.meta.main) {
-  Deno.serve(handle)
-}
+Deno.serve(handle)
