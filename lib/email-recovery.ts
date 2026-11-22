@@ -5,7 +5,7 @@ export const EMAIL_RECOVERY_TOKEN_TTL_MINUTES = 20
 export type EdgeMailerConfig = {
   supabaseUrl: string
   publishableKey: string
-  serviceRoleKey: string
+  secretKey: string
 }
 
 export type OutgoingEmail = {
@@ -29,7 +29,7 @@ export function isEmailRecoveryConfigured(): boolean {
     process.env.NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY === 'true' &&
       secret &&
       secret.length >= 32 &&
-      process.env.SUPABASE_SERVICE_ROLE_KEY &&
+      process.env.SUPABASE_SECRET_KEY &&
       process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   )
@@ -43,9 +43,9 @@ export function getEmailRecoverySecret(): string | null {
 export function getEdgeMailerConfig(): EdgeMailerConfig | null {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const secretKey = process.env.SUPABASE_SECRET_KEY
 
-  if (!supabaseUrl || !publishableKey || !serviceRoleKey) return null
+  if (!supabaseUrl || !publishableKey || !secretKey) return null
 
   try {
     const url = new URL(supabaseUrl)
@@ -126,9 +126,9 @@ export function escapeEmailHtml(value: string): string {
 
 /**
  * Send a single-purpose verification message through Supabase Edge Function.
- * The service-role JWT is server-only; the Edge Function gateway verifies it
- * and the handler additionally checks role=service_role. RESEND_API_KEY never
- * enters the Next.js runtime or client bundle.
+ * The Supabase secret API key is server-only and is sent only in the apikey
+ * header. The Edge Function validates it with @supabase/server auth: secret.
+ * RESEND_API_KEY never enters the Next.js runtime or client bundle.
  */
 export async function sendEmailViaEdgeMailer(
   message: OutgoingEmail,
@@ -144,8 +144,7 @@ export async function sendEmailViaEdgeMailer(
     response = await fetcher(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${config.serviceRoleKey}`,
-        apikey: config.publishableKey,
+        apikey: config.secretKey,
         'Content-Type': 'application/json',
       },
       // The Edge Function has its own strict 10-second timeout to Resend.
