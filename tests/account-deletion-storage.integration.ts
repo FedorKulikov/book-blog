@@ -1138,10 +1138,10 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
       'reports',
       'action_log',
       'notifications_as_actor',
-      'post_image_references',
-      'external_news_cover_references',
-      'book_cover_references',
       'other_profile_avatar_references',
+      'post_image_references',
+      'book_cover_references',
+      'external_news_cover_references',
     ],
     'preflight must identify every unapproved retention-sensitive data category',
   )
