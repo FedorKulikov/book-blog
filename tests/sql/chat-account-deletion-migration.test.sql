@@ -119,6 +119,24 @@ begin
     raise exception 'private account deletion lock table is missing';
   end if;
 
+  if not exists (
+    select 1
+    from pg_namespace n
+    join pg_roles r on r.oid = n.nspowner
+    where n.nspname = 'private'
+      and r.rolname = 'postgres'
+  ) or not exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_roles r on r.oid = c.relowner
+    where n.nspname = 'private'
+      and c.relname = 'account_deletion_locks'
+      and r.rolname = 'postgres'
+  ) then
+    raise exception 'private deletion lock schema and table must be owned by postgres';
+  end if;
+
   if has_table_privilege('authenticated', 'private.account_deletion_locks', 'SELECT')
      or has_table_privilege('authenticated', 'private.account_deletion_locks', 'INSERT')
      or has_table_privilege('anon', 'private.account_deletion_locks', 'SELECT') then
