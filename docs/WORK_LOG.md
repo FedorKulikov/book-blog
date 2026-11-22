@@ -410,3 +410,13 @@
 - **Порядок выпуска:** PR #64 остаётся Draft; изменения подготовлены только в его ветке. Не сливать и не выпускать политику до слияния PR #71, чтобы не описывать продукт раньше удаления старой функции.
 - **Не менялось:** PR #71, Edge Function `recovery`, таблицы `private.recovery_codes` / `private.recovery_attempts`, Send Email Hook, `mailer_autoconfirm`, secrets и Supabase Auth configuration. Юридическое заключение не получено.
 
+
+## 2026-11-23 — B11, подзадача 1: серверная защита /welcome
+
+**Требовалось:** запретить гостевой рендер маршрута /welcome; проверка должна выполняться на сервере, не в useEffect/middleware, и сохранить noindex.
+
+**Сделано:** в отдельной ветке fix/welcome-server-auth-guard (база — ветка PR #71 remove/recovery-codes-product) создан серверный app/welcome/page.tsx. Он получает пользователя через createSupabaseServerClient().auth.getUser() и для гостя выполняет redirect на /login?next=%2Fwelcome. Клиентский экран перенесён в app/welcome/WelcomeClient.tsx без намеренного изменения поведения. Сохранены dynamic = force-dynamic и robots: { index: false, follow: false }.
+
+**Проверено:** исходник клиента получен из ветки PR #71 и перенесён с переименованием компонента; серверная обёртка записана отдельно. PR #71, PR #64 и main не изменялись.
+
+**Не выполнено / ограничения:** TypeScript, production build, CI и HTTP-проверки гостевого 307 / авторизованного 200 не запускались; готовность по этим критериям пока не подтверждена.

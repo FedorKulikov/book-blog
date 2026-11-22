@@ -291,3 +291,11 @@
 - **Порядок выпуска:** PR #64 остаётся Draft; изменения подготовлены только в его ветке. Не сливать и не выпускать политику до слияния PR #71, чтобы не описывать продукт раньше удаления старой функции.
 - **Не менялось:** PR #71, Edge Function `recovery`, таблицы `private.recovery_codes` / `private.recovery_attempts`, Send Email Hook, `mailer_autoconfirm`, secrets и Supabase Auth configuration. Юридическое заключение не получено.
 
+
+### 2026-11-23 — B11, подзадача 1: серверная защита /welcome
+
+- Требовалось: не отдавать экран онбординга гостям и выполнять проверку авторизации на сервере, поскольку middleware/proxy не гарантированно обрабатывает предсобранные Layero-снимки.
+- Сделано в отдельной ветке fix/welcome-server-auth-guard, основанной на ветке PR #71 remove/recovery-codes-product: маршрут app/welcome/page.tsx стал серверной обёрткой; через createSupabaseServerClient().auth.getUser() проверяет пользователя и вызывает redirect('/login?next=%2Fwelcome') для гостя. Клиентский экран перенесён без функциональных изменений в app/welcome/WelcomeClient.tsx.
+- Сохранены динамический рендеринг (force-dynamic) и метаданные robots: noindex, nofollow.
+- Проверено чтением исходников перед записью и проверкой сформированного server/client разделения. PR #71, PR #64 и main не изменялись; новая ветка основана на B9-коде, чтобы не возвращать удалённый recovery UI.
+- Не выполнено: TypeScript, production build, CI и фактические HTTP-проверки гостя/авторизованного пользователя ещё не запускались. Критерии 307 и 200 не заявляются до проверки.
