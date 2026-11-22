@@ -114,5 +114,40 @@ begin
   ) then
     raise exception 'legacy sender-folder chat media SELECT policy remains';
   end if;
+
+  if to_regclass('private.account_deletion_locks') is null then
+    raise exception 'private account deletion lock table is missing';
+  end if;
+
+  if has_table_privilege('authenticated', 'private.account_deletion_locks', 'SELECT')
+     or has_table_privilege('authenticated', 'private.account_deletion_locks', 'INSERT')
+     or has_table_privilege('anon', 'private.account_deletion_locks', 'SELECT') then
+    raise exception 'account deletion lock table must not be accessible to API roles';
+  end if;
+
+  if has_function_privilege('authenticated', 'public.begin_account_deletion(uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.end_account_deletion(uuid)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.begin_account_deletion(uuid)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.end_account_deletion(uuid)', 'EXECUTE') then
+    raise exception 'deletion lock RPC functions must only be executable by service_role';
+  end if;
+
+  if (
+    select count(*)
+    from pg_trigger
+    where not tgisinternal
+      and tgenabled <> 'D'
+      and tgname in (
+        'posts_block_deleting_user_writes',
+        'comments_block_deleting_user_writes',
+        'tickets_block_deleting_user_writes',
+        'ticket_messages_block_deleting_user_writes',
+        'reports_block_deleting_user_writes',
+        'action_log_block_deleting_user_writes',
+        'messages_block_deleting_user_writes'
+      )
+  ) <> 7 then
+    raise exception 'all retention-sensitive write-lock triggers must be enabled';
+  end if;
 end;
 $assert$;
