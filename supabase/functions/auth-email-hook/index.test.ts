@@ -224,9 +224,7 @@ Deno.test('unsupported action returns 501 without sending', async () => {
 
 Deno.test('missing Hook secret fails closed', async () => {
   const request = await signedRequest(signupPayload())
-  const response = await handle(request, dependencies(async () => {
-    throw new Error('must not call mailer')
-  }) && {
+  const response = await handle(request, {
     ...dependencies(async () => new Response('{}', { status: 200 })),
     hookSecret: '',
   })
