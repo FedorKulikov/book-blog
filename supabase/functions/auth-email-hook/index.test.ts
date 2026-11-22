@@ -237,6 +237,43 @@ Deno.test('single-token email change sends only to the new address', async () =>
   equal(sent[0].to, 'new@example.test', 'single-token recipient')
 })
 
+Deno.test('signup delivery failure is soft but recovery and email change still fail', async () => {
+  const failingMailer = async () => new Response('{}', { status: 503 })
+
+  const signup = await handle(
+    await signedRequest(signupPayload()),
+    dependencies(failingMailer),
+  )
+  equal(signup.status, 200, 'signup delivery failure status')
+  equal(await signup.text(), '{}', 'signup delivery failure body')
+
+  const recovery = await handle(
+    await signedRequest({
+      user: { id: 'user-synthetic-recovery', email: 'reader@example.test' },
+      email_data: { email_action_type: 'recovery', token_hash: 'synthetic_recovery_hash' },
+    }),
+    dependencies(failingMailer),
+  )
+  equal(recovery.status, 502, 'recovery delivery failure status')
+
+  const emailChange = await handle(
+    await signedRequest({
+      user: {
+        id: 'user-synthetic-email-change',
+        email: 'old@example.test',
+        new_email: 'new@example.test',
+      },
+      email_data: {
+        email_action_type: 'email_change',
+        token_hash: 'synthetic_new_address_hash',
+        token_hash_new: 'synthetic_current_address_hash',
+      },
+    }),
+    dependencies(failingMailer),
+  )
+  equal(emailChange.status, 502, 'email change delivery failure status')
+})
+
 Deno.test('unsupported action returns 501 without sending', async () => {
   const request = await signedRequest({
     user: { id: 'user-synthetic-5', email: 'reader@example.test' },
