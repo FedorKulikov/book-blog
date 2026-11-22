@@ -1384,7 +1384,7 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     imageUrl: sharedPath,
   })
 
-  await beginAccountDeletion(admin, author.id, 'preserve')
+  await beginAccountDeletion(admin, author.id, 'delete_own_messages')
   assert.deepEqual(await inspectAccountDeletionBlockers(admin, author.id), [])
   await executeAccountDeletion(admin, author.id, 'delete_own_messages')
 
