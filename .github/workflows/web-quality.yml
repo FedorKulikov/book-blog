@@ -481,6 +481,18 @@ jobs:
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/personal-data-consents-migration.test.sql
 
+      - name: Apply authenticated user-scoped consent RPC migration
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261210_distribution_consent_user_rpcs.sql
+
+      - name: Reapply authenticated user-scoped consent RPC migration
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261210_distribution_consent_user_rpcs.sql
+
       - name: Verify authenticated user-scoped consent RPCs
         env:
           PGPASSWORD: postgres
