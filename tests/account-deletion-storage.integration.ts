@@ -60,8 +60,8 @@ function queryDatabase(query: string): string {
 function startPsqlTransaction(sql: string): { ready: Promise<void>; done: Promise<void> } {
   const child = spawn(
     'psql',
-    [dbUrl, '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c', sql],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
+    [dbUrl, '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1'],
+    { stdio: ['pipe', 'pipe', 'pipe'] },
   )
   let output = ''
   let stderr = ''
@@ -110,6 +110,11 @@ function startPsqlTransaction(sql: string): { ready: Promise<void>; done: Promis
       reject(error)
     })
   })
+
+  // Feed one SQL statement at a time through stdin. With -c, psql can buffer
+  // the combined multi-statement result until the transaction has completed,
+  // which would make the LOCK_READY marker useless for a concurrency test.
+  child.stdin.end(`${sql.trim()}\n`)
 
   // Attach a handler immediately; callers still await the original promise.
   void done.catch(() => undefined)
