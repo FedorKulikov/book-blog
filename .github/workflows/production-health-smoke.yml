@@ -128,11 +128,15 @@ jobs:
               location="$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { sub(/^[^:]*:[[:space:]]*/, ""); gsub(/\r/, ""); print; exit }' "$headers")"
             fi
 
+            if [[ "$route" == "/welcome" && "$status" != "307" ]]; then
+              echo "::error::Guest route /welcome must return HTTP 307 (received $status; Location: $location)."
+              exit 1
+            fi
             if [[ ! "$status" =~ ^30[1278]$ ]] || [[ "$location" != *"/login?next="* ]] || [[ "$location" != *"$expected_next"* ]]; then
               echo "::error::Guest route $route must redirect to /login with its return path (HTTP $status; Location: $location)."
               exit 1
             fi
-            echo "Guest route $route redirects to login and preserves its return path."
+            echo "Guest route $route redirects to login with HTTP $status and preserves its return path."
           }
 
           check_guest_login_redirect "/profile" "%2Fprofile"
