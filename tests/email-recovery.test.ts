@@ -208,6 +208,35 @@ test('Edge mailer errors never expose response bodies', async () => {
   )
 })
 
+test('Edge mailer hides network error details', async () => {
+  const fakeFetch: typeof fetch = async () => {
+    throw new Error('private recipient and confirmation token')
+  }
+
+  await assert.rejects(
+    sendEmailViaEdgeMailer(
+      {
+        to: 'reader@example.com',
+        subject: 'Verify',
+        html: '<p>Verify</p>',
+        text: 'Verify',
+        idempotencyKey: 'email-recovery-verify/user-1/network-failure',
+      },
+      {
+        supabaseUrl: 'https://project.supabase.co',
+        secretKey: 'sb_secret_test',
+      },
+      fakeFetch,
+    ),
+    error => {
+      assert.ok(error instanceof Error)
+      assert.equal(error.message, 'Email delivery function request failed')
+      assert.doesNotMatch(error.message, /private recipient|confirmation token/)
+      return true
+    },
+  )
+})
+
 test('Edge mailer fails closed when not configured', async () => {
   await assert.rejects(
     sendEmailViaEdgeMailer(
