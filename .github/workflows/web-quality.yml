@@ -83,6 +83,9 @@ jobs:
       - name: Chat media path tests
         run: npm run test:chat-media-paths
 
+      - name: Distribution consent flow tests
+        run: npm run test:distribution-consent
+
       - name: TypeScript
         run: npx tsc --noEmit
 
@@ -113,6 +116,10 @@ jobs:
             app/messages/'[id]'/page.tsx \
             app/news/new/page.tsx \
             app/news/new/NewsForm.tsx \
+            app/api/posts/route.ts \
+            app/consent-distribution/page.tsx \
+            lib/distribution-consent.ts \
+            lib/distribution-consent-server.ts \
             app/books/add/page.tsx \
             app/profile/page.tsx \
             app/profile/ProfileClient.tsx \
