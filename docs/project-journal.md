@@ -223,3 +223,14 @@
 **Проверено:** после записи повторно прочитаны оба файла. Проверено, что старые фразы `Сброс пароля по email остаётся отключённым`, `Email recovery также выключен по умолчанию`, `NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY` и ссылка на старый rollout guide отсутствуют. В README путь `/api/email-recovery/reset-request` упоминается только как явно неиспользуемый старый маршрут; основной описанный путь — `supabase.auth.resetPasswordForEmail`.
 
 **Не выполнено / ограничения:** CI для новых документальных коммитов ещё должен завершиться. PR #69 не слит; production email recovery E2E не выполнялся. `mailer_autoconfirm`, Supabase Auth Hook configuration/secrets, SMTP, `RECOVERY_CODE_SECRET` и таблица резервных кодов не менялись.
+
+
+## 2026-11-22 — Fix: edge Hook secret preflight recognizes accepted signatures
+
+**Требовалось:** считать синтетический preflight успешным, когда Hook принял подпись, даже если затем отклонил неполный recovery payload; не отправлять реальные письма и показывать HTTP-код в CI-логе.
+
+**Сделано:** в `scripts/verify-edge-hook-secret.ts` оставлен синтетический recovery payload без `user.email` и `token_hash`. HTTP `401` теперь означает несовпадение подписи и завершает preflight с ошибкой; сетевые ошибки по-прежнему завершаются как `hook_secret_preflight_unreachable`. Любой полученный HTTP-ответ с кодом, отличным от `401`, считается прохождением проверки подписи и выводит `hook_secret_preflight: signature_accepted_http_<status>`. Проверка тела ответа удалена, поскольку после проверки подписи допустимы downstream-ошибки валидации.
+
+**Проверено:** файл перечитан после коммита; synthetic payload содержит только фиктивный `user.id` и `email_action_type: recovery`, не содержит адреса, token hash или данных для отправки письма. Секрет и подпись не выводятся.
+
+**Не выполнено / ограничения:** выполнение preflight против production Hook и CI на этой записи ещё не подтверждены. Исходная PR #69 уже была слита; исправление вынесено в отдельную feature-ветку для нового PR. Auth Hook settings/secrets, `mailer_autoconfirm`, SMTP, `RECOVERY_CODE_SECRET` и таблица резервных кодов не менялись.
