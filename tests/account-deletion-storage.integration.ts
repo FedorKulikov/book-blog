@@ -2,6 +2,12 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import {
+  beginAccountDeletion,
+  endAccountDeletion,
+  executeAccountDeletion,
+  inspectAccountDeletionBlockers,
+} from '../lib/account-deletion'
 
 const apiUrl = requiredEnv('API_URL')
 const anonKey = requiredEnv('ANON_KEY')
@@ -104,6 +110,19 @@ async function upload(
   checkError(`upload fixture ${path}`, error)
 }
 
+async function uploadToBucket(
+  client: SupabaseClient,
+  bucket: string,
+  path: string,
+  body: string,
+  contentType: string,
+): Promise<void> {
+  const { error } = await client.storage
+    .from(bucket)
+    .upload(path, Buffer.from(body), { contentType, upsert: false })
+  checkError(`upload ${bucket} fixture ${path}`, error)
+}
+
 async function expectDownload(
   client: SupabaseClient,
   path: string,
@@ -130,6 +149,14 @@ function storageObjectCount(path: string): number {
   return Number(
     queryDatabase(
       `select count(*) from storage.objects where bucket_id = 'chat-media' and name = ${sqlLiteral(path)}`,
+    ),
+  )
+}
+
+function storageObjectCountInBucket(bucket: string, path: string): number {
+  return Number(
+    queryDatabase(
+      `select count(*) from storage.objects where bucket_id = ${sqlLiteral(bucket)} and name = ${sqlLiteral(path)}`,
     ),
   )
 }
