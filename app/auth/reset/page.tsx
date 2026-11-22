@@ -108,15 +108,17 @@ export default function ResetPasswordPage() {
           </h1>
           <p className="text-brown/70 mb-6">
             Ссылка недействительна или восстановить сессию не удалось.
-            Восстановление пароля по email сейчас отключено — используйте
-            резервный код, сохранённый при регистрации.
+            Запросите новое письмо на странице «Забыли пароль?». Если не приходит
+            письмо или нет доступа к ящику, напишите на{' '}
+            <span className="select-all font-medium text-brown-dark">monikla1312@gmail.com</span>
+            {' '}— восстановим доступ вручную.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link
-              href="/recover-account"
+              href="/forgot-password"
               className="rounded-full bg-emerald-mid px-5 py-2 text-sm text-cream hover:bg-emerald-dark transition-colors"
             >
-              Восстановить по коду
+              Запросить новое письмо
             </Link>
             <Link
               href="/login"
