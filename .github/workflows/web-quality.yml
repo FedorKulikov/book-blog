@@ -40,8 +40,11 @@ jobs:
             echo "::error::Retired recovery route or CodesReveal reference remains in application code."
             exit 1
           fi
-          if git grep -n -E 'recovery/generate|recovery/status|recovery/redeem' -- app lib scripts tests; then
-            echo "::error::Retired recovery API reference remains in app, lib, scripts, or tests."
+          # Exclude /api/email-recovery/status: it belongs to the active email-verification flow.
+          matches="$(git grep -n -E 'recovery/generate|recovery/status|recovery/redeem' -- app lib scripts tests | grep -v '/api/email-recovery/' || true)"
+          if [ -n "$matches" ]; then
+            printf '%s\n' "$matches"
+            echo "::error::Retired /api/recovery code route reference remains in app, lib, scripts, or tests."
             exit 1
           fi
           if grep -Ein 'резервн.{0,25}код|/recover-account|/api/recovery/' README.md; then
