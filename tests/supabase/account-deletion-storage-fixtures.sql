@@ -97,6 +97,28 @@ create table public.notifications (
   actor_id uuid not null references public.profiles(id) on delete cascade
 );
 
+create table public.likes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.bookmarks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.follows (
+  id uuid primary key default gen_random_uuid(),
+  follower_id uuid not null references public.profiles(id) on delete cascade,
+  following_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.user_blocks (
+  id uuid primary key default gen_random_uuid(),
+  blocker_id uuid not null references public.profiles(id) on delete cascade,
+  blocked_id uuid not null references public.profiles(id) on delete cascade
+);
+
 grant all on public.external_news to service_role;
 
 -- Mirror the production message/conversation guards from
@@ -220,7 +242,8 @@ grant insert on public.messages to authenticated;
 grant all on public.profiles, public.conversations, public.messages to service_role;
 grant all on public.posts, public.comments, public.tickets,
   public.ticket_messages, public.reports, public.action_log,
-  public.notifications, public.post_images to service_role;
+  public.notifications, public.post_images, public.likes,
+  public.bookmarks, public.follows, public.user_blocks to service_role;
 
 drop policy if exists ci_conversations_read_participant on public.conversations;
 create policy ci_conversations_read_participant
