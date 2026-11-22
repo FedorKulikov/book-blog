@@ -987,7 +987,16 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
   const initialBlockers = await inspectAccountDeletionBlockers(admin, author.id)
   assert.deepEqual(initialBlockers, [], 'synthetic account without retained records must pass preflight')
 
-  await beginAccountDeletion(admin, author.id, 'preserve')
+  assert.equal(
+    await beginAccountDeletion(admin, author.id, 'preserve'),
+    'preserve',
+    'initial lock must store the selected preservation mode',
+  )
+  assert.equal(
+    await beginAccountDeletion(admin, author.id, 'delete_own_messages'),
+    'preserve',
+    'a retry must not be allowed to silently switch to destructive message deletion',
+  )
   const blockedInsert = await author.client
     .from('messages')
     .insert({
