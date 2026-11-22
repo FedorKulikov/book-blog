@@ -226,7 +226,7 @@ async function testDefaultPreservation(): Promise<{
   await expectDownload(counterpart.client, originalAudio, true, 'counterpart can read the audio')
   await expectDownload(outsider.client, originalPhoto, false, 'unrelated user cannot read original media')
 
-  const neutralFolder = `retained/${randomUUID()}`
+  const neutralFolder = `retained/${conversationId}/${randomUUID()}`
   const retainedPhoto = `${neutralFolder}/photo.png`
   const retainedAudio = `${neutralFolder}/voice.webm`
   assert.ok(!retainedPhoto.includes(author.id), 'neutral photo path must not expose the deleted account UUID')
@@ -443,8 +443,8 @@ async function testRecoverableRehomeAndSignedUrls(counterpart: TestUser, outside
   const oldPhotoSignedUrl = await createSignedUrl(author.client, originalPhoto, 'sign original user photo')
   await expectSignedUrl(oldPhotoSignedUrl, true, 'signed URL works while the original object exists')
 
-  const retainedPhoto = 'retained/' + messageId + '/photo.png'
-  const retainedAudio = 'retained/' + messageId + '/voice.webm'
+  const retainedPhoto = 'retained/' + conversationId + '/' + messageId + '/photo.png'
+  const retainedAudio = 'retained/' + conversationId + '/' + messageId + '/voice.webm'
   assert.ok(!retainedPhoto.includes(author.id), 'retained photo path must not contain the user UUID')
   assert.ok(!retainedAudio.includes(author.id), 'retained audio path must not contain the user UUID')
 
@@ -824,7 +824,7 @@ async function testAuthorizationAndDeletedSessionBoundaries(
   assert.equal(beforeDeleteProbe.length, 1, 'user must read their own JWT-protected probe row before deletion')
   assert.equal(beforeDeleteProbe[0]?.marker, 'JWT subject-only access probe', 'probe row must match the synthetic fixture')
 
-  const retainedMediaPath = 'retained/' + messageId + '/session-boundary-photo.png'
+  const retainedMediaPath = 'retained/' + conversationId + '/' + messageId + '/session-boundary-photo.png'
   const { error: retainMediaError } = await admin.storage
     .from('chat-media')
     .copy(mediaPath, retainedMediaPath)

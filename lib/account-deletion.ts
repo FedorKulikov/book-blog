@@ -247,7 +247,7 @@ async function rehomeRemainingReferences(
   const rows = await readAllOwnedMediaMessageReferences(admin, userId)
   const ownedSources = new Map<string, { conversationId: string; sourcePath: string }>()
   const referenceKey = (conversationId: string, sourcePath: string) =>
-    `${conversationId}\\u0000${sourcePath}`
+    JSON.stringify([conversationId, sourcePath])
 
   for (const row of rows) {
     // In the explicitly destructive mode, the deleting user's own messages

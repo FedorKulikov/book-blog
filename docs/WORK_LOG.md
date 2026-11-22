@@ -216,3 +216,13 @@
   - Production SQL audits оставались read-only; никакой production DDL/DML не выполнялось. Browser QA не проводилась.
 - **Что не получилось / осталось:** обязательны успешный полный integration run и повторное прохождение quality/smoke на новом commit. OAuth/passwordless step-up, утверждение правил хранения public/support/moderation records, а также мгновенная глобальная отмена уже выданного access JWT остаются незавершёнными.
 - **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся открытым Draft. Migration/app не merged/deployed; production Supabase, сайт, Auth, Storage и пользовательские данные не менялись.
+
+
+## 2026-11-22 — Дополнение: обновление тестовых retained paths (PR #63)
+
+- **Что требовалось:** привести прежние ручные Storage fixtures к новому формату `retained/<conversation_id>/...` после усиления изоляции файлов по беседам.
+- **Что сделано:** все три старых сценария, вручную копирующие retained photo/audio, теперь создают путь с UUID своей беседы. В helper для composite key заменён строковый escape-разделитель на `JSON.stringify([conversationId, sourcePath])`, чтобы ключ однозначно кодировал пару диалог/исходный путь.
+- **Как сделано:** изменения только в `lib/account-deletion.ts` и `tests/account-deletion-storage.integration.ts`; логика копирования остаётся deterministic, одинаковый source в разных диалогах получает разные destination paths.
+- **Проверки:** run [44991171719](https://github.com/FedorKulikov/book-blog/actions/runs/44991171719) дошёл до раннего integration test `testDefaultPreservation` и упал на старой fixture path, потому что retained URL не содержал conversation UUID в ожидаемом сегменте. Smoke [44991171687](https://github.com/FedorKulikov/book-blog/actions/runs/44991171687) — `success`; PostgreSQL 17 migration job — `success`. Новый run после корректировки fixtures ещё не завершён.
+- **Что не получилось / осталось:** требуется повторно пройти полный integration, включая service-role media rehome и cross-conversation isolation. Browser QA не выполнялась.
+- **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся Draft; production app, Supabase, Auth, Storage и пользовательские данные не изменялись.
