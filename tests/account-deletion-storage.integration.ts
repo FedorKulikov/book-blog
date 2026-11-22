@@ -987,7 +987,7 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
   const initialBlockers = await inspectAccountDeletionBlockers(admin, author.id)
   assert.deepEqual(initialBlockers, [], 'synthetic account without retained records must pass preflight')
 
-  await beginAccountDeletion(admin, author.id)
+  await beginAccountDeletion(admin, author.id, 'preserve')
   const blockedInsert = await author.client
     .from('messages')
     .insert({
@@ -1097,7 +1097,7 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
     audioUrl: audioPath,
   })
 
-  await beginAccountDeletion(admin, author.id)
+  await beginAccountDeletion(admin, author.id, 'preserve')
   assert.deepEqual(await inspectAccountDeletionBlockers(admin, author.id), [])
   await executeAccountDeletion(admin, author.id, 'preserve')
 
@@ -1169,7 +1169,7 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     imageUrl: sharedPath,
   })
 
-  await beginAccountDeletion(admin, author.id)
+  await beginAccountDeletion(admin, author.id, 'preserve')
   assert.deepEqual(await inspectAccountDeletionBlockers(admin, author.id), [])
   await executeAccountDeletion(admin, author.id, 'delete_own_messages')
 
