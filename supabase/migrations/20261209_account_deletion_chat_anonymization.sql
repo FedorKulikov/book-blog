@@ -188,7 +188,27 @@ as $function$
 declare
   v_uid uuid := auth.uid();
   v_actor_id uuid;
+  v_storage_url text;
 begin
+  -- A public image URL may be reused by another user's post or a news card.
+  -- Do not allow any writer (including staff/service code) to create a new
+  -- reference to a UID-scoped object after deletion preflight has started.
+  if tg_table_name = 'post_images' then
+    v_storage_url := to_jsonb(new) ->> 'url';
+  elsif tg_table_name = 'external_news' then
+    v_storage_url := to_jsonb(new) ->> 'cover_url';
+  end if;
+
+  if v_storage_url is not null and exists (
+    select 1
+    from private.account_deletion_locks l
+    where v_storage_url ilike l.user_id::text || '/%'
+       or v_storage_url ilike '%/' || l.user_id::text || '/%'
+  ) then
+    raise exception 'storage reference belongs to an account being deleted'
+      using errcode = '55000';
+  end if;
+
   if v_uid is null then
     return new;
   end if;
@@ -250,6 +270,16 @@ create trigger action_log_block_deleting_user_writes
 drop trigger if exists messages_block_deleting_user_writes on public.messages;
 create trigger messages_block_deleting_user_writes
   before insert or update on public.messages
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists post_images_block_deleting_user_references on public.post_images;
+create trigger post_images_block_deleting_user_references
+  before insert or update on public.post_images
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists external_news_block_deleting_user_references on public.external_news;
+create trigger external_news_block_deleting_user_references
+  before insert or update on public.external_news
   for each row execute function public.prevent_writes_for_deleting_account();
 
 -- A conversation with a deleted counterpart remains readable as history,
@@ -383,6 +413,24 @@ begin
       and not tgisinternal and tgenabled <> 'D'
   ) then
     raise exception 'messages write-lock trigger is missing or disabled';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.post_images'::regclass
+      and tgname = 'post_images_block_deleting_user_references'
+      and not tgisinternal and tgenabled <> 'D'
+  ) then
+    raise exception 'post_images reference-lock trigger is missing or disabled';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.external_news'::regclass
+      and tgname = 'external_news_block_deleting_user_references'
+      and not tgisinternal and tgenabled <> 'D'
+  ) then
+    raise exception 'external_news reference-lock trigger is missing or disabled';
   end if;
 
   if not exists (
