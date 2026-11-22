@@ -19,15 +19,16 @@ type LastMessage = {
   text: string | null
   image_url: string | null
   audio_url: string | null
-  sender_id: string
+  sender_id: string | null
+  sender_label?: string | null
   created_at: string
   read_at: string | null
 }
 
 type RawConversation = {
   id: string
-  user1_id: string
-  user2_id: string
+  user1_id: string | null
+  user2_id: string | null
   last_message_at: string | null
   muted_by_user1?: boolean | null
   muted_by_user2?: boolean | null
@@ -35,10 +36,11 @@ type RawConversation = {
 
 type Conversation = {
   id: string
-  user1_id: string
-  user2_id: string
+  user1_id: string | null
+  user2_id: string | null
   last_message_at: string | null
   otherUser: Profile | null
+  otherDeleted: boolean
   lastMessage: LastMessage | null
   unreadCount: number
   isMuted: boolean
@@ -136,20 +138,30 @@ export default function ConversationList({
 
       const convIds = list.map(c => c.id)
       const otherIds = Array.from(
-        new Set(list.map(c => (c.user1_id === user.id ? c.user2_id : c.user1_id)))
+        new Set(
+          list
+            .map(c => (c.user1_id === user.id ? c.user2_id : c.user1_id))
+            .filter((id): id is string => id !== null),
+        ),
       )
 
-      const [{ data: profilesData }, { data: messagesData }] = await Promise.all([
-        supabase.from('profiles').select('id, username, avatar_url').in('id', otherIds),
-        supabase
-          .from('messages')
-          .select('conversation_id, text, image_url, audio_url, sender_id, created_at, read_at')
-          .in('conversation_id', convIds)
-          .order('created_at', { ascending: false }),
-      ])
+      const profilesData: Profile[] = []
+      if (otherIds.length > 0) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .in('id', otherIds)
+        profilesData.push(...((data as Profile[] | null) ?? []))
+      }
+
+      const { data: messagesData } = await supabase
+        .from('messages')
+        .select('conversation_id, text, image_url, audio_url, sender_id, created_at, read_at')
+        .in('conversation_id', convIds)
+        .order('created_at', { ascending: false })
 
       const profileById = new Map(
-        ((profilesData as Profile[] | null) ?? []).map(p => [p.id, p])
+        profilesData.map(p => [p.id, p])
       )
       const lastByConv = new Map<string, LastMessage>()
       const unreadByConv = new Map<string, number>()
@@ -169,7 +181,8 @@ export default function ConversationList({
             user1_id: c.user1_id,
             user2_id: c.user2_id,
             last_message_at: c.last_message_at,
-            otherUser: profileById.get(otherId) ?? null,
+            otherUser: otherId ? profileById.get(otherId) ?? null : null,
+            otherDeleted: otherId === null,
             lastMessage: lastByConv.get(c.id) ?? null,
             unreadCount: unreadByConv.get(c.id) ?? 0,
             isMuted: c.user1_id === user.id ? !!c.muted_by_user1 : !!c.muted_by_user2,
@@ -298,7 +311,7 @@ export default function ConversationList({
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  (conv.otherUser?.username?.[0] || '?').toUpperCase()
+                  (conv.otherDeleted ? 'У' : conv.otherUser?.username?.[0] || '?').toUpperCase()
                 )}
               </button>
 
@@ -309,7 +322,7 @@ export default function ConversationList({
                       conv.isMuted ? 'text-brown/50' : 'text-emerald-dark'
                     }`}
                   >
-                    {conv.otherUser?.username || 'Аноним'}
+                    {conv.otherDeleted ? 'Удалённый пользователь' : conv.otherUser?.username || 'Аноним'}
                   </span>
                   <span className="flex items-center gap-1 flex-shrink-0">
                     {conv.isMuted && (
@@ -327,9 +340,11 @@ export default function ConversationList({
 
                 <div className="flex items-center justify-between gap-2 mt-0.5">
                   <span className="text-xs text-brown/60 truncate">
-                    {conv.lastMessage?.sender_id === uid && (
+                    {conv.lastMessage?.sender_id === uid ? (
                       <span className="text-brown/40">Вы: </span>
-                    )}
+                    ) : conv.lastMessage?.sender_id === null ? (
+                      <span className="text-brown/40">Удалённый пользователь: </span>
+                    ) : null}
                     {previewOf(conv.lastMessage)}
                   </span>
                   {conv.unreadCount > 0 && (
