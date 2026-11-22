@@ -216,6 +216,12 @@ export default function ProfileClient({ initialUserId }: { initialUserId: string
           <Pencil size={15} strokeWidth={1.8} />
           <span>Редактировать профиль</span>
         </Link>
+        <Link
+          href="/profile/delete-account"
+          className="flex items-center justify-center gap-2 border border-wine/20 text-wine px-4 py-2 rounded-full text-sm hover:bg-wine/5 transition-colors"
+        >
+          <span>Удалить аккаунт</span>
+        </Link>
         {(profile?.role === 'admin' || profile?.role === 'moderator') && (
           <Link
             href="/admin"
