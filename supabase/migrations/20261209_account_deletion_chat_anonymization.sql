@@ -176,9 +176,8 @@ revoke all on function public.end_account_deletion(uuid)
 grant execute on function public.begin_account_deletion(uuid, text) to service_role;
 grant execute on function public.end_account_deletion(uuid) to service_role;
 
--- The trigger checks only writes performed by the user whose Auth UID matches
--- the row's actor field. Staff updates to another user's ticket/report are not
--- blocked. SECURITY DEFINER is used only to read the private lock table.
+-- SECURITY DEFINER is used only to read the private lock table and block new
+-- references to an account while deletion is in progress.
 create or replace function public.prevent_writes_for_deleting_account()
 returns trigger
 language plpgsql
