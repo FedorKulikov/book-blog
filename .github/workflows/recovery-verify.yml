@@ -7,6 +7,7 @@ on:
     paths:
       - 'supabase/functions/**'
       - 'supabase/config.toml'
+      - 'supabase/deno.json'
       - 'scripts/verify-edge-hook-secret.ts'
       - '.github/workflows/recovery-verify.yml'
 
@@ -38,11 +39,11 @@ jobs:
           cache: true
 
       - name: Edge Function unit tests
-        run: deno test --allow-env supabase/functions/
+        run: deno test --config supabase/deno.json --allow-env supabase/functions/
 
       - name: Edge Function type check
         run: |
-          deno check \
+          deno check --config supabase/deno.json \
             supabase/functions/recovery/index.ts \
             supabase/functions/auth-email-hook/index.ts \
             supabase/functions/resend-mailer/index.ts
