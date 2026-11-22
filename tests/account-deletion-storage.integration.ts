@@ -1733,6 +1733,7 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     .eq('id', conversationId)
     .single()
   checkError('read conversation ordering before own-message deletion', conversationBeforeError)
+  assert.ok(conversationBeforeDeletion, 'conversation must exist before deletion starts')
   assert.equal(
     Date.parse(conversationBeforeDeletion.last_message_at),
     Date.parse(latestOwnMessageAt),
@@ -1745,6 +1746,7 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     .eq('id', counterpartMessageId)
     .single()
   checkError('read surviving counterpart message timestamp before own-message deletion', counterpartMessageBeforeError)
+  assert.ok(counterpartMessageBeforeDeletion, 'surviving counterpart message must exist before deletion')
 
   await beginAccountDeletion(admin, author.id, 'delete_own_messages')
   assert.deepEqual(await inspectAccountDeletionBlockers(admin, author.id), [])
@@ -1770,6 +1772,7 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     .eq('id', conversationId)
     .single()
   checkError('read conversation ordering after own-message deletion', conversationAfterError)
+  assert.ok(conversationAfterDeletion, 'conversation must remain while the counterpart message survives')
   assert.equal(
     Date.parse(conversationAfterDeletion.last_message_at),
     Date.parse(counterpartMessageBeforeDeletion.created_at),
