@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { createPostWithDistributionConsent } from '@/lib/distribution-consent-server'
+import { createPostWithDistributionConsent, type CreatePostBody } from '@/lib/distribution-consent-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   const result = await createPostWithDistributionConsent(
     supabase,
     data.user.id,
-    body,
+    body as CreatePostBody,
   )
 
   return NextResponse.json(result.body, {
