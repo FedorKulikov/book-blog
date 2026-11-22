@@ -1,6 +1,7 @@
 -- Minimal isolated schema used only by the local Supabase integration job.
--- It models the relationship changes required by account deletion; it is not a
--- production migration and must never be applied to a hosted project.
+-- It deliberately models the CURRENT pre-migration chat schema (NOT NULL /
+-- ON DELETE CASCADE). CI applies the real production migration after this file.
+-- This fixture is disposable and must never be applied to a hosted project.
 
 begin;
 
@@ -17,8 +18,8 @@ create table public.profiles (
 
 create table public.conversations (
   id uuid primary key default gen_random_uuid(),
-  user1_id uuid constraint conversations_user1_id_fkey references public.profiles(id) on delete set null,
-  user2_id uuid constraint conversations_user2_id_fkey references public.profiles(id) on delete set null,
+  user1_id uuid not null constraint conversations_user1_id_fkey references public.profiles(id) on delete cascade,
+  user2_id uuid not null constraint conversations_user2_id_fkey references public.profiles(id) on delete cascade,
   last_message_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   muted_by_user1 boolean default false,
@@ -29,8 +30,7 @@ create table public.conversations (
 create table public.messages (
   id uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references public.conversations(id) on delete cascade,
-  sender_id uuid constraint messages_sender_id_fkey references public.profiles(id) on delete set null,
-  sender_label text not null default 'Удалённый пользователь',
+  sender_id uuid not null constraint messages_sender_id_fkey references public.profiles(id) on delete cascade,
   text text,
   image_url text,
   audio_url text,
@@ -136,41 +136,8 @@ create trigger messages_protect_fields
   before update on public.messages
   for each row execute function public.protect_message_fields();
 
--- Disposable target-state profile deletion hook. The production migration
--- will be tested against this exact behavior before it is prepared.
-create or replace function public.anonymize_profile_before_delete()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $function$
-begin
-  update public.messages
-     set sender_id = null,
-         sender_label = 'Удалённый пользователь'
-   where sender_id = old.id;
-
-  update public.conversations
-     set user1_id = null
-   where user1_id = old.id;
-
-  update public.conversations
-     set user2_id = null
-   where user2_id = old.id;
-
-  update public.external_news
-     set created_by = null
-   where created_by = old.id;
-
-  return old;
-end;
-$function$;
-
-alter function public.anonymize_profile_before_delete() owner to postgres;
-
-create trigger profiles_anonymize_before_delete
-  before delete on public.profiles
-  for each row execute function public.anonymize_profile_before_delete();
+-- No anonymization trigger is created here. The production migration under
+-- test must add it after converting the old cascade constraints.
 
 -- A deliberately unlinked row models records whose access relies on the JWT
 -- subject alone. It demonstrates why deleting auth.users does not itself
@@ -267,15 +234,19 @@ create policy ci_chat_media_select_conversation_participants
     and exists (
       select 1
       from public.messages m
-      join public.conversations c on c.id = m.conversation_id
-      where (
-        c.user1_id = (select auth.uid())
-        or c.user2_id = (select auth.uid())
-      )
-      and (
-        m.image_url = storage.objects.name
-        or m.audio_url = storage.objects.name
-      )
+      where m.sender_id::text = (storage.foldername(storage.objects.name))[1]
+        and (
+          m.image_url = storage.objects.name
+          or m.audio_url = storage.objects.name
+          or right(
+            coalesce(m.image_url, ''),
+            char_length('/storage/v1/object/public/chat-media/' || storage.objects.name)
+          ) = '/storage/v1/object/public/chat-media/' || storage.objects.name
+          or right(
+            coalesce(m.audio_url, ''),
+            char_length('/storage/v1/object/public/chat-media/' || storage.objects.name)
+          ) = '/storage/v1/object/public/chat-media/' || storage.objects.name
+        )
     )
   );
 
