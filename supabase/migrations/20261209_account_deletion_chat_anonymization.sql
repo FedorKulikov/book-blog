@@ -109,6 +109,28 @@ create trigger profiles_anonymize_before_delete
 -- Authorization is therefore based on the message-to-conversation relation.
 -- The EXISTS query is also constrained by the public.messages and
 -- public.conversations RLS policies for the current authenticated user.
+-- A conversation with a deleted counterpart remains readable as history,
+-- but the surviving member must not be able to continue sending into it.
+drop policy if exists messages_insert_own on public.messages;
+create policy messages_insert_own
+  on public.messages
+  for insert
+  to authenticated
+  with check (
+    sender_id = (select auth.uid())
+    and exists (
+      select 1
+      from public.conversations as c
+      where c.id = messages.conversation_id
+        and c.user1_id is not null
+        and c.user2_id is not null
+        and (
+          c.user1_id = (select auth.uid())
+          or c.user2_id = (select auth.uid())
+        )
+    )
+  );
+
 drop policy if exists chat_media_select_conversation_participants on storage.objects;
 create policy chat_media_select_conversation_participants
   on storage.objects
