@@ -67,7 +67,7 @@ type Counterpart = {
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024 // 10 МБ
 const MAX_RECORD_SECONDS = 300 // 5 минут
 const MESSAGE_FIELDS =
-  'id, text, image_url, audio_url, audio_duration, created_at, read_at, sender_id'
+  'id, text, image_url, audio_url, audio_duration, created_at, read_at, sender_id, sender_label'
 
 function formatDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60)
