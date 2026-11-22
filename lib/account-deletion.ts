@@ -267,8 +267,11 @@ async function rehomeRemainingReferences(
     )
   }
 
-  // Update every row before removing any original. If one update fails, the
-  // originals remain and a retry reuses the deterministic staged copies.
+  // Group identical attachment rewrites to avoid one HTTP round-trip per
+  // message in large histories. Update every row before removing any source.
+  // If one chunk fails, originals remain and retries reuse deterministic copies.
+  const updateGroups = new Map<string, { patch: Record<string, string>; ids: string[] }>()
+
   for (const row of rows) {
     if (mode === 'delete_own_messages' && row.sender_id === userId) continue
 
@@ -284,14 +287,24 @@ async function rehomeRemainingReferences(
     }
     if (Object.keys(patch).length === 0) continue
 
-    const { data: updated, error: updateError } = await admin
-      .from('messages')
-      .update(patch)
-      .eq('id', row.id)
-      .select('id')
+    const key = JSON.stringify(patch)
+    const group = updateGroups.get(key) ?? { patch, ids: [] }
+    group.ids.push(row.id)
+    updateGroups.set(key, group)
+  }
 
-    if (updateError || updated?.length !== 1) {
-      throw new Error('could not update a message to its retained chat-media path')
+  for (const { patch, ids } of updateGroups.values()) {
+    for (let offset = 0; offset < ids.length; offset += ACCOUNT_DELETION_PAGE_SIZE) {
+      const chunk = ids.slice(offset, offset + ACCOUNT_DELETION_PAGE_SIZE)
+      const { data: updated, error: updateError } = await admin
+        .from('messages')
+        .update(patch)
+        .in('id', chunk)
+        .select('id')
+
+      if (updateError || updated?.length !== chunk.length) {
+        throw new Error('could not update a message batch to its retained chat-media path')
+      }
     }
   }
 }
