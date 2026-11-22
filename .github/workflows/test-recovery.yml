@@ -23,6 +23,10 @@ on:
       - 'lib/recovery.ts'
       - 'lib/supabase/admin.ts'
       - 'app/signup/page.tsx'
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+      - 'app/auth/confirm/**'
+      - 'app/welcome/**'
       - 'app/auth/reset/page.tsx'
       - 'lib/errors.ts'
   workflow_dispatch:
