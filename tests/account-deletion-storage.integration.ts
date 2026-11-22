@@ -614,6 +614,216 @@ async function testEmptyConversationCleanup(counterpart: TestUser): Promise<void
   console.log('[account-deletion-storage] empty conversation cleanup passed')
 }
 
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const payload = token.split('.')[1]
+  if (!payload) throw new Error('Access token has no JWT payload')
+  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<string, unknown>
+}
+
+function authSessionCount(userId: string, sessionId: string): number {
+  return Number(
+    queryDatabase(
+      'select count(*) from auth.sessions where user_id = ' +
+        sqlLiteral(userId) +
+        '::uuid and id = ' +
+        sqlLiteral(sessionId) +
+        '::uuid',
+    ),
+  )
+}
+
+async function fetchSessionProbe(accessToken: string, userId: string, context: string): Promise<Array<{
+  owner_id: string
+  marker: string
+}>> {
+  const url = new URL('/rest/v1/ci_session_probe', apiUrl)
+  url.searchParams.set('select', 'owner_id,marker')
+  url.searchParams.set('owner_id', 'eq.' + userId)
+
+  const response = await fetch(url, {
+    headers: {
+      apikey: anonKey,
+      Authorization: 'Bearer ' + accessToken,
+    },
+  })
+  const body = await response.json() as unknown
+  if (!response.ok) {
+    throw new Error(context + ': REST returned HTTP ' + response.status + ' ' + JSON.stringify(body))
+  }
+  if (!Array.isArray(body)) throw new Error(context + ': expected a JSON row array')
+  return body as Array<{ owner_id: string; marker: string }>
+}
+
+async function expectStorageRemovalDenied(
+  client: SupabaseClient,
+  path: string,
+  context: string,
+): Promise<void> {
+  const { data, error } = await client.storage.from('chat-media').remove([path])
+  assert.ok(error || !data || data.length === 0, context + ': authenticated client unexpectedly received a deleted object')
+  assert.equal(storageObjectCount(path), 1, context + ': object must remain after an unauthorized removal attempt')
+}
+
+async function testAuthorizationAndDeletedSessionBoundaries(
+  counterpart: TestUser,
+  outsider: TestUser,
+): Promise<void> {
+  console.log('[account-deletion-storage] testing user privilege boundaries and deleted-session behavior')
+
+  const author = await createTestUser('session-boundary-author')
+  const conversationId = await createConversation(author.id, counterpart.id)
+  const mediaPath = author.id + '/session-boundary-photo.png'
+  await upload(author.client, mediaPath, 'synthetic session boundary image', 'image/png')
+  const messageId = await createMessage({
+    client: author.client,
+    conversationId,
+    senderId: author.id,
+    senderLabel: 'Session Boundary Author',
+    text: 'A synthetic message for privilege-boundary testing',
+    imageUrl: mediaPath,
+  })
+
+  await expectStorageRemovalDenied(author.client, mediaPath, 'author cannot delete chat media directly')
+  await expectStorageRemovalDenied(counterpart.client, mediaPath, 'conversation counterpart cannot delete another author media')
+  await expectStorageRemovalDenied(outsider.client, mediaPath, 'unrelated user cannot delete chat media')
+
+  const { data: attemptedMessageUpdate, error: messageUpdateError } = await author.client
+    .from('messages')
+    .update({ sender_id: counterpart.id, sender_label: 'Forged author' })
+    .eq('id', messageId)
+    .select('id')
+  assert.ok(
+    messageUpdateError || !attemptedMessageUpdate || attemptedMessageUpdate.length === 0,
+    'authenticated author must not be able to rewrite message authorship',
+  )
+
+  const { data: unchangedMessage, error: unchangedMessageError } = await admin
+    .from('messages')
+    .select('sender_id, sender_label')
+    .eq('id', messageId)
+    .single()
+  checkError('verify message author after unauthorized update attempt', unchangedMessageError)
+  assert.equal(unchangedMessage?.sender_id, author.id, 'message sender must remain the original author')
+  assert.equal(unchangedMessage?.sender_label, 'Session Boundary Author', 'sender label must remain unchanged')
+
+  const { error: unauthorizedAdminDeleteError } = await outsider.client.auth.admin.deleteUser(author.id)
+  assert.ok(unauthorizedAdminDeleteError, 'regular authenticated user must not be able to use Auth admin deleteUser')
+  const { data: profileBeforeDelete, error: profileBeforeDeleteError } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('id', author.id)
+    .maybeSingle()
+  checkError('verify profile after unauthorized Auth admin request', profileBeforeDeleteError)
+  assert.equal(profileBeforeDelete?.id, author.id, 'unauthorized Auth admin request must not delete the account')
+
+  const { data: sessionData, error: sessionError } = await author.client.auth.getSession()
+  checkError('read session before account deletion', sessionError)
+  const session = sessionData.session
+  assert.ok(session?.access_token, 'signed-in user must have an access token')
+  assert.ok(session.refresh_token, 'signed-in user must have a refresh token')
+
+  const claims = decodeJwtPayload(session.access_token)
+  assert.equal(claims.sub, author.id, 'JWT subject must match the synthetic author')
+  assert.equal(typeof claims.exp, 'number', 'access JWT must have an expiry claim')
+  assert.ok((claims.exp as number) > Math.floor(Date.now() / 1000), 'test access JWT must not be expired')
+  assert.equal(typeof claims.session_id, 'string', 'access JWT must contain a session_id claim')
+  const sessionId = claims.session_id as string
+  assert.match(sessionId, /^[0-9a-f-]{36}$/i, 'session_id must be a UUID')
+  assert.equal(authSessionCount(author.id, sessionId), 1, 'active Auth session must exist before deletion')
+
+  const { error: probeSeedError } = await admin
+    .from('ci_session_probe')
+    .insert({ owner_id: author.id, marker: 'JWT subject-only access probe' })
+  checkError('seed isolated unlinked session probe row', probeSeedError)
+
+  const beforeDeleteProbe = await fetchSessionProbe(
+    session.access_token,
+    author.id,
+    'read session probe before deletion',
+  )
+  assert.equal(beforeDeleteProbe.length, 1, 'user must read their own JWT-protected probe row before deletion')
+  assert.equal(beforeDeleteProbe[0]?.marker, 'JWT subject-only access probe', 'probe row must match the synthetic fixture')
+
+  const retainedMediaPath = 'retained/' + messageId + '/session-boundary-photo.png'
+  const { error: retainMediaError } = await admin.storage
+    .from('chat-media')
+    .copy(mediaPath, retainedMediaPath)
+  checkError('service-role copy of session-boundary media', retainMediaError)
+  assert.equal(storageOwner(retainedMediaPath), '<null>', 'retained media must not remain owned by the deleting user')
+
+  const { error: anonymizeMessageError } = await admin
+    .from('messages')
+    .update({
+      sender_id: null,
+      sender_label: 'Удалённый пользователь',
+      image_url: retainedMediaPath,
+    })
+    .eq('id', messageId)
+  checkError('anonymize retained message before Auth deletion', anonymizeMessageError)
+
+  const { error: detachConversationError } = await admin
+    .from('conversations')
+    .update({ user1_id: null })
+    .eq('id', conversationId)
+  checkError('detach deleting user from retained conversation', detachConversationError)
+
+  await expectDownload(counterpart.client, retainedMediaPath, true, 'counterpart reads retained media after detachment')
+  await expectDownload(outsider.client, retainedMediaPath, false, 'outsider cannot read retained media after detachment')
+
+  // Storage must be emptied through its API before deleting an Auth user.
+  const { error: removeMediaError } = await admin.storage.from('chat-media').remove([mediaPath])
+  checkError('service-role cleanup of synthetic media before Auth deletion', removeMediaError)
+  assert.equal(storageObjectCount(mediaPath), 0, 'service-role cleanup must remove the synthetic media')
+
+  await deleteAuthUser(author.id, 'session-boundary-author')
+
+  const { data: deletedProfile, error: deletedProfileError } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('id', author.id)
+    .maybeSingle()
+  checkError('verify deleted author profile', deletedProfileError)
+  assert.equal(deletedProfile, null, 'Auth user deletion must cascade to the profile')
+  assert.equal(authSessionCount(author.id, sessionId), 0, 'deleted Auth user must no longer have an active auth.sessions row')
+
+  const { data: refreshedSession, error: refreshError } = await author.client.auth.refreshSession({
+    refresh_token: session.refresh_token,
+  })
+  assert.ok(refreshError, 'refresh token from deleted Auth user must be rejected')
+  assert.equal(refreshedSession.session, null, 'failed refresh must not return a replacement session')
+
+  const { data: resolvedUser, error: resolvedUserError } = await author.client.auth.getUser(session.access_token)
+  assert.ok(
+    resolvedUserError || !resolvedUser.user,
+    'Auth user lookup must no longer resolve the deleted user',
+  )
+
+  // Supabase access tokens are JWTs. A not-yet-expired token can still pass
+  // PostgREST JWT validation and auth.uid()-based RLS on rows without a FK to
+  // auth.users. This intentional probe documents the residual access window.
+  const afterDeleteProbe = await fetchSessionProbe(
+    session.access_token,
+    author.id,
+    'read JWT subject-only probe after Auth deletion',
+  )
+  assert.equal(afterDeleteProbe.length, 1, 'unexpired access JWT still satisfies auth.uid()-based RLS after deletion')
+  assert.equal(afterDeleteProbe[0]?.owner_id, author.id, 'residual access is scoped to the old JWT subject')
+
+  await expectDownload(counterpart.client, retainedMediaPath, true, 'counterpart retains media after Auth deletion')
+  await expectDownload(author.client, retainedMediaPath, false, 'deleted user is no longer a conversation participant')
+  const { data: counterpartMessages, error: counterpartMessagesError } = await counterpart.client
+    .from('messages')
+    .select('id, sender_id, sender_label')
+    .eq('conversation_id', conversationId)
+  checkError('counterpart reads conversation after account deletion', counterpartMessagesError)
+  assert.equal(counterpartMessages?.length, 1, 'counterpart must retain the conversation message')
+  assert.equal(counterpartMessages?.[0]?.sender_id, null, 'deleted author reference must be detached')
+  assert.equal(counterpartMessages?.[0]?.sender_label, 'Удалённый пользователь', 'counterpart must see the neutral author label')
+
+  console.log('[account-deletion-storage] privilege boundaries and deleted-session behavior passed')
+}
+
 async function main(): Promise<void> {
   const bucketIsPrivate = queryDatabase(
     "select public::text from storage.buckets where id = 'chat-media'",
@@ -624,6 +834,7 @@ async function main(): Promise<void> {
   await testOptionalOwnMessageRemoval(counterpart, outsider)
   await testRecoverableRehomeAndSignedUrls(counterpart, outsider)
   await testEmptyConversationCleanup(counterpart)
+  await testAuthorizationAndDeletedSessionBoundaries(counterpart, outsider)
 
   console.log('[account-deletion-storage] all real Auth + Storage integration checks passed')
 }

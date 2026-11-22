@@ -39,6 +39,26 @@ alter table public.profiles enable row level security;
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
 
+-- A deliberately unlinked row models records whose access relies on the JWT
+-- subject alone. It demonstrates why deleting auth.users does not itself
+-- invalidate an already-issued access JWT before its exp claim expires.
+create table public.ci_session_probe (
+  owner_id uuid not null,
+  marker text not null
+);
+
+alter table public.ci_session_probe enable row level security;
+
+grant select on public.ci_session_probe to authenticated;
+grant all on public.ci_session_probe to service_role;
+
+drop policy if exists ci_session_probe_read_own on public.ci_session_probe;
+create policy ci_session_probe_read_own
+  on public.ci_session_probe
+  for select
+  to authenticated
+  using (owner_id = (select auth.uid()));
+
 -- Supabase manages ownership of storage.objects separately from public tables.
 -- The CI fixture is executed using the disposable local supabase_admin role.
 -- Never change the managed owner of storage.objects.
