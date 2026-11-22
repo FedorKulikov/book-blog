@@ -10,6 +10,7 @@ on:
       - '.github/workflows/edge-deploy.yml'
       - 'scripts/test-recovery.ts'
       - 'scripts/test-email-hook.ts'
+      - 'scripts/verify-edge-hook-secret.ts'
 
 permissions:
   contents: read
@@ -65,6 +66,29 @@ jobs:
 
       - name: Установить зависимости
         run: npm ci
+
+      - name: Read-only preflight: existing Function Secrets and stable Hook signature
+        env:
+          PAT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
+        run: |
+          set +x
+          set -euo pipefail
+          # Keep the provider's secret list only in memory; never print it.
+          secret_names="$(SUPABASE_ACCESS_TOKEN="$PAT" npx --yes supabase@3.2.0 secrets list --project-ref="$REF" 2>/dev/null)" || {
+            echo "function_secret_inventory_failed"
+            exit 1
+          }
+          for name in AUTH_EMAIL_HOOK_SECRET RESEND_API_KEY; do
+            if ! grep -Fq "$name" <<< "$secret_names"; then
+              echo "missing_function_secret: $name"
+              exit 1
+            fi
+          done
+          unset secret_names
+          export EDGE_FUNCTIONS_URL="$BASE"
+          export AUTH_EMAIL_HOOK_SECRET="$HOOK"
+          npx --yes tsx scripts/verify-edge-hook-secret.ts
 
       - name: Deploy трёх функций
         env:
