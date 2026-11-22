@@ -824,6 +824,82 @@ async function testAuthorizationAndDeletedSessionBoundaries(
   console.log('[account-deletion-storage] privilege boundaries and deleted-session behavior passed')
 }
 
+
+async function testProfileDeletionAnonymizesPreservedRecords(counterpart: TestUser): Promise<void> {
+  console.log('[account-deletion-storage] testing profile BEFORE DELETE anonymization hook')
+
+  const author = await createTestUser('profile-delete-hook-author')
+  const conversationId = await createConversation(author.id, counterpart.id)
+  const messageId = await createMessage({
+    client: author.client,
+    conversationId,
+    senderId: author.id,
+    senderLabel: 'Profile Delete Hook Author',
+    text: 'This message must remain after the author account is deleted',
+  })
+
+  const { data: externalNews, error: externalNewsError } = await admin
+    .from('external_news')
+    .insert({
+      created_by: author.id,
+    })
+    .select('id')
+    .single()
+  checkError('create synthetic external_news creator reference', externalNewsError)
+  assert.ok(externalNews?.id, 'external_news fixture must be created')
+
+  // This uses the real local GoTrue admin endpoint, which deletes auth.users
+  // and lets the profiles FK perform the cascade. The BEFORE DELETE trigger
+  // must detach/anonymize chat rows before ON DELETE SET NULL constraints run.
+  await deleteAuthUser(author.id, 'profile-delete-hook-author')
+
+  const { data: remainingProfile, error: remainingProfileError } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('id', author.id)
+    .maybeSingle()
+  checkError('verify profile is deleted by Auth admin', remainingProfileError)
+  assert.equal(remainingProfile, null, 'Auth deletion must remove the profile')
+
+  const { data: retainedConversation, error: retainedConversationError } = await counterpart.client
+    .from('conversations')
+    .select('id, user1_id, user2_id')
+    .eq('id', conversationId)
+    .single()
+  checkError('counterpart reads conversation retained by profile delete trigger', retainedConversationError)
+  assert.equal(retainedConversation?.user1_id, null, 'deleted participant slot must be detached')
+  assert.equal(retainedConversation?.user2_id, counterpart.id, 'counterpart participant slot must remain')
+
+  const { data: retainedMessages, error: retainedMessagesError } = await counterpart.client
+    .from('messages')
+    .select('id, sender_id, sender_label, text')
+    .eq('conversation_id', conversationId)
+  checkError('counterpart reads message retained by profile delete trigger', retainedMessagesError)
+  assert.equal(retainedMessages?.length, 1, 'profile deletion must preserve the chat message')
+  assert.equal(retainedMessages?.[0]?.id, messageId, 'the same message row must remain')
+  assert.equal(retainedMessages?.[0]?.sender_id, null, 'deleted author UUID must be detached')
+  assert.equal(
+    retainedMessages?.[0]?.sender_label,
+    'Удалённый пользователь',
+    'deleted author must be replaced with a neutral display label',
+  )
+  assert.equal(
+    retainedMessages?.[0]?.text,
+    'This message must remain after the author account is deleted',
+    'message content must be preserved for the counterpart',
+  )
+
+  const { data: retainedNews, error: retainedNewsError } = await admin
+    .from('external_news')
+    .select('id, created_by')
+    .eq('id', externalNews.id)
+    .single()
+  checkError('verify external_news creator was anonymized', retainedNewsError)
+  assert.equal(retainedNews?.created_by, null, 'external_news must not retain the deleted profile UUID')
+
+  console.log('[account-deletion-storage] profile BEFORE DELETE anonymization hook passed')
+}
+
 async function main(): Promise<void> {
   const bucketIsPrivate = queryDatabase(
     "select public::text from storage.buckets where id = 'chat-media'",
@@ -835,6 +911,7 @@ async function main(): Promise<void> {
   await testRecoverableRehomeAndSignedUrls(counterpart, outsider)
   await testEmptyConversationCleanup(counterpart)
   await testAuthorizationAndDeletedSessionBoundaries(counterpart, outsider)
+  await testProfileDeletionAnonymizesPreservedRecords(counterpart)
 
   console.log('[account-deletion-storage] all real Auth + Storage integration checks passed')
 }
