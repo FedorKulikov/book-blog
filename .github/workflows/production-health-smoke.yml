@@ -191,12 +191,13 @@ jobs:
           fi
 
       - name: Verify analytics consent persistence in Chromium
-        if: github.event_name != 'pull_request' && matrix.label == 'Custom domain bukleb.ru'
+        if: matrix.label == 'Custom domain bukleb.ru'
         shell: bash
         env:
           SITE_URL: ${{ matrix.url }}
         run: |
           set -euo pipefail
+          node --check scripts/check-production-analytics-consent.mjs
           CHROME_BIN="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           if [[ -z "$CHROME_BIN" ]]; then
             echo "::error::A Chromium-compatible browser is required for the production analytics-consent check."
