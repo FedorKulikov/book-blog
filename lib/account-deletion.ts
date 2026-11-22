@@ -308,15 +308,41 @@ async function rehomeRemainingReferences(
   for (const { patch, ids } of updateGroups.values()) {
     for (let offset = 0; offset < ids.length; offset += ACCOUNT_DELETION_PAGE_SIZE) {
       const chunk = ids.slice(offset, offset + ACCOUNT_DELETION_PAGE_SIZE)
-      const { data: updated, error: updateError } = await admin
+      const { error: updateError } = await admin
         .from('messages')
         .update(patch)
         .in('id', chunk)
-        .select('id')
 
-      if (updateError || updated?.length !== chunk.length) {
+      if (updateError) {
         throw new Error(
-          `could not update a message batch to its retained chat-media path (${updateError?.code ?? 'unknown'})`,
+          `could not update a message batch to its retained chat-media path (${updateError.code}: ${updateError.message})`,
+        )
+      }
+
+      // Verify the persisted values in a separate read. This avoids depending
+      // on PostgREST UPDATE RETURNING semantics and proves every target row
+      // actually moved before any source object is deleted.
+      const { data: verified, error: verifyError } = await admin
+        .from('messages')
+        .select('id, image_url, audio_url')
+        .in('id', chunk)
+
+      if (verifyError) {
+        throw new Error(
+          `could not verify retained chat-media references (${verifyError.code}: ${verifyError.message})`,
+        )
+      }
+
+      const persisted = new Map((verified ?? []).map(row => [row.id, row]))
+      const allRowsUpdated = chunk.every(id => {
+        const row = persisted.get(id)
+        if (!row) return false
+        return Object.entries(patch).every(([column, value]) => row[column as 'image_url' | 'audio_url'] === value)
+      })
+
+      if (!allRowsUpdated) {
+        throw new Error(
+          `retained chat-media reference verification failed (expected ${chunk.length}, read ${verified?.length ?? 0})`,
         )
       }
     }
