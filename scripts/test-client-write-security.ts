@@ -1,4 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import {
+  DISTRIBUTION_CONSENT_CATEGORIES,
+  DISTRIBUTION_CONSENT_VERSION,
+} from '../lib/distribution-consent'
 
 const URL = process.env.SUPABASE_URL ?? ''
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -226,6 +230,20 @@ async function main() {
       status: 'approved', created_at: '2099-01-01T00:00:00.000Z',
     })
     check('post status and created_at cannot be supplied on INSERT', Boolean(forgedPost.error), safeError(forgedPost.error))
+
+    const bobWithoutConsent = await otherClient.from('posts').insert({
+      user_id: bob.id,
+      title: `post-without-consent-${stamp}`,
+      type: 'creative',
+    })
+    check('another authenticated user cannot create a post without their own consent', Boolean(bobWithoutConsent.error), safeError(bobWithoutConsent.error))
+
+    const publicationConsent = await client.rpc('record_my_distribution_consent', {
+      p_scope: 'publication',
+      p_data_categories: [...DISTRIBUTION_CONSENT_CATEGORIES],
+      p_document_version: DISTRIBUTION_CONSENT_VERSION,
+    })
+    check('author can record their own publication consent', !publicationConsent.error && Boolean(publicationConsent.data), safeError(publicationConsent.error))
 
     const post = await client.from('posts').insert({
       user_id: alice.id, title: `Data security smoke ${stamp}`,
