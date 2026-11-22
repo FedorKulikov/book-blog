@@ -1066,6 +1066,19 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     })
   assert.ok(blockedInsert.error, 'authenticated account writes must stop while deletion lock is active')
 
+  const blockedForeignMediaReference = await counterpart.client
+    .from('messages')
+    .insert({
+      conversation_id: conversationId,
+      sender_id: counterpart.id,
+      text: 'This message must not reference the deleting account media',
+      image_url: `${author.id}/owned-during-delete.png`,
+    })
+  assert.ok(
+    blockedForeignMediaReference.error,
+    'another participant must not create a new message reference to media owned by a deleting account',
+  )
+
   const { data: profileBeforeLockedUpdate, error: profileBeforeLockedUpdateError } = await admin
     .from('profiles')
     .select('username')
@@ -1360,6 +1373,30 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
   await expectDownload(outsider.client, retainedAudio, false, 'outsider cannot read neutral retained audio')
 
   const probeConversationId = await createConversation(counterpart.id, outsider.id)
+
+  // A trusted backend write bypasses the client-only retained-reference guard.
+  // Conversation-scoped Storage paths must still prevent a different chat from
+  // using a retained object copied for this conversation.
+  const crossConversationMessageId = await createMessage({
+    client: admin,
+    conversationId: probeConversationId,
+    senderId: outsider.id,
+    senderLabel: 'Service Preserve Outsider',
+    text: 'Trusted fixture with a retained file from another conversation',
+    imageUrl: retainedPhoto,
+  })
+  await expectDownload(
+    outsider.client,
+    retainedPhoto,
+    false,
+    'a retained file from another conversation must not be readable through a trusted cross-link',
+  )
+  const { error: removeCrossConversationMessageError } = await admin
+    .from('messages')
+    .delete()
+    .eq('id', crossConversationMessageId)
+  checkError('remove trusted cross-conversation retained reference', removeCrossConversationMessageError)
+
   const forgedInsert = await outsider.client
     .from('messages')
     .insert({

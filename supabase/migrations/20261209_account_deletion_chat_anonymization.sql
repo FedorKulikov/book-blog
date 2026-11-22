@@ -214,6 +214,62 @@ begin
       using errcode = '55000';
   end if;
 
+  -- A normal message must not start referencing a file owned by an account
+  -- whose deletion lock is active. This applies even when another participant
+  -- authors the new message.
+  if tg_table_name = 'messages' and exists (
+    select 1
+    from private.account_deletion_locks l
+    cross join lateral (
+      values
+        (to_jsonb(new) ->> 'image_url'),
+        (to_jsonb(new) ->> 'audio_url')
+    ) as media_refs(object_url)
+    where media_refs.object_url is not null
+      and (
+        media_refs.object_url ilike l.user_id::text || '/%'
+        or media_refs.object_url ilike '%/' || l.user_id::text || '/%'
+      )
+  ) then
+    raise exception 'chat media belongs to an account being deleted'
+      using errcode = '55000';
+  end if;
+
+  -- During preserve-mode deletion, service_role may rewrite only attachment
+  -- references on messages authored by the locked account. Every other column
+  -- must remain unchanged, and each changed reference must move into the
+  -- retained/<conversation UUID>/ namespace. The invoker trigger below
+  -- separately rejects this operation when an authenticated client tries it.
+  if tg_table_name = 'messages'
+     and tg_op = 'UPDATE'
+     and (to_jsonb(new) - 'image_url' - 'audio_url')
+       = (to_jsonb(old) - 'image_url' - 'audio_url')
+     and (
+       (to_jsonb(new) ->> 'image_url') is distinct from (to_jsonb(old) ->> 'image_url')
+       or (to_jsonb(new) ->> 'audio_url') is distinct from (to_jsonb(old) ->> 'audio_url')
+     )
+     and exists (
+       select 1
+       from private.account_deletion_locks l
+       where l.user_id = nullif(to_jsonb(old) ->> 'sender_id', '')::uuid
+     )
+     and (
+       (to_jsonb(new) ->> 'image_url') is not distinct from (to_jsonb(old) ->> 'image_url')
+       or (to_jsonb(new) ->> 'image_url') like
+          'retained/' || (to_jsonb(new) ->> 'conversation_id') || '/%'
+       or (to_jsonb(new) ->> 'image_url') like
+          '%/chat-media/retained/' || (to_jsonb(new) ->> 'conversation_id') || '/%'
+     )
+     and (
+       (to_jsonb(new) ->> 'audio_url') is not distinct from (to_jsonb(old) ->> 'audio_url')
+       or (to_jsonb(new) ->> 'audio_url') like
+          'retained/' || (to_jsonb(new) ->> 'conversation_id') || '/%'
+       or (to_jsonb(new) ->> 'audio_url') like
+          '%/chat-media/retained/' || (to_jsonb(new) ->> 'conversation_id') || '/%'
+     ) then
+    return new;
+  end if;
+
   -- Reject new references to a deleting UUID regardless of who performs
   -- the write. This closes races such as another user creating a notification
   -- whose actor_id points to the account currently being removed.
@@ -539,7 +595,10 @@ create policy chat_media_select_conversation_participants
       -- references to that prefix are rejected by the trigger above.
       and (
         (storage.foldername(storage.objects.name))[1] = m.sender_id::text
-        or (storage.foldername(storage.objects.name))[1] = 'retained'
+        or (
+          (storage.foldername(storage.objects.name))[1] = 'retained'
+          and (storage.foldername(storage.objects.name))[2] = m.conversation_id::text
+        )
       )
       and (
         m.image_url = storage.objects.name
@@ -725,8 +784,9 @@ begin
       and qual ilike '%conversations%'
       and qual ilike '%sender_id%'
       and qual ilike '%retained%'
+      and qual ilike '%conversation_id%'
   ) then
-    raise exception 'chat media policy must preserve uploader ownership and allow only managed retained paths';
+    raise exception 'chat media policy must scope managed retained paths to their conversation';
   end if;
 
   if not exists (

@@ -28,6 +28,7 @@ const STORAGE_REFERENCE_SOURCES = [
 
 type MessageMediaReference = {
   id: string
+  conversation_id: string
   sender_id: string | null
   image_url: string | null
   audio_url: string | null
@@ -179,13 +180,14 @@ async function objectExists(
 async function copyChatMediaIfMissing(
   admin: SupabaseClient,
   sourcePath: string,
+  conversationId: string,
 ): Promise<string> {
   const extension = sourcePath.split('.').pop() ?? ''
   const safeExtension = /^[a-z0-9]{1,8}$/i.test(extension)
     ? extension.toLowerCase()
     : 'bin'
   const digest = createHash('sha256').update(sourcePath).digest('hex').slice(0, 32)
-  const destinationPath = `retained/${digest}.${safeExtension}`
+  const destinationPath = `retained/${conversationId}/${digest}.${safeExtension}`
 
   if (!(await objectExists(admin, 'chat-media', destinationPath))) {
     const { error } = await admin.storage
@@ -221,7 +223,7 @@ async function readAllOwnedMediaMessageReferences(
   ) {
     const { data, error } = await admin
       .from('messages')
-      .select('id, sender_id, image_url, audio_url')
+      .select('id, conversation_id, sender_id, image_url, audio_url')
       .or(`image_url.ilike.${userPathPrefix},audio_url.ilike.${userPathPrefix},image_url.ilike.${userPathInUrl},audio_url.ilike.${userPathInUrl}`)
       .order('id', { ascending: true })
       .range(offset, offset + ACCOUNT_DELETION_PAGE_SIZE - 1)
@@ -243,7 +245,9 @@ async function rehomeRemainingReferences(
   mode: ChatDeletionMode,
 ): Promise<void> {
   const rows = await readAllOwnedMediaMessageReferences(admin, userId)
-  const ownedSources = new Set<string>()
+  const ownedSources = new Map<string, { conversationId: string; sourcePath: string }>()
+  const referenceKey = (conversationId: string, sourcePath: string) =>
+    `${conversationId}\\u0000${sourcePath}`
 
   for (const row of rows) {
     // In the explicitly destructive mode, the deleting user's own messages
@@ -253,17 +257,22 @@ async function rehomeRemainingReferences(
 
     for (const value of [row.image_url, row.audio_url]) {
       const path = getChatMediaObjectPath(value)
-      if (path?.startsWith(`${userId}/`)) ownedSources.add(path)
+      if (path?.startsWith(`${userId}/`)) {
+        const key = referenceKey(row.conversation_id, path)
+        ownedSources.set(key, { conversationId: row.conversation_id, sourcePath: path })
+      }
     }
   }
 
   if (ownedSources.size === 0) return
 
+  // A retained object belongs to exactly one conversation. If the same source
+  // was reused in separate chats, copy it separately into each chat namespace.
   const retainedBySource = new Map<string, string>()
-  for (const sourcePath of ownedSources) {
+  for (const [key, source] of ownedSources) {
     retainedBySource.set(
-      sourcePath,
-      await copyChatMediaIfMissing(admin, sourcePath),
+      key,
+      await copyChatMediaIfMissing(admin, source.sourcePath, source.conversationId),
     )
   }
 
@@ -279,11 +288,14 @@ async function rehomeRemainingReferences(
     const audioPath = getChatMediaObjectPath(row.audio_url)
     const patch: Record<string, string> = {}
 
-    if (imagePath && retainedBySource.has(imagePath)) {
-      patch.image_url = retainedBySource.get(imagePath) as string
+    const imageKey = imagePath ? referenceKey(row.conversation_id, imagePath) : null
+    const audioKey = audioPath ? referenceKey(row.conversation_id, audioPath) : null
+
+    if (imageKey && retainedBySource.has(imageKey)) {
+      patch.image_url = retainedBySource.get(imageKey) as string
     }
-    if (audioPath && retainedBySource.has(audioPath)) {
-      patch.audio_url = retainedBySource.get(audioPath) as string
+    if (audioKey && retainedBySource.has(audioKey)) {
+      patch.audio_url = retainedBySource.get(audioKey) as string
     }
     if (Object.keys(patch).length === 0) continue
 
@@ -303,7 +315,9 @@ async function rehomeRemainingReferences(
         .select('id')
 
       if (updateError || updated?.length !== chunk.length) {
-        throw new Error('could not update a message batch to its retained chat-media path')
+        throw new Error(
+          `could not update a message batch to its retained chat-media path (${updateError?.code ?? 'unknown'})`,
+        )
       }
     }
   }

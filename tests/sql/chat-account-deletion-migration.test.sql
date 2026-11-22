@@ -74,8 +74,9 @@ begin
       and qual ilike '%user2_id%'
       and qual ilike '%sender_id%'
       and qual ilike '%retained%'
+      and qual ilike '%conversation_id%'
   ) then
-    raise exception 'chat media policy must preserve uploader ownership and allow only managed retained paths';
+    raise exception 'chat media policy must scope managed retained paths to their conversation';
   end if;
 
   if not exists (
