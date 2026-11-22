@@ -1005,6 +1005,25 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
       text: 'This write must be blocked while deletion is in progress',
     })
   assert.ok(blockedInsert.error, 'authenticated account writes must stop while deletion lock is active')
+
+  const blockedPostImageReference = await admin
+    .from('post_images')
+    .insert({
+      url: `https://storage.example.test/post-images/${author.id}/new-shared-image.png`,
+    })
+  assert.ok(blockedPostImageReference.error, 'new post-image references to an account being deleted must be rejected')
+
+  const blockedExternalNewsReference = await admin
+    .from('external_news')
+    .insert({
+      title: 'Synthetic CI news',
+      url: 'https://example.test/news',
+      source: 'CI fixture',
+      lang: 'ru',
+      cover_url: `https://storage.example.test/post-images/${author.id}/new-cover.png`,
+    })
+  assert.ok(blockedExternalNewsReference.error, 'new external-news references to an account being deleted must be rejected')
+
   await endAccountDeletion(admin, author.id)
 
   const messageId = await createMessage({
