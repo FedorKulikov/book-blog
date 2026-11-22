@@ -663,3 +663,6 @@ end;
 $assert$;
 
 commit;
+
+-- Make the newly created account-deletion RPCs visible to PostgREST.
+notify pgrst, 'reload schema';
