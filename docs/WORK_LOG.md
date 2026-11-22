@@ -236,3 +236,13 @@
 - **Проверки:** run [44991334295](https://github.com/FedorKulikov/book-blog/actions/runs/44991334295) — quality/email SQL `success`, integration `failure` на несоответствии результата UPDATE, smoke [44991334305](https://github.com/FedorKulikov/book-blog/actions/runs/44991334305) — `success`. Новый run после изменения verification ещё не завершён.
 - **Что не получилось / осталось:** остаётся подтвердить фактический server-side rehome всех сообщений, обе conversation-scoped RLS ветви и destructive mode с разделением own/counterpart messages.
 - **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся Draft. Production app, Supabase, Auth, Storage и пользовательские данные не менялись; merge/deploy и production migration не выполнялись.
+
+
+## 2026-11-22 — Дополнение: уменьшение REST UPDATE-пакетов (PR #63)
+
+- **Что требовалось:** устранить HTTP-level отказ при обновлении сообщений с owned-media ссылками на conversation-scoped retained paths.
+- **Что сделано:** run [44991542004](https://github.com/FedorKulikov/book-blog/actions/runs/44991542004) прошёл quality и PostgreSQL 17 migration jobs; smoke [44991541958](https://github.com/FedorKulikov/book-blog/actions/runs/44991541958) — `success`. Полный Auth/Storage integration прошёл preflight/write-lock и дошёл до пакетного rehome, где Supabase REST вернул `URI too long`: 500 UUID в фильтре `in` превышали допустимую длину URL. Размер только UPDATE/verification batch уменьшен до 100 строк; чтение больших наборов остаётся по 500 строкам.
+- **Как сделано:** добавлена отдельная константа `ACCOUNT_DELETION_UPDATE_BATCH_SIZE = 100`; в одном цикле каждая партия обновляется, а затем отдельным SELECT проверяется по ID и точному совпадению media URL. Исходные Storage objects по-прежнему не удаляются до подтверждения всех строк.
+- **Проверки:** run [44991542004](https://github.com/FedorKulikov/book-blog/actions/runs/44991542004): quality/email migration `success`, integration `failure` с точной причиной `URI too long`; smoke [44991541958](https://github.com/FedorKulikov/book-blog/actions/runs/44991541958) — `success`. Новый прогон с batch size 100 ещё не завершён.
+- **Что не получилось / осталось:** обязательны успешный complete preserve flow, проверка retained-path conversation isolation и destructive delete-own mode.
+- **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся Draft; production не менялся, merge/deploy и production migration не выполнялись.

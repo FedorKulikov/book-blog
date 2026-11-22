@@ -41,6 +41,7 @@ type StorageEntry = {
 }
 
 const ACCOUNT_DELETION_PAGE_SIZE = 500
+const ACCOUNT_DELETION_UPDATE_BATCH_SIZE = 100
 const ACCOUNT_DELETION_MAX_MESSAGE_ROWS = 100_000
 
 /**
@@ -306,8 +307,8 @@ async function rehomeRemainingReferences(
   }
 
   for (const { patch, ids } of updateGroups.values()) {
-    for (let offset = 0; offset < ids.length; offset += ACCOUNT_DELETION_PAGE_SIZE) {
-      const chunk = ids.slice(offset, offset + ACCOUNT_DELETION_PAGE_SIZE)
+    for (let offset = 0; offset < ids.length; offset += ACCOUNT_DELETION_UPDATE_BATCH_SIZE) {
+      const chunk = ids.slice(offset, offset + ACCOUNT_DELETION_UPDATE_BATCH_SIZE)
       const { error: updateError } = await admin
         .from('messages')
         .update(patch)
