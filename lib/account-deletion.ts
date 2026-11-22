@@ -51,10 +51,13 @@ export async function inspectAccountDeletionBlockers(
   const blockers: AccountDeletionBlocker[] = []
 
   for (const source of BLOCKER_SOURCES) {
-    const { count, error } = await admin
+    const query = admin
       .from(source.table)
       .select('*', { count: 'exact', head: true })
-      .eq(source.column, userId)
+    const { count, error } =
+      source.code === 'notifications_as_actor'
+        ? await query.eq(source.column, userId).neq('user_id', userId)
+        : await query.eq(source.column, userId)
 
     if (error || count === null) {
       throw new Error(`account deletion preflight failed for ${source.code}`)
