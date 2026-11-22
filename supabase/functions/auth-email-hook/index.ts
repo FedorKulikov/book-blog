@@ -271,9 +271,13 @@ export async function handle(
     return fail(413, 'payload_too_large')
   }
 
-  if (!(await verifyStandardWebhook(rawBody, request.headers, hookSecret))) {
+  let validSignature = false
+  try {
+    validSignature = await verifyStandardWebhook(rawBody, request.headers, hookSecret)
+  } catch {
     return fail(401, 'invalid_signature')
   }
+  if (!validSignature) return fail(401, 'invalid_signature')
 
   let payload: HookPayload | null
   try {
