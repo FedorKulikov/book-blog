@@ -12,7 +12,7 @@ export type OutgoingEmail = {
   subject: string
   html: string
   text: string
-  idempotencyKey?: string
+  idempotencyKey: string
 }
 
 /**
