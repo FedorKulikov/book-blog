@@ -1198,7 +1198,7 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     conversationId,
     senderId: author.id,
     senderLabel: 'Service Remove Author',
-    text: 'This author's message must be removed',
+    text: "This author's message must be removed",
     imageUrl: sharedPath,
   })
   await createMessage({
