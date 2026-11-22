@@ -450,7 +450,17 @@ jobs:
           CREATE TABLE auth.users (
             id uuid PRIMARY KEY
           );
-          GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
+          CREATE OR REPLACE FUNCTION auth.uid()
+          RETURNS uuid
+          LANGUAGE sql
+          STABLE
+          AS $function$
+            SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $function$;
+
+          GRANT USAGE ON SCHEMA auth, public TO anon, authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
           SQL
 
       - name: Apply migration to clean PostgreSQL database
@@ -470,4 +480,10 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/personal-data-consents-migration.test.sql
+
+      - name: Verify authenticated user-scoped consent RPCs
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/personal-data-consents-user-rpcs.test.sql
 
