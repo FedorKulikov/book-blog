@@ -433,12 +433,29 @@ export async function beginAccountDeletion(
   userId: string,
   mode: ChatDeletionMode,
 ): Promise<ChatDeletionMode | null> {
-  const { data, error } = await admin.rpc('begin_account_deletion', {
-    p_user_id: userId,
-    p_chat_mode: mode,
-  })
-  if (error) throw new Error('could not lock account for deletion')
-  return data === 'preserve' || data === 'delete_own_messages' ? data : null
+  // A migration may have just introduced this RPC. PostgREST schema-cache
+  // notifications are asynchronous, so retry only the specific stale-cache
+  // response; permission and database errors must fail immediately.
+  let lastError: { code?: string } | null = null
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { data, error } = await admin.rpc('begin_account_deletion', {
+      p_user_id: userId,
+      p_chat_mode: mode,
+    })
+
+    if (!error) {
+      return data === 'preserve' || data === 'delete_own_messages' ? data : null
+    }
+
+    lastError = error
+    if (error.code !== 'PGRST202' || attempt === 4) break
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+
+  throw new Error(
+    `could not lock account for deletion (${lastError?.code ?? 'unknown database error'})`,
+  )
 }
 
 export async function endAccountDeletion(
