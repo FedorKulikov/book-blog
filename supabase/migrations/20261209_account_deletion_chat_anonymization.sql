@@ -186,7 +186,6 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_uid uuid := auth.uid();
   v_storage_url text;
 begin
   -- A public image URL may be reused by another user's post or a news card.
@@ -210,26 +209,26 @@ begin
       using errcode = '55000';
   end if;
 
-  if v_uid is null then
-    return new;
-  end if;
-
-  if v_uid is not null and exists (
+  -- Reject new references to a deleting UUID regardless of who performs
+  -- the write. This closes races such as another user creating a notification
+  -- whose actor_id points to the account currently being removed.
+  if exists (
     select 1
     from private.account_deletion_locks l
-    where l.user_id = v_uid
-      and (
-        l.user_id = nullif(to_jsonb(new) ->> 'user_id', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'sender_id', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'reporter_id', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'actor_id', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'blocker_id', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'blocked_id', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'follower_id', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'following_id', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'created_by', '')::uuid
-        or l.user_id = nullif(to_jsonb(new) ->> 'id', '')::uuid
-      )
+    cross join lateral (
+      values
+        (nullif(to_jsonb(new) ->> 'user_id', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'sender_id', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'reporter_id', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'actor_id', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'blocker_id', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'blocked_id', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'follower_id', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'following_id', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'created_by', '')::uuid),
+        (nullif(to_jsonb(new) ->> 'id', '')::uuid)
+    ) as refs(referenced_user_id)
+    where refs.referenced_user_id = l.user_id
   ) then
     raise exception 'account deletion is in progress'
       using errcode = '55000';
