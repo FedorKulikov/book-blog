@@ -311,13 +311,19 @@ Deno.test('invalid signature is rejected before parsing or sending', async () =>
   equal(calls, 0, 'invalid signature must not call mailer')
 })
 
-Deno.test('mailer failure is returned as generic 502 without provider details', async () => {
-  const request = await signedRequest(signupPayload())
+Deno.test('recovery mailer failure is returned as generic 502 without provider details', async () => {
+  const request = await signedRequest({
+    user: { id: 'user-synthetic-recovery-failure', email: 'reader@example.test' },
+    email_data: {
+      email_action_type: 'recovery',
+      token_hash: 'synthetic_recovery_failure_hash',
+    },
+  })
   const response = await handle(request, dependencies(async () =>
     new Response('private provider detail', { status: 502 }),
   ))
 
-  equal(response.status, 502, 'mailer failure status')
+  equal(response.status, 502, 'recovery mailer failure status')
   const body = await response.text()
   assert(!body.includes('private provider detail'), 'provider response must not be exposed')
 })
