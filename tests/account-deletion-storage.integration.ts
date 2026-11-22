@@ -1066,11 +1066,30 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     })
   assert.ok(blockedInsert.error, 'authenticated account writes must stop while deletion lock is active')
 
-  const blockedProfileUpdate = await author.client
+  const { data: profileBeforeLockedUpdate, error: profileBeforeLockedUpdateError } = await admin
+    .from('profiles')
+    .select('username')
+    .eq('id', author.id)
+    .single()
+  checkError('read profile before privileged write-lock probe', profileBeforeLockedUpdateError)
+
+  const blockedProfileUpdate = await admin
     .from('profiles')
     .update({ username: 'should-not-update-during-deletion' })
     .eq('id', author.id)
-  assert.ok(blockedProfileUpdate.error, 'the deleting account must not update its profile while the lock is active')
+  assert.ok(blockedProfileUpdate.error, 'the deletion lock must reject even a privileged profile update')
+
+  const { data: profileAfterLockedUpdate, error: profileAfterLockedUpdateError } = await admin
+    .from('profiles')
+    .select('username')
+    .eq('id', author.id)
+    .single()
+  checkError('read profile after privileged write-lock probe', profileAfterLockedUpdateError)
+  assert.equal(
+    profileAfterLockedUpdate?.username,
+    profileBeforeLockedUpdate?.username,
+    'profile contents must remain unchanged after a rejected locked update',
+  )
 
   for (const bucket of ['chat-media', 'avatars', 'post-images']) {
     const blockedUpload = await author.client.storage
@@ -1339,6 +1358,61 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
   await expectDownload(counterpart.client, retainedAudio, true, 'counterpart reads neutral retained audio')
   await expectDownload(outsider.client, retainedPhoto, false, 'outsider cannot read neutral retained photo')
   await expectDownload(outsider.client, retainedAudio, false, 'outsider cannot read neutral retained audio')
+
+  const probeConversationId = await createConversation(counterpart.id, outsider.id)
+  const forgedInsert = await outsider.client
+    .from('messages')
+    .insert({
+      conversation_id: probeConversationId,
+      sender_id: outsider.id,
+      text: 'This forged reference must be rejected',
+      image_url: retainedPhoto,
+    })
+  assert.ok(
+    forgedInsert.error,
+    'a client must not attach a known retained object to a new message',
+  )
+
+  const probeMessageId = await createMessage({
+    client: outsider.client,
+    conversationId: probeConversationId,
+    senderId: outsider.id,
+    senderLabel: 'Service Preserve Outsider',
+    text: 'This message must not be retrofitted with retained media',
+  })
+  const forgedUpdate = await outsider.client
+    .from('messages')
+    .update({ image_url: retainedPhoto })
+    .eq('id', probeMessageId)
+  assert.ok(
+    forgedUpdate.error,
+    'a client must not attach a retained object to an existing message',
+  )
+
+  const { data: unchangedProbeMessage, error: unchangedProbeMessageError } = await admin
+    .from('messages')
+    .select('image_url')
+    .eq('id', probeMessageId)
+    .single()
+  checkError('verify retained media reference remained unchanged', unchangedProbeMessageError)
+  assert.equal(unchangedProbeMessage?.image_url, null)
+
+  await expectDownload(
+    outsider.client,
+    retainedPhoto,
+    false,
+    'a client-created conversation must not grant access to another conversation retained media',
+  )
+  const { error: removeProbeMessageError } = await admin
+    .from('messages')
+    .delete()
+    .eq('id', probeMessageId)
+  checkError('remove retained media reference probe message', removeProbeMessageError)
+  const { error: removeProbeConversationError } = await admin
+    .from('conversations')
+    .delete()
+    .eq('id', probeConversationId)
+  checkError('remove retained media reference probe conversation', removeProbeConversationError)
 
   await deleteAuthUser(counterpart.id, 'service-preserve-counterpart')
   await deleteAuthUser(outsider.id, 'service-preserve-outsider')

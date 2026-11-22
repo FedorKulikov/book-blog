@@ -72,8 +72,10 @@ begin
       and qual ilike '%conversations%'
       and qual ilike '%user1_id%'
       and qual ilike '%user2_id%'
+      and qual ilike '%sender_id%'
+      and qual ilike '%retained%'
   ) then
-    raise exception 'chat media policy must authorize by message/conversation participation';
+    raise exception 'chat media policy must preserve uploader ownership and allow only managed retained paths';
   end if;
 
   if not exists (
@@ -113,6 +115,34 @@ begin
       and (qual ilike '%foldername%' or qual ilike '%sender_id%')
   ) then
     raise exception 'legacy sender-folder chat media SELECT policy remains';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgrelid = 'public.messages'::regclass
+      and tgname = 'messages_block_untrusted_retained_media'
+      and not tgisinternal
+      and tgenabled <> 'D'
+  ) then
+    raise exception 'client retained-media reference guard is missing or disabled';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_roles r on r.oid = p.proowner
+    where p.oid = 'public.reject_untrusted_retained_chat_media_refs()'::regprocedure
+      and not p.prosecdef
+      and r.rolname = 'postgres'
+  ) then
+    raise exception 'retained-media reference guard must be an invoker trigger owned by postgres';
+  end if;
+
+  if has_function_privilege('anon', 'public.reject_untrusted_retained_chat_media_refs()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.reject_untrusted_retained_chat_media_refs()', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.reject_untrusted_retained_chat_media_refs()', 'EXECUTE') then
+    raise exception 'retained-media trigger function must not be executable through the Data API';
   end if;
 
   if to_regclass('private.account_deletion_locks') is null then

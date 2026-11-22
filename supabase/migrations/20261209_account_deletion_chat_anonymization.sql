@@ -482,6 +482,42 @@ create policy messages_insert_own
     )
   );
 
+-- Retained paths are server-managed. Without this guard a client could
+-- attach a known retained/ object to an arbitrary new or existing message and
+-- gain access through the participant-based Storage policy below.
+create or replace function public.reject_untrusted_retained_chat_media_refs()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $function$
+begin
+  if current_user in ('postgres', 'service_role') then
+    return new;
+  end if;
+
+  if coalesce(new.image_url, '') like 'retained/%'
+     or coalesce(new.audio_url, '') like 'retained/%'
+     or coalesce(new.image_url, '') like '%/chat-media/retained/%'
+     or coalesce(new.audio_url, '') like '%/chat-media/retained/%' then
+    raise exception 'retained chat media references are server-managed'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$function$;
+
+alter function public.reject_untrusted_retained_chat_media_refs() owner to postgres;
+revoke all on function public.reject_untrusted_retained_chat_media_refs()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists messages_block_untrusted_retained_media on public.messages;
+create trigger messages_block_untrusted_retained_media
+  before insert or update of image_url, audio_url
+  on public.messages
+  for each row execute function public.reject_untrusted_retained_chat_media_refs();
+
 drop policy if exists chat_media_select_conversation_participants on storage.objects;
 create policy chat_media_select_conversation_participants
   on storage.objects
@@ -497,6 +533,13 @@ create policy chat_media_select_conversation_participants
       where (
         c.user1_id = (select auth.uid())
         or c.user2_id = (select auth.uid())
+      )
+      -- Preserve the original uploader-folder check for ordinary objects.
+      -- The neutral retained/ exception is safe because client INSERT/UPDATE
+      -- references to that prefix are rejected by the trigger above.
+      and (
+        (storage.foldername(storage.objects.name))[1] = m.sender_id::text
+        or (storage.foldername(storage.objects.name))[1] = 'retained'
       )
       and (
         m.image_url = storage.objects.name
@@ -680,9 +723,40 @@ begin
       and qual ilike '%user2_id%'
       and qual ilike '%messages%'
       and qual ilike '%conversations%'
+      and qual ilike '%sender_id%'
+      and qual ilike '%retained%'
   ) then
-    raise exception 'chat media participant policy does not use the message/conversation relationship';
+    raise exception 'chat media policy must preserve uploader ownership and allow only managed retained paths';
   end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgrelid = 'public.messages'::regclass
+      and tgname = 'messages_block_untrusted_retained_media'
+      and not tgisinternal
+      and tgenabled <> 'D'
+  ) then
+    raise exception 'client retained-media reference guard is missing or disabled';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_roles r on r.oid = p.proowner
+    where p.oid = 'public.reject_untrusted_retained_chat_media_refs()'::regprocedure
+      and not p.prosecdef
+      and r.rolname = 'postgres'
+  ) then
+    raise exception 'retained-media reference guard must be an invoker trigger owned by postgres';
+  end if;
+
+  if has_function_privilege('anon', 'public.reject_untrusted_retained_chat_media_refs()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.reject_untrusted_retained_chat_media_refs()', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.reject_untrusted_retained_chat_media_refs()', 'EXECUTE') then
+    raise exception 'retained-media trigger function must not be executable through the Data API';
+  end if;
+
 end;
 $assert$;
 
