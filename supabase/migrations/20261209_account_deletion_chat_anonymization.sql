@@ -263,6 +263,17 @@ begin
     end if;
   end if;
 
+  -- A narrowly scoped service-side refresh changes only last_message_at.
+  -- Authenticated users have no column UPDATE privilege for this field; this
+  -- exception lets the statement-level DELETE trigger repair sort order while
+  -- the conversation participant is still protected by the deletion lock.
+  if tg_table_name = 'conversations'
+     and tg_op = 'UPDATE'
+     and (v_new_json - 'last_message_at') = (v_old_json - 'last_message_at')
+     and (v_new_json ->> 'last_message_at') is distinct from (v_old_json ->> 'last_message_at') then
+    return new;
+  end if;
+
   -- Profile anonymization detaches only the participant(s) being deleted.
   -- Allow that nulling operation even if the other participant is also in the
   -- process of deletion; no new participant reference is introduced.
@@ -444,6 +455,16 @@ begin
           (v_new_json ->> 'id'),
           (v_new_json ->> 'user1_id'),
           (v_new_json ->> 'user2_id'),
+          (case when tg_table_name = 'messages' then (
+            select c.user1_id::text
+            from public.conversations c
+            where c.id = (v_new_json ->> 'conversation_id')::uuid
+          ) end),
+          (case when tg_table_name = 'messages' then (
+            select c.user2_id::text
+            from public.conversations c
+            where c.id = (v_new_json ->> 'conversation_id')::uuid
+          ) end),
           (v_storage_url),
           (case when tg_table_name = 'messages' then v_new_json ->> 'image_url' end),
           (case when tg_table_name = 'messages' then v_new_json ->> 'audio_url' end)
