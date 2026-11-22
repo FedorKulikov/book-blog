@@ -47,12 +47,42 @@ test('fails closed when the assurance result and signed JWT claim disagree', () 
   )
 })
 
-test('fails closed when an enrolled factor is required but current assurance is missing', () => {
+test('fails closed when current or next assurance level is missing', () => {
   assert.equal(
     requiresMfaStepUp({
       currentLevel: null,
       nextLevel: 'aal2',
       jwtAssuranceLevel: null,
+    }),
+    true,
+  )
+  assert.equal(
+    requiresMfaStepUp({
+      currentLevel: 'aal1',
+      nextLevel: null,
+      jwtAssuranceLevel: 'aal1',
+    }),
+    true,
+  )
+})
+
+test('fails closed for an unknown future assurance level', () => {
+  assert.equal(
+    requiresMfaStepUp({
+      currentLevel: 'aal3',
+      nextLevel: 'aal3',
+      jwtAssuranceLevel: 'aal3',
+    }),
+    true,
+  )
+})
+
+test('fails closed when the next level contradicts the current aal2 state', () => {
+  assert.equal(
+    requiresMfaStepUp({
+      currentLevel: 'aal2',
+      nextLevel: 'aal1',
+      jwtAssuranceLevel: 'aal2',
     }),
     true,
   )
