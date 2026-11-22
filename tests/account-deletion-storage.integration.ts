@@ -1063,10 +1063,6 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
   const blockedExternalNewsReference = await admin
     .from('external_news')
     .insert({
-      title: 'Synthetic CI news',
-      url: 'https://example.test/news',
-      source: 'CI fixture',
-      lang: 'ru',
       cover_url: `https://storage.example.test/post-images/${author.id}/new-cover.png`,
     })
   assert.ok(blockedExternalNewsReference.error, 'new external-news references to an account being deleted must be rejected')
@@ -1159,12 +1155,14 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     ['reports', 'reporter_id'],
     ['action_log', 'user_id'],
     ['notifications', 'actor_id'],
-    ['post_images', 'url'],
-    ['external_news', 'cover_url'],
-    ['books', 'cover_url'],
   ] as const) {
     const { error } = await admin.from(table).delete().eq(column, author.id)
     checkError(`clean preflight fixture ${table}`, error)
+  }
+
+  for (const table of ['post_images', 'external_news', 'books'] as const) {
+    const { error } = await admin.from(table).delete().not('id', 'is', null)
+    checkError(`clean preflight URL reference fixture ${table}`, error)
   }
 
   const { error: removeAvatarReferenceError } = await admin
