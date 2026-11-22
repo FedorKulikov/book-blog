@@ -1,16 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-
-const enabled = process.env.NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY === 'true'
+import { supabase } from '@/lib/supabase'
 
 export default function EmailRecoveryResetForm() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-
-  if (!enabled) return null
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -19,34 +16,31 @@ export default function EmailRecoveryResetForm() {
     setNotice('')
 
     try {
-      const response = await fetch('/api/email-recovery/reset-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      })
+      const { error: requestError } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+      )
 
-      if (!response.ok) {
-        setError('Сервис восстановления временно недоступен. Попробуйте позже или используйте резервный код.')
+      if (requestError) {
+        setError('Не удалось обработать запрос. Попробуйте ещё раз позже.')
         return
       }
 
-      // Deliberately the same for unknown, unverified and verified email
-      // addresses. The endpoint never confirms whether an account exists.
+      // Same response regardless of whether an account uses this address.
       setNotice(
-        'Если адрес относится к аккаунту и ранее был подтверждён в настройках профиля, письмо для сброса пароля отправлено. Если письма нет, используйте резервный код.',
+        'Если аккаунт с таким адресом существует, письмо для восстановления отправлено. Проверьте входящие и папку «Спам».',
       )
     } catch {
-      setError('Сеть недоступна. Попробуйте ещё раз.')
+      setError('Не удалось отправить запрос. Проверьте соединение и попробуйте ещё раз.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <section className="mt-8 rounded-xl border border-emerald-dark/15 p-4">
-      <h2 className="font-semibold text-emerald-dark mb-1">Восстановить по подтверждённому email</h2>
+    <section className="rounded-xl border border-emerald-dark/15 p-4">
+      <h2 className="font-semibold text-emerald-dark mb-1">Восстановление по email</h2>
       <p className="text-sm text-brown/70 mb-3">
-        Этот способ работает только после того, как вы заранее подтвердили доступ к почте в настройках профиля.
+        Укажите адрес электронной почты, связанный с аккаунтом. Мы отправим ссылку для создания нового пароля.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-3">
@@ -57,7 +51,11 @@ export default function EmailRecoveryResetForm() {
           id="recovery-email"
           type="email"
           value={email}
-          onChange={event => setEmail(event.target.value)}
+          onChange={event => {
+            setEmail(event.target.value)
+            setError('')
+            setNotice('')
+          }}
           autoComplete="email"
           required
           className="w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
@@ -66,7 +64,7 @@ export default function EmailRecoveryResetForm() {
         <button
           type="submit"
           disabled={loading}
-          className="rounded-full border border-emerald-dark/20 px-4 py-2 text-sm text-brown-dark hover:border-emerald-mid disabled:opacity-50 transition-colors"
+          className="rounded-full bg-emerald-mid px-4 py-2 text-sm text-cream hover:bg-emerald-dark disabled:opacity-50 transition-colors"
         >
           {loading ? 'Отправляем…' : 'Отправить ссылку для сброса'}
         </button>
