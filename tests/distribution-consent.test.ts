@@ -88,10 +88,12 @@ test('missing checkbox consent returns 422 before any RPC or INSERT', async () =
 
 test('verified server user is used and consent is recorded before INSERT', async () => {
   const fake = fakeSupabase()
+  const forgedUserId: string = '22222222-2222-4222-8222-222222222222'
+  const forgedPayload = { ...validInput, user_id: forgedUserId }
   const result = await createPostWithDistributionConsent(
     fake.client,
     verifiedUserId,
-    { ...validInput, user_id: '22222222-2222-4222-8222-222222222222' },
+    forgedPayload as Parameters<typeof createPostWithDistributionConsent>[2],
   )
 
   assert.equal(result.status, 201)
@@ -109,7 +111,7 @@ test('verified server user is used and consent is recorded before INSERT', async
   })
 
   assert.equal(fake.insertedPost?.user_id, verifiedUserId)
-  assert.equal(fake.insertedPost?.user_id === '22222222-2222-4222-8222-222222222222', false)
+  assert.notEqual(String(fake.insertedPost?.user_id), forgedUserId)
   assert.equal(fake.insertedPost?.title, validInput.title)
   assert.equal(fake.insertedPost?.type, 'creative')
   assert.deepEqual(result.body, { post: { id: postId, status: 'pending' } })
