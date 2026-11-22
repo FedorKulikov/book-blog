@@ -246,3 +246,13 @@
 - **Проверки:** run [44991542004](https://github.com/FedorKulikov/book-blog/actions/runs/44991542004): quality/email migration `success`, integration `failure` с точной причиной `URI too long`; smoke [44991541958](https://github.com/FedorKulikov/book-blog/actions/runs/44991541958) — `success`. Новый прогон с batch size 100 ещё не завершён.
 - **Что не получилось / осталось:** обязательны успешный complete preserve flow, проверка retained-path conversation isolation и destructive delete-own mode.
 - **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся Draft; production не менялся, merge/deploy и production migration не выполнялись.
+
+
+## 2026-11-22 — Дополнение: выбор исходного сообщения в pagination-тесте (PR #63)
+
+- **Что требовалось:** исправить assertion после успешного server-side media rewrite: тест не должен предполагать, что первая произвольная строка в ответе PostgREST содержит одновременно фото и аудио.
+- **Что сделано:** run [44991699774](https://github.com/FedorKulikov/book-blog/actions/runs/44991699774) прошёл quality, PostgreSQL 17 migration и общий smoke, все ранние Auth/Storage integration сценарии прошли, пакетное обновление больше не упиралось в `URI too long`. Следующий assertion упал потому, что первая строка неупорядоченной выборки была одним из bulk-сообщений только с фото, а тест ожидал аудио. Теперь исходное сообщение выбирается строго по `messageId`, а отдельный aggregate check подтверждает, что все 1001 фото-ссылки перешли в retained namespace.
+- **Как сделано:** запрос `counterpart.client.from('messages')` с `.eq('id', messageId)` получает конкретную запись с обоими вложениями; добавлена проверка, что сегмент retained path содержит UUID нужной беседы и что количество не-retained фото-ссылок равно нулю.
+- **Проверки:** run [44991699774](https://github.com/FedorKulikov/book-blog/actions/runs/44991699774): quality `success`, PostgreSQL 17 migration `success`, integration `failure` только на предположении о первой строке без сортировки; smoke [44991699763](https://github.com/FedorKulikov/book-blog/actions/runs/44991699763) — `success`. Новый run ещё не завершён.
+- **Что не получилось / осталось:** нужно закончить полный preserve flow, trusted cross-conversation RLS negative test и destructive own-message flow.
+- **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся Draft. Production не менялся.

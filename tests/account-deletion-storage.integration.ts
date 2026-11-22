@@ -1353,12 +1353,30 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
   checkError('count anonymized message rows', anonymizedCountError)
   assert.equal(anonymizedCount, 1001, 'every message beyond the first API page must be anonymized')
   
-  const retainedPhoto = retainedMessages?.[0]?.image_url as string
-  const retainedAudio = retainedMessages?.[0]?.audio_url as string
-  assert.ok(retainedPhoto.startsWith('retained/'), 'photo must use a neutral path')
-  assert.ok(retainedAudio.startsWith('retained/'), 'audio must use a neutral path')
+  const { data: retainedOriginalMessage, error: retainedOriginalMessageError } = await counterpart.client
+    .from('messages')
+    .select('id, image_url, audio_url')
+    .eq('id', messageId)
+    .eq('conversation_id', conversationId)
+    .single()
+  checkError('read original preserved message by ID', retainedOriginalMessageError)
+
+  const retainedPhoto = retainedOriginalMessage?.image_url as string
+  const retainedAudio = retainedOriginalMessage?.audio_url as string
+  assert.ok(retainedPhoto.startsWith('retained/'), 'original photo must use a neutral path')
+  assert.ok(retainedAudio.startsWith('retained/'), 'original audio must use a neutral path')
+  assert.ok(retainedPhoto.split('/')[1] === conversationId, 'retained photo must be scoped to its conversation')
+  assert.ok(retainedAudio.split('/')[1] === conversationId, 'retained audio must be scoped to its conversation')
   assert.equal(storageOwner(retainedPhoto), '<null>', 'retained photo must not remain owned by the deleted author')
   assert.equal(storageOwner(retainedAudio), '<null>', 'retained audio must not remain owned by the deleted author')
+
+  const { count: nonRetainedPhotoRefs, error: nonRetainedPhotoRefsError } = await admin
+    .from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId)
+    .not('image_url', 'like', 'retained/%')
+  checkError('verify all preserved photo references are retained paths', nonRetainedPhotoRefsError)
+  assert.equal(nonRetainedPhotoRefs, 0, 'all 1001 preserved photo references must use retained paths')
 
   assert.equal(storageObjectCount(photoPath), 0, 'original photo must be removed after DB references move')
   assert.equal(storageObjectCount(audioPath), 0, 'original audio must be removed after DB references move')
