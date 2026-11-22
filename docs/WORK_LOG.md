@@ -194,3 +194,14 @@
 - **Проверки CI на кодовом коммите `30b38b8a31016cd049b4145dc6516c3d41ee6a17`:** `Test recovery flow` — success (включая `npm run build`, запуск Next.js, сценарии recovery и email hook); `Recovery and email Hook verification` — success (Deno tests/typecheck и `npx tsc --noEmit`); `Chat security smoke` — success (включая `npx tsc --noEmit` и smoke-сценарии); `Web quality checks` — success (actionlint, regression tests, TypeScript, ESLint, production build, Supabase Auth + Storage integration и PostgreSQL 17 recovery migration).
 - **Результат:** все четыре workflow завершились успешно. Production build и TypeScript проверены удалёнными runner GitHub Actions. Локальный clone в этой рабочей среде не состоялся из-за отсутствия DNS-доступа к `github.com`; поэтому локальные команды отдельно не запускались.
 - **Ограничения:** живой сценарий с реальным неподтверждённым пользователем и фактической доставкой повторного письма не выполнялся. `mailer_autoconfirm` и настройки production Supabase Auth не изменялись.
+
+
+## 2026-11-22 — B8, шаг 2: форма сброса пароля по email
+
+**Требовалось:** сделать /forgot-password рабочей страницей сброса по email, использовать supabase.auth.resetPasswordForEmail(email), показывать нейтральный результат и сохранить резервное восстановление через /recover-account.
+
+**Сделано:** EmailRecoveryResetForm вызывает Supabase Auth напрямую; старый API-маршрут не используется этой формой. Убрана зависимость формы от NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY. Сообщение об успехе не раскрывает, существует ли аккаунт с указанным адресом, и просит проверить папку «Спам». На /forgot-password email-форма стала основным сценарием, ссылка на восстановление по резервному коду оставлена видимой.
+
+**Проверено:** чтением файлов из ветки после коммита проверены вызов resetPasswordForEmail, отсутствие старого feature-flag/API в компоненте, нейтральный текст и ссылка /recover-account. По подтверждению пользователя, Deno suite на коммите 02ecb30: 43 passed, 0 failed, exit 0. UI build/lint и CI для новых изменений ещё не подтверждены.
+
+**Не выполнено / ограничения:** live-сброс через production Auth и получение письма не проверялись. README и docs/email-confirmation-rollout.md пока не обновлялись; это остаётся отдельной документальной частью B8. Настройки Auth, Hook config/secrets, mailer_autoconfirm, RECOVERY_CODE_SECRET и таблица резервных кодов не менялись.
