@@ -1,4 +1,4 @@
-export type AssuranceLevel = 'aal1' | 'aal2' | null | undefined
+export type AssuranceLevel = string | null | undefined
 
 export function requiresMfaStepUp(input: {
   currentLevel: AssuranceLevel

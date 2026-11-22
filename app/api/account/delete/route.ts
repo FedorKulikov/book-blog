@@ -89,6 +89,19 @@ export async function POST(request: Request) {
     )
   }
 
+  const isKnownAssuranceLevel = (value: unknown): value is 'aal1' | 'aal2' =>
+    value === 'aal1' || value === 'aal2'
+
+  if (
+    !isKnownAssuranceLevel(assuranceData.currentLevel) ||
+    !isKnownAssuranceLevel(assuranceData.nextLevel)
+  ) {
+    return json(
+      { error: 'Supabase вернул неизвестный уровень аутентификации. Удаление остановлено.', code: 'MFA_CHECK_FAILED' },
+      503,
+    )
+  }
+
   if (
     requiresMfaStepUp({
       currentLevel: assuranceData.currentLevel,

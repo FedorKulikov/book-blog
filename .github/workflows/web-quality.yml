@@ -130,6 +130,12 @@ jobs:
             lib/account-deletion.ts \
             lib/account-deletion-auth.ts \
             tests/account-deletion-auth.test.ts \
+            tests/account-deletion-storage.integration.ts
+            app/api/account/delete/route.ts \
+            app/profile/delete-account/page.tsx \
+            lib/account-deletion.ts \
+            lib/account-deletion-auth.ts \
+            tests/account-deletion-auth.test.ts \
             tests/account-deletion-storage.integration.ts \
             proxy.ts \
             next.config.ts

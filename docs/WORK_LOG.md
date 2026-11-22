@@ -308,3 +308,6 @@
 - **Проверки:** предыдущая версия без MFA-gate прошла полностью; новые route/UI/helper изменения ещё требуют TypeScript, ESLint, production build и полный CI. Результат заранее не заявляется.
 - **Что не получилось / осталось:** OAuth/passwordless accounts по-прежнему не могут подтвердить идентичность через текущий парольный экран; им нужен отдельный OAuth/OTP re-auth flow. MFA challenge поддерживает текущие verified TOTP/phone factors Supabase; browser QA всё ещё не выполнялась.
 - **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся Draft. Production Supabase/Auth/Storage/site не менялись; merge, production migration и deploy не выполнялись.
+
+
+- **Дополнение к MFA:** первый CI прогон после внедрения step-up завершился TypeScript ошибкой: SDK типизирует `AuthenticatorAssuranceLevels` шире, чем локальный union. Helper теперь принимает общий string type, а API route явно допускает только известные значения `aal1/aal2`; неизвестное значение приводит к fail-closed 503 до создания deletion lock. ESLint command расширен на новые route, UI, service и тестовые файлы. Новый полный прогон после исправления типов ещё не завершён.
