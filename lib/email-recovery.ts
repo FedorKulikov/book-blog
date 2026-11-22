@@ -57,7 +57,7 @@ export function getEdgeMailerConfig(): EdgeMailerConfig | null {
     return null
   }
 
-  return { supabaseUrl, publishableKey, serviceRoleKey }
+  return { supabaseUrl, secretKey }
 }
 
 /** HMAC-SHA-256; raw email addresses and one-time tokens are never stored. */
