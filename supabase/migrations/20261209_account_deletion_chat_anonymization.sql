@@ -129,7 +129,7 @@ create or replace function public.begin_account_deletion(
   p_user_id uuid,
   p_chat_mode text
 )
-returns boolean
+returns text
 language plpgsql
 security definer
 set search_path = ''
@@ -150,7 +150,7 @@ begin
     from private.account_deletion_locks
    where user_id = p_user_id;
 
-  return v_existing_mode = p_chat_mode;
+  return v_existing_mode;
 end;
 $function$;
 
