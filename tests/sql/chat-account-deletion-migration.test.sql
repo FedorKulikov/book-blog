@@ -94,6 +94,17 @@ begin
   if exists (
     select 1
     from pg_policies
+    where schemaname = 'public'
+      and tablename = 'messages'
+      and cmd = 'INSERT'
+      and policyname <> 'messages_insert_own'
+  ) then
+    raise exception 'an additional permissive INSERT policy can bypass the deleted-participant guard';
+  end if;
+
+  if exists (
+    select 1
+    from pg_policies
     where schemaname = 'storage'
       and tablename = 'objects'
       and policyname <> 'chat_media_select_conversation_participants'
