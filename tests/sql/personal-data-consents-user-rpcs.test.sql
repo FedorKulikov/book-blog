@@ -89,16 +89,6 @@ begin
     raise exception 'record_my_distribution_consent must not accept a user_id parameter; got %', v_arg_names;
   end if;
 
-  select p.provolatile
-    into v_arg_names
-    from pg_catalog.pg_proc p
-   where p.oid = v_list;
-
-  if v_arg_names[1] is not null then
-    -- no-op: output argument names are separately validated by the table return signature below
-    null;
-  end if;
-
   if (select p.provolatile from pg_catalog.pg_proc p where p.oid = v_list) <> 's' then
     raise exception 'my_distribution_consents must be STABLE';
   end if;
