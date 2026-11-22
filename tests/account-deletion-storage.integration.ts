@@ -1197,11 +1197,15 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
   const audioPath = `${author.id}/service-preserve-audio.webm`
   const avatarPath = `${author.id}/avatar.png`
   const postImagePath = `${author.id}/post-image.png`
+  const legacySharedPath = 'legacy/shared-post-image.png'
+  const counterpartImagePath = `${counterpart.id}/counterpart-post-image.png`
 
   await upload(author.client, photoPath, 'service preserve photo', 'image/png')
   await upload(author.client, audioPath, 'service preserve audio', 'audio/webm')
   await uploadToBucket(author.client, 'avatars', avatarPath, 'service preserve avatar', 'image/png')
   await uploadToBucket(author.client, 'post-images', postImagePath, 'service preserve post image', 'image/png')
+  await uploadToBucket(admin, 'post-images', legacySharedPath, 'legacy shared post image', 'image/png')
+  await uploadToBucket(counterpart.client, 'post-images', counterpartImagePath, 'counterpart post image', 'image/png')
 
   const messageId = await createMessage({
     client: author.client,
@@ -1246,6 +1250,8 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
   assert.equal(storageObjectCount(audioPath), 0, 'original audio must be removed after DB references move')
   assert.equal(storageObjectCountInBucket('avatars', avatarPath), 0, 'the deleting account avatar must be removed')
   assert.equal(storageObjectCountInBucket('post-images', postImagePath), 0, 'UID-prefixed post images must be removed after the retention preflight passes')
+  assert.equal(storageObjectCountInBucket('post-images', legacySharedPath), 1, 'legacy objects without a UID prefix must be preserved')
+  assert.equal(storageObjectCountInBucket('post-images', counterpartImagePath), 1, 'another user\'s UID-prefixed objects must be preserved')
 
   await expectDownload(counterpart.client, retainedPhoto, true, 'counterpart reads neutral retained photo')
   await expectDownload(counterpart.client, retainedAudio, true, 'counterpart reads neutral retained audio')
