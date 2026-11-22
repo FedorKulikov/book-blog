@@ -56,7 +56,7 @@ function ConfirmContent() {
       }
 
       if (tokenHash && !type) {
-        setErrorMsg('Тип ссылки подтверждения не поддерживается. Откройте новое письмо или обратитесь в поддержку.')
+        setErrorMsg('Тип ссылки подтверждения не поддерживается. Запросите новое письмо. Если не приходит письмо или нет доступа к ящику, напишите на monikla1312@gmail.com.')
         setStatus('error')
         return
       }
@@ -79,7 +79,7 @@ function ConfirmContent() {
 
       setErrorMsg(
         isRecovery
-          ? 'Ссылка недействительна или устарела. Используйте резервный код либо запросите новую ссылку.'
+          ? 'Ссылка недействительна или устарела. Запросите новое письмо на странице «Забыли пароль?». Если не приходит письмо или нет доступа к ящику, напишите на monikla1312@gmail.com.'
           : 'Не удалось восстановить сессию. Возможно, ссылка устарела — попробуйте подтвердить email ещё раз.',
       )
       setStatus('error')
@@ -210,10 +210,10 @@ function ConfirmContent() {
             </h1>
             <p className="text-brown-dark/70 mb-6">{errorMsg}</p>
             <Link
-              href={isRecovery ? '/recover-account' : '/login'}
+              href={isRecovery ? '/forgot-password' : '/login'}
               className="inline-block bg-wine hover:bg-wine-dark text-white px-5 py-2.5 rounded-full text-sm transition-colors"
             >
-              {isRecovery ? 'Восстановить по резервному коду' : 'Попробовать снова'}
+              {isRecovery ? 'Запросить новое письмо' : 'Попробовать снова'}
             </Link>
           </>
         )}
