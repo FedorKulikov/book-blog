@@ -1041,6 +1041,12 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     })
   assert.ok(blockedInsert.error, 'authenticated account writes must stop while deletion lock is active')
 
+  const blockedProfileUpdate = await author.client
+    .from('profiles')
+    .update({ username: 'should-not-update-during-deletion' })
+    .eq('id', author.id)
+  assert.ok(blockedProfileUpdate.error, 'the deleting account must not update its profile while the lock is active')
+
   for (const bucket of ['chat-media', 'avatars', 'post-images']) {
     const blockedUpload = await author.client.storage
       .from(bucket)
