@@ -249,3 +249,25 @@
 **Политика конфиденциальности:** изменение категорий данных и сроков хранения резервных кодов остаётся отдельной работой в открытом PR #64 (ветка `fac5ecc`). PR #64 и `/privacy` в B9 не изменяются; второй экземпляр страницы политики не создаётся.
 
 **Проверки на момент записи:** публичные страницы и workflow обновлены в feature-ветке. Build, TypeScript, три обязательных поиска и CI будут отражены после их фактического выполнения.
+
+
+### B9 — итог проверки CI и статического поиска (23.11.2026)
+
+**Проверенный кодовый HEAD:** `dd17138125a0cd069ee6f948aa1e00f6ac26cae9` (PR #71, base `main` = `2b79d62c0ec8ac468a9df3e6494198a13f468b3c`).
+
+**Поиск:**
+- `recover-account|CodesReveal` в `app lib proxy.ts next.config.ts` — совпадений нет.
+- `recovery/generate|recovery/status|recovery/redeem` в `app lib scripts tests` — совпадений с удалёнными Next.js API нет. Единственное потенциальное ложное совпадение — действующий `/api/email-recovery/status` в `EmailRecoverySecurity.tsx`; это endpoint подтверждения email, его намеренно сохранили. CI исключает только этот email endpoint, не исключая `/api/recovery/*`.
+- README: упоминаний резервных кодов, `/recover-account` и `/api/recovery/*` нет.
+
+**Проверки CI на этом HEAD — все success:**
+- Web quality checks run `45078289052`: явные grep-проверки, actionlint, Auth navigation regression, Verified email recovery tests, Chat media path tests, `npx tsc --noEmit`, ESLint и Production build.
+- Email recovery migration (PostgreSQL 17) — success.
+- Supabase Auth + Storage integration — success.
+- Test email Hook run `45078289063`: `npm run build`, старт Next.js server и Email Hook scenarios — success.
+- Chat security smoke run `45078289057` — success.
+- Production health smoke run `45078289090` — success, проверки доменов пройдены.
+
+**Не выполнено / ограничения:** PR ещё не слит и production deploy не выполнялся. Поэтому HTTP 404 на production URL `/recover-account` пока не заявляется; production health smoke пропускает этот запрос на PR и выполнит его после push/deploy в main. Сама страница и все её ссылки удалены из кода.
+
+**Безопасность и границы:** Edge Function `recovery`, её tests, таблицы `private.recovery_codes` и `private.recovery_attempts`, Send Email Hook, `mailer_autoconfirm`, Supabase Function Secrets не изменялись. PR #64 и `/privacy` не менялись; правка политики остаётся отдельной задачей в ветке `fac5ecc`.
