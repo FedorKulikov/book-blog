@@ -20,6 +20,11 @@ const BLOCKER_SOURCES = [
   { table: 'notifications', column: 'actor_id', code: 'notifications_as_actor', label: 'Уведомления других пользователей' },
 ] as const
 
+const STORAGE_REFERENCE_SOURCES = [
+  { table: 'post_images', column: 'url', code: 'post_image_references', label: 'Изображения в публикациях других пользователей' },
+  { table: 'external_news', column: 'cover_url', code: 'external_news_cover_references', label: 'Обложки внешних новостей' },
+] as const
+
 type MessageMediaReference = {
   id: string
   sender_id: string | null
@@ -60,6 +65,24 @@ export async function inspectAccountDeletionBlockers(
         label: source.label,
         count,
       })
+    }
+  }
+
+  // A UID-prefixed post image may have been reused by another author's post
+  // or an external-news card. Preserve those public references rather than
+  // deleting a shared object merely because its Storage path starts with UID.
+  for (const source of STORAGE_REFERENCE_SOURCES) {
+    const { count, error } = await admin
+      .from(source.table)
+      .select('*', { count: 'exact', head: true })
+      .or(`${source.column}.ilike.${userId}/%,${source.column}.ilike.%/${userId}/%`)
+
+    if (error || count === null) {
+      throw new Error(`account deletion Storage-reference preflight failed for ${source.code}`)
+    }
+
+    if (count > 0) {
+      blockers.push({ code: source.code, label: source.label, count })
     }
   }
 
