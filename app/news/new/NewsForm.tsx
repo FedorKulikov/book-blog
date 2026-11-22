@@ -16,25 +16,6 @@ import type { NewsCategory } from '../newsQuery'
 import { humanizeError } from '@/lib/errors'
 import { ChevronLeft } from '../../components/icons'
 
-/**
- * Ошибки приходят из триггера БД (public.posts_before_insert).
- * Тексты RAISE EXCEPTION уже человекочитаемые, но на всякий случай
- * ловим ключевые слова — вдруг PostgREST добавит префикс.
- */
-function explainInsertError(message: string): string {
-  const lower = message.toLowerCase()
-
-  if (lower.includes('заблокирован') || lower.includes('забанен')) {
-    return 'Ваш аккаунт заблокирован — публикация постов недоступна.'
-  }
-
-  if (lower.includes('стоп-слов')) {
-    return message
-  }
-
-  return humanizeError(message)
-}
-
 function NewPostContent() {
   const searchParams = useSearchParams()
   const preselectedBookId = searchParams.get('book')
@@ -214,43 +195,6 @@ function NewPostContent() {
       setLoading(false)
     }
 
-    const tagNames = tagsInput
-      .split(',')
-      .map(t => t.trim())
-      .filter(Boolean)
-    if (tagNames.length > 0) {
-      await saveTagsForPost(post.id, tagNames)
-    }
-
-    if (images.length > 0) {
-      const rows = images.map((url, i) => ({
-        post_id: post.id,
-        url,
-        sort_order: i,
-      }))
-      const { error: imgError } = await supabase
-        .from('post_images')
-        .insert(rows)
-      if (imgError) {
-        setError('Пост создан, но фото не привязались. ' + humanizeError(imgError.message))
-        setLoading(false)
-        return
-      }
-    }
-
-    // Статус вернула база — показываем честный результат
-    if (post.status === 'pending') {
-      alert('Пост отправлен на проверку модератору.')
-    }
-
-    router.push(
-      type === 'news'
-        ? '/news'
-        : type === 'creative'
-        ? '/creative'
-        : '/discussions'
-    )
-    router.refresh()
   }
 
   return (
