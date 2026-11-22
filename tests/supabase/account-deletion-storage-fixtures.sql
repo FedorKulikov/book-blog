@@ -38,7 +38,8 @@ create table public.messages (
   text text,
   image_url text,
   audio_url text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  read_at timestamptz
 );
 
 alter table public.profiles enable row level security;
@@ -216,6 +217,39 @@ create trigger messages_protect_fields
   before update on public.messages
   for each row execute function public.protect_message_fields();
 
+-- Match production's recipient-only, one-way read receipt protection.
+create or replace function public.protect_message_read_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $function$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if current_user in ('postgres', 'service_role') then
+    return new;
+  end if;
+
+  if v_uid is null or v_uid = old.sender_id then
+    raise exception 'только получатель может отметить сообщение прочитанным';
+  end if;
+
+  if new.read_at is null then
+    raise exception 'нельзя сбрасывать отметку прочтения';
+  end if;
+
+  if old.read_at is not null and new.read_at is distinct from old.read_at then
+    raise exception 'нельзя менять установленную отметку прочтения';
+  end if;
+
+  return new;
+end;
+$function$;
+
+create trigger messages_protect_read_at
+  before update of read_at on public.messages
+  for each row execute function public.protect_message_read_at();
+
 -- No anonymization trigger is created here. The production migration under
 -- test must add it after converting the old cascade constraints.
 
@@ -247,6 +281,7 @@ alter table storage.objects enable row level security;
 grant usage on schema public to authenticated, service_role;
 grant select on public.conversations, public.messages to authenticated;
 grant insert on public.messages to authenticated;
+grant update (read_at) on public.messages to authenticated;
 grant all on public.profiles, public.conversations, public.messages to service_role;
 grant all on public.posts, public.comments, public.tickets,
   public.ticket_messages, public.reports, public.action_log,
@@ -269,6 +304,34 @@ create policy ci_messages_read_participant
   for select
   to authenticated
   using (
+    exists (
+      select 1
+      from public.conversations c
+      where c.id = messages.conversation_id
+        and (
+          c.user1_id = (select auth.uid())
+          or c.user2_id = (select auth.uid())
+        )
+    )
+  );
+
+drop policy if exists ci_messages_update_read_participant on public.messages;
+create policy ci_messages_update_read_participant
+  on public.messages
+  for update
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.conversations c
+      where c.id = messages.conversation_id
+        and (
+          c.user1_id = (select auth.uid())
+          or c.user2_id = (select auth.uid())
+        )
+    )
+  )
+  with check (
     exists (
       select 1
       from public.conversations c
