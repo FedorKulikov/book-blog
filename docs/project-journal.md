@@ -172,3 +172,12 @@
 - **Проверки CI на кодовом коммите `30b38b8a31016cd049b4145dc6516c3d41ee6a17`:** `Test recovery flow` — success (включая `npm run build`, запуск Next.js, сценарии recovery и email hook); `Recovery and email Hook verification` — success (Deno tests/typecheck и `npx tsc --noEmit`); `Chat security smoke` — success (включая `npx tsc --noEmit` и smoke-сценарии); `Web quality checks` — success (actionlint, regression tests, TypeScript, ESLint, production build, Supabase Auth + Storage integration и PostgreSQL 17 recovery migration).
 - **Результат:** все четыре workflow завершились успешно. Production build и TypeScript проверены удалёнными runner GitHub Actions. Локальный clone в этой рабочей среде не состоялся из-за отсутствия DNS-доступа к `github.com`; поэтому локальные команды отдельно не запускались.
 - **Ограничения:** живой сценарий с реальным неподтверждённым пользователем и фактической доставкой повторного письма не выполнялся. `mailer_autoconfirm` и настройки production Supabase Auth не изменялись.
+
+
+## 2026-11-22 — B8, шаг 2: email-сброс пароля стал доступен в интерфейсе
+
+- Форма на /forgot-password отправляет запрос через supabase.auth.resetPasswordForEmail(email.trim()).
+- Пользователь получает одинаковое сообщение об успехе независимо от того, зарегистрирован ли указанный адрес; добавлена подсказка проверить «Спам».
+- Основной текст страницы больше не утверждает, что email-восстановление отключено. Ссылка на резервный сценарий /recover-account сохранена.
+- Проверено чтением закоммиченных файлов в feature-ветке. По сообщению пользователя, Deno suite прошёл на 02ecb30 (43/43); CI и UI build/lint после изменения ещё не подтверждены.
+- Production-сброс и фактическая доставка recovery-письма ещё не тестировались. Auth settings, Hook config/secrets и резервные коды не менялись.
