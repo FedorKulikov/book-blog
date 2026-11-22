@@ -359,7 +359,14 @@ export async function handle(
       userId,
       fetcher,
     )
-    if (!sent) return fail(502, 'email_delivery_failed')
+    if (!sent) {
+      if (action === 'signup') {
+        // Do not expose recipient, token, or provider response in logs.
+        console.warn('auth-email-hook: signup confirmation delivery failed; allowing Auth signup to continue')
+        return json({})
+      }
+      return fail(502, 'email_delivery_failed')
+    }
   }
 
   return json({})
