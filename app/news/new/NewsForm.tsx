@@ -45,6 +45,7 @@ function NewPostContent() {
   const [tagsInput, setTagsInput] = useState('')
   const [bookId, setBookId] = useState<string | null>(preselectedBookId)
   const [images, setImages] = useState<string[]>([])
+  const [distributionConsent, setDistributionConsent] = useState(false)
   // Поля новостного портала (актуальны только для type === 'news')
   const [newsCategory, setNewsCategory] = useState<NewsCategory>('news')
   const [deadline, setDeadline] = useState('')
@@ -134,55 +135,84 @@ function NewPostContent() {
       return
     }
 
-    // Rate limit: это RPC в БД, из консоли его не обойти
-    const { data: limitCheck } = await supabase.rpc('check_and_log_action', {
-      action_input: 'post',
-      max_per_hour: 10,
-      max_per_minute: 3,
-    })
-
-    if (limitCheck && !limitCheck.ok) {
-      if (limitCheck.reason === 'minute_limit') {
-        setError('Слишком быстро. Подождите минуту перед следующим постом.')
-      } else if (limitCheck.reason === 'hour_limit') {
-        setError('Достигнут лимит постов на час (10). Попробуйте позже.')
-      } else {
-        setError('Войдите в аккаунт.')
-      }
-      return
-    }
-
     setLoading(true)
     setError(null)
 
-    // status НЕ передаём: его выставляет триггер posts_before_insert
-    // (бан → отказ, стоп-слово → отказ, staff/доверенный автор → approved).
-    const { data: created, error: insertError } = await supabase
-      .from('posts')
-      .insert({
-        user_id: user.id,
-        title: cleanTitle,
-        content: cleanContent,
-        type,
-        book_id: bookId,
-        // Для остальных типов постов поля портала остаются пустыми
-        news_category: type === 'news' ? newsCategory : null,
-        deadline_at:
-          type === 'news' && needsDeadline ? deadlineDateToIso(deadline) : null,
-        source_url:
-          type === 'news' && cleanSourceUrl ? cleanSourceUrl : null,
+    // Создание публикации и фиксация согласия выполняются серверным маршрутом.
+    // Маршрут повторно проверяет сессию, данные формы и checkbox; user_id из
+    // браузера не передаётся и не используется.
+    try {
+      const response = await fetch('/api/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: cleanTitle,
+          content: cleanContent,
+          type,
+          bookId,
+          newsCategory,
+          deadlineAt: type === 'news' && needsDeadline ? deadlineDateToIso(deadline) : null,
+          sourceUrl: type === 'news' && cleanSourceUrl ? cleanSourceUrl : null,
+          distributionConsent,
+        }),
       })
-      .select('id, status')
-      .single()
 
-    if (insertError) {
-      console.error('[new-post] insert failed:', insertError.message)
-      setError(explainInsertError(insertError.message))
+      const result = (await response.json()) as {
+        error?: string
+        post?: { id: string; status: string }
+      }
+
+      if (!response.ok || !result.post?.id) {
+        setError(result.error ?? 'Не удалось создать публикацию.')
+        setLoading(false)
+        return
+      }
+
+      const post = result.post
+
+      const tagNames = tagsInput
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
+      if (tagNames.length > 0) {
+        await saveTagsForPost(post.id, tagNames)
+      }
+
+      if (images.length > 0) {
+        const rows = images.map((url, i) => ({
+          post_id: post.id,
+          url,
+          sort_order: i,
+        }))
+        const { error: imgError } = await supabase
+          .from('post_images')
+          .insert(rows)
+        if (imgError) {
+          setError('Пост создан, но фото не привязались. ' + humanizeError(imgError.message))
+          setLoading(false)
+          return
+        }
+      }
+
+      // Статус вернула база — показываем честный результат
+      if (post.status === 'pending') {
+        alert('Пост отправлен на проверку модератору.')
+      }
+
+      router.push(
+        type === 'news'
+          ? '/news'
+          : type === 'creative'
+          ? '/creative'
+          : '/discussions'
+      )
+      router.refresh()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ошибка сети'
+      console.error('[new-post] request failed:', message)
+      setError('Не удалось отправить публикацию. Проверьте соединение и попробуйте ещё раз.')
       setLoading(false)
-      return
     }
-
-    const post = created as unknown as { id: string; status: string }
 
     const tagNames = tagsInput
       .split(',')
@@ -331,6 +361,32 @@ function NewPostContent() {
         <BookSelect value={bookId} onChange={setBookId} />
 
         <ImageUploader onUploaded={setImages} />
+
+        <div className="rounded-xl border border-emerald-dark/15 bg-cream-warm/20 p-4">
+          <div className="flex items-start gap-3">
+            <input
+              id="distribution-consent"
+              type="checkbox"
+              checked={distributionConsent}
+              onChange={(event) => setDistributionConsent(event.target.checked)}
+              className="mt-1 h-4 w-4 accent-wine"
+            />
+            <label htmlFor="distribution-consent" className="text-sm leading-relaxed text-brown-dark">
+              Я отдельно соглашаюсь на распространение персональных данных,
+              указанных в этой публикации, среди посетителей сайта и в интернете.
+              {' '}
+              <Link
+                href="/consent-distribution"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-wine underline hover:text-wine-dark"
+              >
+                Какие данные будут доступны и как отозвать согласие
+              </Link>
+              .
+            </label>
+          </div>
+        </div>
 
         {error && <p className="text-wine text-sm">Ошибка: {error}</p>}
 
