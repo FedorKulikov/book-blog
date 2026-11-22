@@ -314,3 +314,26 @@
 
 
 - **Дополнение к lint:** quality run на MFA code commit прошёл TypeScript, MFA helper tests и новый ESLint scope; ESLint выдал только два предупреждения об unused test variables. Исправлено: `ownMessageId` теперь используется для проверки сохранённых исходных media refs перед тестом доступа, а первый прочитанный набор retained messages проверяется на доступность и анонимизацию. Новый прогон после этой тестовой доработки ещё не завершён.
+
+## 2026-11-22 — Финальная проверка удаления аккаунта, read receipts и сортировки чатов
+
+- **Что требовалось:** устранить остаточные ошибки CI после MFA step-up, проверить доступ оставшегося участника к сохранённой истории, защитить беседу от новых сообщений во время удаления и не оставлять устаревший `last_message_at` после удаления собственных сообщений.
+- **Что сделано:**
+  - MFA helper теперь принимает `unknown` и fail-closed отклоняет отсутствующие, неизвестные или противоречащие друг другу AAL claims. Unit tests покрывают aal1/aal2, незавершённый challenge, несовпадение подписанного JWT claim и неизвестные значения.
+  - Исправлен ESLint command в `.github/workflows/web-quality.yml`: убран дублирующийся список путей и восстановлены shell line-continuations.
+  - В локальную legacy fixture добавлены production-эквивалентные `read_at`, column-level `UPDATE(read_at)`, RLS policy для участников беседы и trigger, запрещающий сбрасывать/перезаписывать отметку прочтения. Интеграционный тест доказывает, что после анонимизации собеседник может отметить сохранённое сообщение прочитанным, но не может очистить уже установленную отметку.
+  - Добавлен statement-level DELETE trigger `messages_refresh_conversation_last_message`: при удалении сообщений он один раз на SQL statement пересчитывает `conversations.last_message_at` по оставшимся сообщениям. Это атомарно с удалением и не ломается при повторе после частичной ошибки.
+  - В write-fence для сообщений добавлены обе стороны беседы: новые сообщения от оставшегося участника также блокируются, пока второй аккаунт находится под deletion lock. Для обслуживания `last_message_at` разрешено только обновление этого единственного поля; production metadata подтверждает, что authenticated не имеет на него UPDATE privilege.
+  - Добавлены реальные интеграционные сценарии: попытка второго участника отправить сообщение во время lock отклоняется; если последнее сообщение принадлежало удаляемому аккаунту, после удаления дата сортировки становится датой последнего оставшегося сообщения.
+- **Как сделано:** migration trigger выполняется SECURITY DEFINER от postgres с пустым search_path; прямой EXECUTE от anon/authenticated/service_role отозван. Триггер использует transition table `OLD TABLE`, поэтому массовое удаление 1000+ сообщений не пересчитывает сортировку отдельно для каждой строки. Изменения выполняются только в feature-ветке и isolated local Supabase fixture.
+- **Проверки на commit `a55f5954c428d95a733686483295ee6acc55dfc5`:**
+  - [x] Web quality checks — success: run [44994470682](https://github.com/FedorKulikov/book-blog/actions/runs/44994470682). Внутри: TypeScript, все unit/regression tests, ESLint, Next production build, PostgreSQL 17 migration assertions, локальная Supabase Auth + Storage integration — success.
+  - [x] Supabase Auth + Storage integration — success, job `137122411767`: migration применена к старой production-like fixture; прошли preserve/delete-own modes, retry, 1001+ сообщений, перенос и RLS вложений, read receipts, блокировка новых сообщений в locked conversation и пересчёт `last_message_at`.
+  - [x] PostgreSQL 17 migration checks — success, job `137122411764`.
+  - [x] Chat security smoke — success: run [44994470685](https://github.com/FedorKulikov/book-blog/actions/runs/44994470685).
+  - [x] Recovery flow — success: run [44994470703](https://github.com/FedorKulikov/book-blog/actions/runs/44994470703).
+  - [x] Dependency security audit — success: run [44994470733](https://github.com/FedorKulikov/book-blog/actions/runs/44994470733).
+  - [ ] Ручная проверка полного сценария в браузере — не выполнена.
+- **Уточнение предыдущей записи:** MFA helper принимает `unknown`, а не произвольный `string`; неизвестные значения остаются fail-closed. ESLint warnings из тестовых переменных устранены до этого полного зелёного прогона.
+- **Что осталось:** отдельный OAuth/passwordless re-auth flow; утверждение правил хранения публикаций, комментариев, тикетов, жалоб и журналов действий (пока эти категории безопасно блокируют удаление); browser QA. Полная мгновенная ревокация всех ранее выданных access JWT не заявляется.
+- **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) открыт и остаётся Draft; commit `a55f5954c428d95a733686483295ee6acc55dfc5` не слит. Production Supabase/PostgreSQL/Auth/Storage, прод-сайт и пользовательские данные не менялись. Production migration workflow, merge и deploy не выполнялись.
