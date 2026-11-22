@@ -311,3 +311,6 @@
 
 
 - **Дополнение к MFA:** первый CI прогон после внедрения step-up завершился TypeScript ошибкой: SDK типизирует `AuthenticatorAssuranceLevels` шире, чем локальный union. Helper теперь принимает общий string type, а API route явно допускает только известные значения `aal1/aal2`; неизвестное значение приводит к fail-closed 503 до создания deletion lock. ESLint command расширен на новые route, UI, service и тестовые файлы. Новый полный прогон после исправления типов ещё не завершён.
+
+
+- **Дополнение к lint:** quality run на MFA code commit прошёл TypeScript, MFA helper tests и новый ESLint scope; ESLint выдал только два предупреждения об unused test variables. Исправлено: `ownMessageId` теперь используется для проверки сохранённых исходных media refs перед тестом доступа, а первый прочитанный набор retained messages проверяется на доступность и анонимизацию. Новый прогон после этой тестовой доработки ещё не завершён.

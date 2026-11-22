@@ -396,6 +396,14 @@ async function testOptionalOwnMessageRemoval(counterpart: TestUser, outsider: Te
     imageUrl: ownPhoto,
     audioUrl: ownAudio,
   })
+  const { data: ownMessage, error: ownMessageError } = await admin
+    .from('messages')
+    .select('id, image_url, audio_url')
+    .eq('id', ownMessageId)
+    .single()
+  checkError('read own media message fixture', ownMessageError)
+  assert.equal(ownMessage?.image_url, ownPhoto)
+  assert.equal(ownMessage?.audio_url, ownAudio)
 
   await expectDownload(counterpart.client, ownPhoto, true, `counterpart can read the other user's photo before removal`)
   await expectDownload(counterpart.client, ownAudio, true, `counterpart can read the other user's audio before removal`)
@@ -1469,6 +1477,18 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
     .select('id, sender_id, sender_label, image_url, audio_url')
     .eq('conversation_id', conversationId)
   checkError('read message retained by complete service deletion', retainedMessagesError)
+  assert.ok(
+    retainedMessages && retainedMessages.length > 0,
+    'the surviving participant must be able to list the preserved messages',
+  )
+  assert.ok(
+    retainedMessages?.every(
+      message =>
+        message.sender_id === null &&
+        message.sender_label === 'Удалённый пользователь',
+    ),
+    'the first page of the preserved history must be anonymized',
+  )
   const { count: retainedMessageCount, error: retainedMessageCountError } = await counterpart.client
     .from('messages')
     .select('*', { count: 'exact', head: true })
