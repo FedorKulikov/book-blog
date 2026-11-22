@@ -15,3 +15,7 @@ verify_jwt = false
 # Единственная защита — подпись Standard Webhooks, проверяемая до JSON.parse.
 [functions.auth-email-hook]
 verify_jwt = false
+
+# Resend mail delivery is only called by server routes with the service-role JWT.
+[functions.resend-mailer]
+verify_jwt = true
