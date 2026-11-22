@@ -256,3 +256,13 @@
 - **Проверки:** run [44991699774](https://github.com/FedorKulikov/book-blog/actions/runs/44991699774): quality `success`, PostgreSQL 17 migration `success`, integration `failure` только на предположении о первой строке без сортировки; smoke [44991699763](https://github.com/FedorKulikov/book-blog/actions/runs/44991699763) — `success`. Новый run ещё не завершён.
 - **Что не получилось / осталось:** нужно закончить полный preserve flow, trusted cross-conversation RLS negative test и destructive own-message flow.
 - **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся Draft. Production не менялся.
+
+
+## 2026-11-22 — Дополнение: корректная проверка denied UPDATE через RLS (PR #63)
+
+- **Что требовалось:** сделать отрицательный тест клиентской подмены retained media совместимым с поведением PostgREST RLS, где запрет обновления может возвращать `200` с нулём изменённых строк, а не SQL error.
+- **Что сделано:** run [44991916062](https://github.com/FedorKulikov/book-blog/actions/runs/44991916062) прошёл quality (к моменту запуска integration) и PostgreSQL 17 migration; smoke [44991916144](https://github.com/FedorKulikov/book-blog/actions/runs/44991916144) — `success`. Полный integration прошёл preserve/anonymize, delete-own, retry, empty conversation, session boundary, preflight/write-lock, 1001-row media rewrite, cross-conversation deny, и остановился на ожидании `error` от клиентского UPDATE. Production-подобная RLS может корректно не вернуть ни одной строки без ошибки. Тест теперь требует либо ошибку, либо ноль изменённых строк, а затем отдельно проверяет через admin, что `image_url` остался `NULL`.
+- **Как сделано:** изменён только `tests/account-deletion-storage.integration.ts`; запрос использует `.select('id')`, после чего проверяется отсутствие фактически обновлённых строк. Следующий admin SELECT подтверждает, что retained path не записался.
+- **Проверки:** run [44991916062](https://github.com/FedorKulikov/book-blog/actions/runs/44991916062): PostgreSQL 17 migration `success`, integration `failure` только на слишком строгом ожидании API error, smoke [44991916144](https://github.com/FedorKulikov/book-blog/actions/runs/44991916144) — `success`. Quality job на момент проверки ещё выполнялся; финальный conclusion уточнить по следующему опросу. Новый run после изменения ещё не завершён.
+- **Что не получилось / осталось:** нужно дойти до завершения preserve и destructive flows и получить итоговый CI green.
+- **Публикация:** PR [#63](https://github.com/FedorKulikov/book-blog/pull/63) остаётся Draft; production не менялся.

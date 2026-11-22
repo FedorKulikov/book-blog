@@ -1435,13 +1435,14 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
     senderLabel: 'Service Preserve Outsider',
     text: 'This message must not be retrofitted with retained media',
   })
-  const forgedUpdate = await outsider.client
+  const { data: forgedUpdateRows, error: forgedUpdateError } = await outsider.client
     .from('messages')
     .update({ image_url: retainedPhoto })
     .eq('id', probeMessageId)
+    .select('id')
   assert.ok(
-    forgedUpdate.error,
-    'a client must not attach a retained object to an existing message',
+    forgedUpdateError || (forgedUpdateRows ?? []).length === 0,
+    'a client must not change a message to reference a retained object',
   )
 
   const { data: unchangedProbeMessage, error: unchangedProbeMessageError } = await admin
