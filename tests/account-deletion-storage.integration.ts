@@ -938,6 +938,15 @@ async function testProfileDeletionAnonymizesPreservedRecords(counterpart: TestUs
   checkError('verify external_news creator was anonymized', retainedNewsError)
   assert.equal(retainedNews?.created_by, null, 'external_news must not retain the deleted profile UUID')
 
+  const { error: cannotResumeChatError } = await counterpart.client
+    .from('messages')
+    .insert({
+      conversation_id: conversationId,
+      sender_id: counterpart.id,
+      text: 'This must be rejected after the other participant is deleted',
+    })
+  assert.ok(cannotResumeChatError, 'surviving participant must not be able to send into a conversation with a deleted counterpart')
+
   console.log('[account-deletion-storage] profile BEFORE DELETE anonymization hook passed')
 }
 
