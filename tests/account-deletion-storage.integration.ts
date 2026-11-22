@@ -460,9 +460,12 @@ async function testRecoverableRehomeAndSignedUrls(counterpart: TestUser, outside
   assert.equal(storageOwner(retainedPhoto), '<null>', 'retained photo must not be owned by the deleted user')
   assert.equal(storageOwner(retainedAudio), '<null>', 'retained audio must not be owned by the deleted user')
 
-  // Fault injection at the DB stage: NOT NULL violation after the copies exist.
-  // The transaction must leave the original message references intact and the
-  // user-owned originals must not be removed before a valid DB update.
+  // Fault injection at the DB stage: add a disposable NOT NULL-like check
+  // after the actual migration made sender_label nullable. The failed UPDATE
+  // must leave the original message references intact.
+  queryDatabase(
+    'alter table public.messages add constraint ci_test_reject_null_sender_label check (sender_label is not null) not valid',
+  )
   const { error: injectedDatabaseFailure } = await admin
     .from('messages')
     .update({
@@ -472,7 +475,8 @@ async function testRecoverableRehomeAndSignedUrls(counterpart: TestUser, outside
       audio_url: retainedAudio,
     })
     .eq('id', messageId)
-  assert.ok(injectedDatabaseFailure, 'invalid anonymization update must fail at the database constraint')
+  assert.ok(injectedDatabaseFailure, 'invalid anonymization update must fail at the injected database constraint')
+  queryDatabase('alter table public.messages drop constraint ci_test_reject_null_sender_label')
 
   const { data: afterDbFailure, error: afterDbFailureError } = await admin
     .from('messages')
@@ -825,6 +829,43 @@ async function testAuthorizationAndDeletedSessionBoundaries(
 }
 
 
+async function testDeletingBothParticipantsRemovesOrphanConversation(): Promise<void> {
+  console.log('[account-deletion-storage] testing cleanup after both participants delete their accounts')
+
+  const first = await createTestUser('both-delete-first')
+  const second = await createTestUser('both-delete-second')
+  const conversationId = await createConversation(first.id, second.id)
+  await createMessage({
+    client: first.client,
+    conversationId,
+    senderId: first.id,
+    senderLabel: 'First Participant',
+    text: 'This row must disappear when neither participant remains',
+  })
+
+  await deleteAuthUser(first.id, 'both-delete-first')
+  assert.equal(
+    queryDatabase(`select count(*) from public.conversations where id = '${conversationId}'`),
+    '1',
+    'conversation must remain while the other participant is still registered',
+  )
+
+  await deleteAuthUser(second.id, 'both-delete-second')
+  assert.equal(
+    queryDatabase(`select count(*) from public.conversations where id = '${conversationId}'`),
+    '0',
+    'conversation must be removed when both participant references are NULL',
+  )
+  assert.equal(
+    queryDatabase(`select count(*) from public.messages where conversation_id = '${conversationId}'`),
+    '0',
+    'orphan conversation cleanup must cascade to its messages',
+  )
+
+  console.log('[account-deletion-storage] both-participant orphan cleanup passed')
+}
+
+
 async function testProfileDeletionAnonymizesPreservedRecords(counterpart: TestUser): Promise<void> {
   console.log('[account-deletion-storage] testing profile BEFORE DELETE anonymization hook')
 
@@ -912,6 +953,7 @@ async function main(): Promise<void> {
   await testEmptyConversationCleanup(counterpart)
   await testAuthorizationAndDeletedSessionBoundaries(counterpart, outsider)
   await testProfileDeletionAnonymizesPreservedRecords(counterpart)
+  await testDeletingBothParticipantsRemovesOrphanConversation()
 
   console.log('[account-deletion-storage] all real Auth + Storage integration checks passed')
 }
