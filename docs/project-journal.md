@@ -101,3 +101,12 @@
 - Три обязательства остаются в backlog: очистка private.recovery_attempts старше 90 дней отдельной миграцией; lifecycle 30 дней для Backblaze B2 bucket с дампами; механизм согласия по ст. 10.1 с серверной фиксацией факта и версии. Пока эти задачи не реализованы и не проверены.
 - Preview-проверка сообщена владельцем: 22.11.2026, реальный браузер, HTTP 200, HTML 60 413 байт, корректные title/h1, девять нумерованных разделов и блок настроек аналитики, ноль placeholders, ссылки в signup/login и sitemap. Preview X-Robots-Tag noindex является платформенным ограничением Layero; metadata страницы — index, follow.
 - PR #64 остаётся Draft на отдельной ветке; merge в main и production deploy не выполнялись. Владелецские критерии A выполнены для перехода к B; юридические и технические остатки выше не объявляются выполненными.
+
+
+### 2026-11-22 — B: шаг 1 — Resend account inspection (blocked)
+
+- Подключённый Resend account доступен для read-only запросов; список API keys показывает одну запись «Onboarding». Содержимое API key не извлекалось и не показывалось.
+- В списке Resend domains нет доменов. bukleb.ru не зарегистрирован в подключённом аккаунте; status и записи DNS для него не возвращены.
+- Доступные GitHub/Supabase tools не умеют безопасно перечислять имена Actions Secrets и Supabase Function Secrets. Поэтому факт наличия RESEND_API_KEY в runtime/secret stores и AUTH_EMAIL_HOOK_SECRET пока не подтверждён. Никакие значения секретов не читались и не раскрывались.
+- Не создавались домен/API key; не менялись Selectel DNS, GitHub Secrets, Supabase secrets, Hook config или Edge Functions; тестовое письмо не отправлялось.
+- B остановлена на шаге 1: нужно подтвердить правильный Resend account и добавить/выбрать bukleb.ru для получения DNS records. Только после этого можно перейти к анализу точных DNS записей и Selectel.
