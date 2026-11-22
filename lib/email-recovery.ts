@@ -4,7 +4,6 @@ export const EMAIL_RECOVERY_TOKEN_TTL_MINUTES = 20
 
 export type EdgeMailerConfig = {
   supabaseUrl: string
-  publishableKey: string
   secretKey: string
 }
 
@@ -42,10 +41,9 @@ export function getEmailRecoverySecret(): string | null {
 
 export function getEdgeMailerConfig(): EdgeMailerConfig | null {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const secretKey = process.env.SUPABASE_SECRET_KEY
 
-  if (!supabaseUrl || !publishableKey || !secretKey) return null
+  if (!supabaseUrl || !secretKey) return null
 
   try {
     const url = new URL(supabaseUrl)
