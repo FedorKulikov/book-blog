@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -171,6 +172,26 @@ try {
   console.log('After reload the banner stayed hidden and the counter script remained enabled.')
 } finally {
   if (socket && socket.readyState === WebSocket.OPEN) socket.close()
-  chrome.kill('SIGTERM')
-  await rm(profile, { recursive: true, force: true })
+
+  if (chrome.exitCode === null && chrome.signalCode === null) {
+    const gracefulExit = once(chrome, 'exit').catch(() => [])
+    chrome.kill('SIGTERM')
+    const stoppedGracefully = await Promise.race([
+      gracefulExit.then(() => true),
+      delay(5000).then(() => false),
+    ])
+
+    if (!stoppedGracefully && chrome.exitCode === null && chrome.signalCode === null) {
+      const forcedExit = once(chrome, 'exit').catch(() => [])
+      chrome.kill('SIGKILL')
+      await Promise.race([forcedExit, delay(5000)])
+    }
+  }
+
+  await rm(profile, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  })
 }
