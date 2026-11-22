@@ -150,3 +150,13 @@
 - **Что не получилось / осталось:** это инженерная рекомендация, не зафиксированное согласие на судьбу публичного контента/поддержки/модерации. Текст/изображения пользователя могут содержать персональные сведения, которые не исчезают после user_id=NULL. Срок хранения support/moderation evidence не определён: нельзя изобретать его без подтверждения применимого законодательства/политики. Для полной реализации нужны отдельные nullable/SET NULL миграции tickets/ticket_messages/notifications/reports/action_log, адаптация staff UI и тесты RLS; Storage post-images нельзя чистить пока не определена судьба публикаций.
 - **Публикация:** результаты и предложенная матрица добавлены в задачу [#51](https://github.com/FedorKulikov/book-blog); документальная запись предложена отдельным PR. Production app, Supabase, БД, Storage, Auth, пользовательские данные и настройки не менялись.
 
+
+
+## 2026-11-22 — B2: подготовка Supabase email confirmation (без выпуска)
+
+- Создана отдельная ветка `feat/email-confirmation-hook-and-first-login-codes` от `main`. В неё перенесены общие Supabase Edge helpers, recovery function, resend-mailer и `supabase/config.toml` из ops-ветки. Добавлена `auth-email-hook` с отправкой signup и email_change, подавлением recovery и 501 для остальных событий.
+- `auth-email-hook` вызывает `resend-mailer` внутри Supabase. Next.js не вызывает mailer и не использует `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` для отправки. From строго `Хлеба и букв <no-reply@bukleb.ru>`. `RESEND_API_KEY` остаётся Function Secret. `RECOVERY_CODE_SECRET` не трогали.
+- Добавлены Deno tests: signup link, recovery suppression, secure email change token mapping, single-token email change, unsupported action, invalid signature, fail closed, mailer failure. Добавлены workflow проверки для PR в main и post-merge deploy workflow с preflight секретов/подписи. Workflow не меняет `mailer_autoconfirm`, Hook URI/enabled и SMTP.
+- `/auth/confirm` отображает заданный в письме `type=signup`, но передаёт в Supabase `verifyOtp` тип `email`; это соответствует актуальному Supabase API для token_hash signup confirmations. `email_change` передаётся как `email_change`.
+- На этой стадии CI ещё не запускался, functions не deployed, PR/merge отсутствуют. Никакие письма не отправлялись и production Auth настройки не менялись.
+- Следующий gate: открыть PR и получить полный CI success; merge PR; проверить post-merge Edge deploy success и deployed sources; подтвердить secrets presence/Hook parity API preflight; получить от владельца адрес тестового mailbox; только потом выполнять реальную проверку email/SPF/DKIM/confirm session. Signup/login/code flow (Steps 4–6) не изменять до успешного Step 3.
