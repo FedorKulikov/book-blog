@@ -26,7 +26,19 @@ function ConfirmContent() {
   const next = safeNext === '/' ? '/welcome' : safeNext
   const isRecovery = next === '/auth/reset'
   const tokenHash = searchParams.get('token_hash')
-  const type = searchParams.get('type') || 'email'
+  const requestedType = searchParams.get('type') || 'email'
+  // The email link uses the product-facing type=signup. Supabase's current
+  // token_hash verification API expects type=email for signup confirmations.
+  const type: EmailOtpType | null =
+    requestedType === 'signup'
+      ? 'email'
+      : requestedType === 'email_change'
+        ? 'email_change'
+        : requestedType === 'email'
+          ? 'email'
+          : requestedType === 'recovery'
+            ? 'recovery'
+            : null
 
   useEffect(() => {
     let alive = true
@@ -38,8 +50,14 @@ function ConfirmContent() {
 
       // Do not consume token_hash on GET. Email scanners often prefetch links;
       // verification happens only after the user explicitly presses the button.
-      if (tokenHash) {
+      if (tokenHash && type) {
         setStatus('pending')
+        return
+      }
+
+      if (tokenHash && !type) {
+        setErrorMsg('Тип ссылки подтверждения не поддерживается. Откройте новое письмо или обратитесь в поддержку.')
+        setStatus('error')
         return
       }
 
@@ -73,10 +91,10 @@ function ConfirmContent() {
       alive = false
       if (timer) window.clearTimeout(timer)
     }
-  }, [searchParams, router, next, isRecovery, tokenHash])
+  }, [searchParams, router, next, isRecovery, tokenHash, type])
 
   async function verifyToken() {
-    if (!tokenHash || confirming) return
+    if (!tokenHash || !type || confirming) return
 
     setConfirming(true)
     setErrorMsg('')
@@ -84,7 +102,7 @@ function ConfirmContent() {
     try {
       const { error } = await supabase.auth.verifyOtp({
         token_hash: tokenHash,
-        type: type as EmailOtpType,
+        type,
       })
 
       if (error) {

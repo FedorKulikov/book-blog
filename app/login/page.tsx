@@ -8,18 +8,26 @@ import Link from 'next/link'
 import { getPostAuthPath, safeInternalPath } from '@/lib/auth-navigation'
 import { passkeyErrorMessage, passkeysEnabled } from '@/lib/passkeys'
 
+const UNCONFIRMED_EMAIL_MESSAGE =
+  'Адрес не подтверждён. Проверьте почту или отправьте письмо ещё раз'
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [canResendConfirmation, setCanResendConfirmation] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendFeedback, setResendFeedback] = useState<string | null>(null)
   const router = useRouter()
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setCanResendConfirmation(false)
+    setResendFeedback(null)
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -27,7 +35,9 @@ export default function LoginPage() {
     })
 
     if (error) {
-      setError(humanizeError(error.message))
+      const message = humanizeError(error.message)
+      setError(message)
+      setCanResendConfirmation(message === UNCONFIRMED_EMAIL_MESSAGE)
       setLoading(false)
     } else {
       const next = getPostAuthPath(window.location.search, '/')
@@ -36,9 +46,41 @@ export default function LoginPage() {
     }
   }
 
+  async function resendConfirmationEmail() {
+    const normalizedEmail = email.trim()
+    if (!normalizedEmail || resendLoading) return
+
+    setResendLoading(true)
+    setResendFeedback(null)
+
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: normalizedEmail,
+      })
+
+      if (resendError) {
+        const message = resendError.message.toLowerCase()
+        setResendFeedback(
+          message.includes('rate limit') || message.includes('too many')
+            ? 'Слишком много попыток. Подождите несколько минут.'
+            : 'Не удалось отправить письмо. Попробуйте позже.',
+        )
+      } else {
+        setResendFeedback('Письмо отправлено. Проверьте почту.')
+      }
+    } catch {
+      setResendFeedback('Не удалось отправить письмо. Попробуйте позже.')
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
   async function handlePasskeyLogin() {
     setPasskeyLoading(true)
     setError(null)
+    setCanResendConfirmation(false)
+    setResendFeedback(null)
 
     try {
       const { error: passkeyError } = await supabase.auth.signInWithPasskey()
@@ -102,11 +144,33 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && <p className="text-wine text-sm">Ошибка: {error}</p>}
+          {error && (
+            <p role="alert" className="text-wine text-sm">
+              Ошибка: {error}
+            </p>
+          )}
+
+          {canResendConfirmation && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => void resendConfirmationEmail()}
+                disabled={loading || passkeyLoading || resendLoading || !email.trim()}
+                className="text-sm font-medium text-wine underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resendLoading ? 'Отправляем письмо…' : 'Отправить письмо ещё раз'}
+              </button>
+              {resendFeedback && (
+                <p role="status" className="text-sm text-brown-dark/80">
+                  {resendFeedback}
+                </p>
+              )}
+            </div>
+          )}
 
           <button
             type="submit"
-            disabled={loading || passkeyLoading}
+            disabled={loading || passkeyLoading || resendLoading}
             className="w-full bg-emerald-mid text-cream py-2 rounded hover:bg-emerald-dark disabled:opacity-50 transition-colors"
           >
             {loading ? 'Входим…' : 'Войти'}

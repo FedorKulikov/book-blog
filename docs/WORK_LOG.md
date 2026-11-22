@@ -150,3 +150,47 @@
 - **Что не получилось / осталось:** это инженерная рекомендация, не зафиксированное согласие на судьбу публичного контента/поддержки/модерации. Текст/изображения пользователя могут содержать персональные сведения, которые не исчезают после user_id=NULL. Срок хранения support/moderation evidence не определён: нельзя изобретать его без подтверждения применимого законодательства/политики. Для полной реализации нужны отдельные nullable/SET NULL миграции tickets/ticket_messages/notifications/reports/action_log, адаптация staff UI и тесты RLS; Storage post-images нельзя чистить пока не определена судьба публикаций.
 - **Публикация:** результаты и предложенная матрица добавлены в задачу [#51](https://github.com/FedorKulikov/book-blog); документальная запись предложена отдельным PR. Production app, Supabase, БД, Storage, Auth, пользовательские данные и настройки не менялись.
 
+
+
+## 2026-11-22 — B2: подготовка Supabase email confirmation (без выпуска)
+
+- Создана отдельная ветка `feat/email-confirmation-hook-and-first-login-codes` от `main`. В неё перенесены общие Supabase Edge helpers, recovery function, resend-mailer и `supabase/config.toml` из ops-ветки. Добавлена `auth-email-hook` с отправкой signup и email_change, подавлением recovery и 501 для остальных событий.
+- `auth-email-hook` вызывает `resend-mailer` внутри Supabase. Next.js не вызывает mailer и не использует `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` для отправки. From строго `Хлеба и букв <no-reply@bukleb.ru>`. `RESEND_API_KEY` остаётся Function Secret. `RECOVERY_CODE_SECRET` не трогали.
+- Добавлены Deno tests: signup link, recovery suppression, secure email change token mapping, single-token email change, unsupported action, invalid signature, fail closed, mailer failure. Добавлены workflow проверки для PR в main и post-merge deploy workflow с preflight секретов/подписи. Workflow не меняет `mailer_autoconfirm`, Hook URI/enabled и SMTP.
+- `/auth/confirm` отображает заданный в письме `type=signup`, но передаёт в Supabase `verifyOtp` тип `email`; это соответствует актуальному Supabase API для token_hash signup confirmations. `email_change` передаётся как `email_change`.
+- На этой стадии CI ещё не запускался, functions не deployed, PR/merge отсутствуют. Никакие письма не отправлялись и production Auth настройки не менялись.
+- Следующий gate: открыть PR и получить полный CI success; merge PR; проверить post-merge Edge deploy success и deployed sources; подтвердить secrets presence/Hook parity API preflight; получить от владельца адрес тестового mailbox; только потом выполнять реальную проверку email/SPF/DKIM/confirm session. Signup/login/code flow (Steps 4–6) не изменять до успешного Step 3.
+
+
+## 2026-11-22 — B3 шаг 4: регистрация без автологина
+
+- В `app/signup/page.tsx` убраны автологин после `signUp`, POST `/api/recovery/generate`, `CodesReveal` и экран `recoveryUnavailable`. Добавлен экран «Подтвердите адрес» и повторная отправка `supabase.auth.resend({ type: 'signup', email })` с 60-секундным cooldown.
+- Успешный `signUp` без ошибки отображается одинаково и для нового адреса, и для случая пустого `identities`, не раскрывая существование аккаунта. Username и password validation, предварительные username checks и error handling сохранены.
+- Проверено чтением файла и static assertions в редакторском проходе: нет `signInWithPassword`, `/api/recovery/generate`, `CodesReveal`, `recoveryUnavailable`, `getPostAuthPath`; реальная отправка и build пока не проверялись.
+- `mailer_autoconfirm`, Hook, SMTP, Recovery secret и активные коды не менялись.
+
+## 2026-11-22 — B4, шаг 5: резервные коды на /welcome
+
+**Требовалось:** после определения пользователя проверить `GET /api/recovery/status`; предлагать коды только при `configured === true` и `active === 0`; генерировать только по нажатию с повторным вводом пароля; показывать `CodesReveal`; разрешать отказ только после подтверждения риска и сохранять отказ по ключу пользователя в localStorage.
+
+**Сделано:** в `app/welcome/page.tsx` добавлена проверка статуса без кэширования; при недоступности API или `503` обычная страница не блокируется. Коды не генерируются автоматически. POST отправляет пароль, проверяет ответ и показывает десять кодов через существующий `CodesReveal`. Добавлена обязательная галочка риска для «Продолжить без кодов»; отказ сохраняется под ключом `recovery-codes-declined:<user_id>`. Существующий вызов обновления `onboarding_completed_at` и обычная страница приветствия сохранены.
+
+**Проверено:** изучены текущие `/welcome`, `CodesReveal`, `GET /api/recovery/status` и `POST /api/recovery/generate`. Подтверждено, что генерация требует сессию и пароль, а API статуса возвращает `active/configured`. Проверка сборки и TypeScript отложена до завершения шагов 6 и 6.1.
+
+**Не выполнено / ограничения:** реальная регистрация, отправка/подтверждение письма и сценарий первого входа не запускались. `npm run build`, `npx tsc --noEmit` и CI на этом шаге не запускались. `mailer_autoconfirm`, секреты и существующие коды не изменялись.
+
+## 2026-11-22 — B4, шаги 6 и 6.1: неподтверждённый вход и CI paths
+
+**Требовалось:** распознавать `email_not_confirmed` и `Email not confirmed`, показывать пользователю понятный русский текст и предлагать повторную отправку signup-письма; расширить пути запуска двух workflow на Edge Functions, Supabase config, подтверждение email и welcome.
+
+**Сделано:** в `lib/errors.ts` добавлено единое сообщение «Адрес не подтверждён. Проверьте почту или отправьте письмо ещё раз». В `app/login/page.tsx` при этой ошибке появляется кнопка `Отправить письмо ещё раз`, вызывающая `supabase.auth.resend({ type: 'signup', email })`. Ошибки повторной отправки показываются нейтрально; сырой текст Supabase не выводится. В оба workflow добавлены `supabase/functions/**`, `supabase/config.toml`, `app/auth/confirm/**`, `app/welcome/**`.
+
+**Проверено:** изменения внесены в отдельную ветку PR #67. Проверка `npm run build`, `npx tsc --noEmit` и CI выполняется после коммита; результаты будут записаны отдельной записью, чтобы не смешивать внедрение и результаты проверок.
+
+**Не выполнено / ограничения:** реальный вход с неподтверждённым пользователем и доставка повторного письма ещё не тестировались. `mailer_autoconfirm`, Supabase Auth settings, SMTP, Hook URI/enabled, Function Secrets и recovery secrets не изменялись.
+
+## 2026-11-22 — B4, итог проверок шагов 6 и 6.1
+
+- **Проверки CI на кодовом коммите `30b38b8a31016cd049b4145dc6516c3d41ee6a17`:** `Test recovery flow` — success (включая `npm run build`, запуск Next.js, сценарии recovery и email hook); `Recovery and email Hook verification` — success (Deno tests/typecheck и `npx tsc --noEmit`); `Chat security smoke` — success (включая `npx tsc --noEmit` и smoke-сценарии); `Web quality checks` — success (actionlint, regression tests, TypeScript, ESLint, production build, Supabase Auth + Storage integration и PostgreSQL 17 recovery migration).
+- **Результат:** все четыре workflow завершились успешно. Production build и TypeScript проверены удалёнными runner GitHub Actions. Локальный clone в этой рабочей среде не состоялся из-за отсутствия DNS-доступа к `github.com`; поэтому локальные команды отдельно не запускались.
+- **Ограничения:** живой сценарий с реальным неподтверждённым пользователем и фактической доставкой повторного письма не выполнялся. `mailer_autoconfirm` и настройки production Supabase Auth не изменялись.
