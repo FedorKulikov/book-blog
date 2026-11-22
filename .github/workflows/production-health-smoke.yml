@@ -116,7 +116,7 @@ jobs:
           check_guest_login_redirect "/books/add" "%2Fbooks%2Fadd"
           check_guest_login_redirect "/news/new" "%2Fnews%2Fnew"
 
-          for public_route in "/login" "/signup" "/forgot-password" "/recover-account" "/support"; do
+          for public_route in "/login" "/signup" "/forgot-password" "/support"; do
             public_status="$(curl --silent --show-error --location --max-time 25 --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${public_route}" || true)"
             if [[ "$public_status" != "200" ]]; then
               echo "::error::Public guest route $public_route must return HTTP 200 (received $public_status)."
@@ -124,6 +124,17 @@ jobs:
             fi
             echo "Public guest route $public_route is reachable."
           done
+
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            retired_route_status="$(curl --silent --show-error --location --max-time 25 --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/recover-account" || true)"
+            if [[ "$retired_route_status" != "404" ]]; then
+              echo "::error::Retired /recover-account route must return HTTP 404 (received $retired_route_status)."
+              exit 1
+            fi
+            echo "Retired /recover-account route returns HTTP 404."
+          else
+            echo "Skip /recover-account production 404 check on PR: production still serves main."
+          fi
 
           filter_headers="$RUNNER_TEMP/news-filter-headers.txt"
           filter_status="$(curl --silent --show-error --location --max-time 25 --dump-header "$filter_headers" --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/news?category=contest" || true)"
