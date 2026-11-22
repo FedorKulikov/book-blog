@@ -94,6 +94,16 @@ export default function DeleteAccountPage() {
       return
     }
 
+    if (
+      response.status === 409 &&
+      result.code === 'CHAT_MODE_LOCKED' &&
+      (result.requiredMode === 'preserve' || result.requiredMode === 'delete_own_messages')
+    ) {
+      setChatMode(result.requiredMode)
+      setError(typeof result.error === 'string' ? result.error : 'Продолжите предыдущую попытку в первоначальном режиме.')
+      return
+    }
+
     if (!response.ok) {
       setError(
         typeof result.error === 'string'
