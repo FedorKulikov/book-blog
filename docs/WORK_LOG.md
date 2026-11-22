@@ -188,3 +188,9 @@
 **Проверено:** изменения внесены в отдельную ветку PR #67. Проверка `npm run build`, `npx tsc --noEmit` и CI выполняется после коммита; результаты будут записаны отдельной записью, чтобы не смешивать внедрение и результаты проверок.
 
 **Не выполнено / ограничения:** реальный вход с неподтверждённым пользователем и доставка повторного письма ещё не тестировались. `mailer_autoconfirm`, Supabase Auth settings, SMTP, Hook URI/enabled, Function Secrets и recovery secrets не изменялись.
+
+## 2026-11-22 — B4, итог проверок шагов 6 и 6.1
+
+- **Проверки CI на кодовом коммите `30b38b8a31016cd049b4145dc6516c3d41ee6a17`:** `Test recovery flow` — success (включая `npm run build`, запуск Next.js, сценарии recovery и email hook); `Recovery and email Hook verification` — success (Deno tests/typecheck и `npx tsc --noEmit`); `Chat security smoke` — success (включая `npx tsc --noEmit` и smoke-сценарии); `Web quality checks` — success (actionlint, regression tests, TypeScript, ESLint, production build, Supabase Auth + Storage integration и PostgreSQL 17 recovery migration).
+- **Результат:** все четыре workflow завершились успешно. Production build и TypeScript проверены удалёнными runner GitHub Actions. Локальный clone в этой рабочей среде не состоялся из-за отсутствия DNS-доступа к `github.com`; поэтому локальные команды отдельно не запускались.
+- **Ограничения:** живой сценарий с реальным неподтверждённым пользователем и фактической доставкой повторного письма не выполнялся. `mailer_autoconfirm` и настройки production Supabase Auth не изменялись.
