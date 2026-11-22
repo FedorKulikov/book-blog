@@ -16,6 +16,7 @@ on conflict (id) do update
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null,
+  avatar_url text,
   role text not null default 'user'
 );
 
