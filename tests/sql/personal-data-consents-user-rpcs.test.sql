@@ -216,15 +216,6 @@ begin
     raise exception 'user A can read a consent belonging to user B';
   end if;
 
-  if exists (
-    select 1
-      from private.personal_data_consents
-     where id in (v_publication_id, v_profile_id)
-       and user_id <> auth.uid()
-  ) then
-    raise exception 'user A recorded a consent under a different user id';
-  end if;
-
   begin
     perform public.revoke_my_distribution_consent('unsupported_scope');
     raise exception 'revoke_my_distribution_consent accepted an unsupported scope';
@@ -247,6 +238,7 @@ declare
   v_a_publication_revoked timestamptz;
   v_a_profile_revoked timestamptz;
   v_b_revoked timestamptz;
+  v_wrong_owner_count integer;
 begin
   select revoked_at into v_a_publication_revoked
     from private.personal_data_consents where id = v_a_publication_id;
@@ -263,6 +255,15 @@ begin
   end if;
   if v_b_revoked is not null then
     raise exception 'user A revoked user B publication consent';
+  end if;
+
+  select count(*) into v_wrong_owner_count
+    from private.personal_data_consents
+   where id in (v_a_publication_id, v_a_profile_id)
+     and user_id <> '11111111-1111-4111-8111-111111111111';
+
+  if v_wrong_owner_count <> 0 then
+    raise exception 'user A recorded a consent under a different user id';
   end if;
 end;
 $ownership_assertions$;
