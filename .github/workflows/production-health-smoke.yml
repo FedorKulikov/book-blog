@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - '.github/workflows/production-health-smoke.yml'
+      - 'scripts/check-production-analytics-consent.mjs'
   workflow_dispatch:
   schedule:
     - cron: '17 5 * * *'
@@ -35,6 +36,12 @@ jobs:
             url: https://book-blog.layero.app
 
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Fetch and verify the live application
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         shell: bash
@@ -84,6 +91,25 @@ jobs:
 
           echo "Production application marker and SEO homepage metadata verified."
 
+
+          if [[ "$SITE_URL" == "https://bukleb.ru" ]]; then
+            privacy_body="$RUNNER_TEMP/privacy.html"
+            privacy_status="$(curl --silent --show-error --location --retry 2 --retry-delay 4 --retry-all-errors --max-time 45 --output "$privacy_body" --write-out '%{http_code}' "${SITE_URL%/}/privacy")"
+            if [[ "$privacy_status" != "200" ]]; then
+              echo "::error::Production /privacy must return HTTP 200 (received $privacy_status)."
+              exit 1
+            fi
+            if ! grep -Fq 'Редакция 1.1 от 23 ноября 2026 года' "$privacy_body"; then
+              echo "::error::Production /privacy does not contain the expected 1.1 edition marker."
+              exit 1
+            fi
+            if grep -Eiq 'резервн(ый|ые|ого|ых)[[:space:]]+код' "$privacy_body"; then
+              echo "::error::Production /privacy still mentions retired recovery codes."
+              exit 1
+            fi
+            echo "Production /privacy returns HTTP 200, is edition 1.1, and has no retired recovery-code references."
+          fi
+
           check_guest_login_redirect() {
             local route="$1"
             local expected_next="$2"
@@ -102,11 +128,15 @@ jobs:
               location="$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { sub(/^[^:]*:[[:space:]]*/, ""); gsub(/\r/, ""); print; exit }' "$headers")"
             fi
 
+            if [[ "$route" == "/welcome" && "$status" != "307" ]]; then
+              echo "::error::Guest route /welcome must return HTTP 307 (received $status; Location: $location)."
+              exit 1
+            fi
             if [[ ! "$status" =~ ^30[1278]$ ]] || [[ "$location" != *"/login?next="* ]] || [[ "$location" != *"$expected_next"* ]]; then
               echo "::error::Guest route $route must redirect to /login with its return path (HTTP $status; Location: $location)."
               exit 1
             fi
-            echo "Guest route $route redirects to login and preserves its return path."
+            echo "Guest route $route redirects to login with HTTP $status and preserves its return path."
           }
 
           check_guest_login_redirect "/profile" "%2Fprofile"
@@ -115,6 +145,7 @@ jobs:
           check_guest_login_redirect "/profile/edit" "%2Fprofile%2Fedit"
           check_guest_login_redirect "/books/add" "%2Fbooks%2Fadd"
           check_guest_login_redirect "/news/new" "%2Fnews%2Fnew"
+          check_guest_login_redirect "/welcome" "%2Fwelcome"
 
           for public_route in "/login" "/signup" "/forgot-password" "/support"; do
             public_status="$(curl --silent --show-error --location --max-time 25 --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${public_route}" || true)"
@@ -162,3 +193,18 @@ jobs:
             fi
             echo "Public community rules page is reachable."
           fi
+
+      - name: Verify analytics consent persistence in Chromium
+        if: matrix.label == 'Custom domain bukleb.ru'
+        shell: bash
+        env:
+          SITE_URL: ${{ matrix.url }}
+        run: |
+          set -euo pipefail
+          node --check scripts/check-production-analytics-consent.mjs
+          CHROME_BIN="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [[ -z "$CHROME_BIN" ]]; then
+            echo "::error::A Chromium-compatible browser is required for the production analytics-consent check."
+            exit 1
+          fi
+          CHROME_BIN="$CHROME_BIN" node scripts/check-production-analytics-consent.mjs "$SITE_URL"
