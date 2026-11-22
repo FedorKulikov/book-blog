@@ -1,12 +1,23 @@
-export type AssuranceLevel = string | null | undefined
-
 export function requiresMfaStepUp(input: {
-  currentLevel: AssuranceLevel
-  nextLevel: AssuranceLevel
-  jwtAssuranceLevel: AssuranceLevel
+  currentLevel: unknown
+  nextLevel: unknown
+  jwtAssuranceLevel: unknown
 }): boolean {
-  return (
-    input.nextLevel === 'aal2' &&
-    (input.currentLevel !== 'aal2' || input.jwtAssuranceLevel !== 'aal2')
-  )
+  const { currentLevel, nextLevel, jwtAssuranceLevel } = input
+
+  // Only known and mutually consistent assurance claims are accepted.
+  // Unknown SDK/server values must never weaken an irreversible action.
+  if (
+    (currentLevel !== 'aal1' && currentLevel !== 'aal2') ||
+    (nextLevel !== 'aal1' && nextLevel !== 'aal2') ||
+    jwtAssuranceLevel !== currentLevel
+  ) {
+    return true
+  }
+
+  if (currentLevel === 'aal2') {
+    return nextLevel !== 'aal2'
+  }
+
+  return nextLevel === 'aal2'
 }
