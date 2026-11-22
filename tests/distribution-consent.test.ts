@@ -91,7 +91,7 @@ test('verified server user is used and consent is recorded before INSERT', async
   const result = await createPostWithDistributionConsent(
     fake.client,
     verifiedUserId,
-    { ...validInput, user_id: '22222222-2222-4222-8222-222222222222' } as typeof validInput,
+    { ...validInput, user_id: '22222222-2222-4222-8222-222222222222' },
   )
 
   assert.equal(result.status, 201)
@@ -101,6 +101,7 @@ test('verified server user is used and consent is recorded before INSERT', async
   ])
 
   const consentCall = fake.calls[1]
+  assert.ok(consentCall)
   assert.deepEqual(consentCall.args, {
     p_scope: 'publication',
     p_data_categories: [...DISTRIBUTION_CONSENT_CATEGORIES],
