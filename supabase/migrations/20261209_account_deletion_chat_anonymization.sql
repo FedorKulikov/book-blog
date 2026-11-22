@@ -315,6 +315,139 @@ create trigger books_block_deleting_user_references
   before insert or update on public.books
   for each row execute function public.prevent_writes_for_deleting_account();
 
+-- A signed JWT can remain cryptographically valid for its remaining
+-- lifetime after Auth user deletion. Storage write policies must therefore
+-- also verify that auth.uid() still has a profile and no deletion lock.
+create or replace function public.current_user_storage_writes_allowed()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select
+    (select auth.uid()) is not null
+    and exists (
+      select 1
+      from public.profiles p
+      where p.id = (select auth.uid())
+    )
+    and not exists (
+      select 1
+      from private.account_deletion_locks l
+      where l.user_id = (select auth.uid())
+    );
+$function$;
+
+alter function public.current_user_storage_writes_allowed() owner to postgres;
+revoke all on function public.current_user_storage_writes_allowed()
+  from public, anon, authenticated, service_role;
+grant execute on function public.current_user_storage_writes_allowed()
+  to anon, authenticated;
+
+-- Replace every authenticated owner write policy for these account-owned
+-- buckets. Public reads remain public by design. These checks also reject
+-- a stale access JWT once its profile row has been deleted.
+drop policy if exists avatars_insert_own on storage.objects;
+create policy avatars_insert_own
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  );
+
+drop policy if exists chat_media_insert_own on storage.objects;
+create policy chat_media_insert_own
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'chat-media'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  );
+
+drop policy if exists post_images_insert_own on storage.objects;
+create policy post_images_insert_own
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  );
+
+drop policy if exists avatars_owner_update on storage.objects;
+drop policy if exists avatars_update_own on storage.objects;
+create policy avatars_update_own
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  )
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  );
+
+drop policy if exists post_images_update_own on storage.objects;
+create policy post_images_update_own
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  )
+  with check (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  );
+
+drop policy if exists chat_media_owner_delete on storage.objects;
+create policy chat_media_owner_delete
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'chat-media'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  );
+
+drop policy if exists avatars_owner_delete on storage.objects;
+create policy avatars_owner_delete
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  );
+
+drop policy if exists "Owner delete" on storage.objects;
+drop policy if exists post_images_delete_own on storage.objects;
+create policy post_images_delete_own
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and public.current_user_storage_writes_allowed()
+  );
+
 -- A conversation with a deleted counterpart remains readable as history,
 -- but the surviving member must not be able to continue sending into it.
 drop policy if exists messages_insert_own on public.messages;
@@ -464,6 +597,36 @@ begin
       and not tgisinternal and tgenabled <> 'D'
   ) then
     raise exception 'external_news reference-lock trigger is missing or disabled';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_roles r on r.oid = p.proowner
+    where p.oid = 'public.current_user_storage_writes_allowed()'::regprocedure
+      and p.prosecdef
+      and r.rolname = 'postgres'
+      and coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=""%'
+  ) then
+    raise exception 'Storage write guard must be SECURITY DEFINER owned by postgres with empty search_path';
+  end if;
+
+  if has_function_privilege('public', 'public.current_user_storage_writes_allowed()', 'EXECUTE')
+     or not has_function_privilege('anon', 'public.current_user_storage_writes_allowed()', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.current_user_storage_writes_allowed()', 'EXECUTE') then
+    raise exception 'Storage write guard must be callable only by anonymous/authenticated policy contexts';
+  end if;
+
+  if (
+    select count(*)
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and cmd = 'INSERT'
+      and policyname in ('avatars_insert_own','chat_media_insert_own','post_images_insert_own')
+      and coalesce(with_check, '') ilike '%current_user_storage_writes_allowed%'
+  ) <> 3 then
+    raise exception 'all three account-owned Storage buckets must validate active-profile status';
   end if;
 
   if not exists (
