@@ -2,6 +2,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { TICKET_CATEGORIES, type TicketCategory } from '@/lib/support'
@@ -127,6 +128,14 @@ export default function NewTicketForm() {
       </div>
 
       {error && <p className="text-xs text-wine">{error}</p>}
+
+      <p className="text-xs leading-5 text-brown/60">
+        Не включайте в обращение пароли и резервные коды. Информация об обработке
+        данных размещена в{' '}
+        <Link href="/privacy" className="text-wine underline underline-offset-2">
+          проекте политики конфиденциальности
+        </Link>.
+      </p>
 
       <button
         type="submit"

@@ -213,6 +213,12 @@ export default function LoginPage() {
         </p>
 
         <p className="mt-2 text-sm text-brown/70">
+          <Link href="/privacy" className="text-wine hover:underline">
+            Политика конфиденциальности
+          </Link>
+        </p>
+
+        <p className="mt-2 text-sm text-brown/70">
           <Link href="/forgot-password" className="text-wine hover:underline">
             Забыли пароль?
           </Link>
