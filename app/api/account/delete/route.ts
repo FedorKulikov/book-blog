@@ -92,12 +92,13 @@ export async function POST(request: Request) {
   const userId = userData.user.id
 
   try {
-    const lockAccepted = await beginAccountDeletion(admin, userId, chatMode as ChatDeletionMode)
-    if (!lockAccepted) {
+    const lockedMode = await beginAccountDeletion(admin, userId, chatMode as ChatDeletionMode)
+    if (lockedMode !== chatMode) {
       return json(
         {
           code: 'CHAT_MODE_LOCKED',
-          error: 'Предыдущая попытка удаления началась в другом режиме переписки. Повторите её с прежним выбором.',
+          requiredMode: lockedMode,
+          error: 'Предыдущая попытка удаления началась в другом режиме переписки. Выбран прежний режим; повторите запрос.',
         },
         409,
       )
