@@ -136,3 +136,13 @@
 - **Что не делалось:** `mailer_autoconfirm` не менялся; Send Email Hook URI/enabled не менялись; SMTP, DNS/NS, Layero variables, production пользовательские данные не менялись; emails не отправлялись; тестовые аккаунты не создавались; `RECOVERY_CODE_SECRET` и активные резервные коды не менялись; password-reset email links не включались.
 - **Блокировка:** перед Step 3 нужен отдельный тестовый email mailbox владельца. Для закрытия Step 1 требуется PR + CI success + merge + GitHub Edge deploy success + проверка реально deployed function versions. Только после этого можно проверять отправку и подтверждение ссылки. Step 4–6 не начинались до успешного Step 3; Step 7 запрещён до окончания Steps 2–6.
 - **Статус B2:** не закрыта. Step 1/2 подготовлены в source; production status не изменялся. C не начиналась.
+
+
+### 2026-11-22 — B3 шаг 4: регистрация переводит пользователя на подтверждение email
+
+- **Подтверждено чтением исходника `app/signup/page.tsx`:** удалены `signInWithPassword`, `POST /api/recovery/generate`, импорт/рендер `CodesReveal`, экран `recoveryUnavailable`, повторная выдача кодов и post-auth redirect из signup. Проверки username и пароля, финальный username pre-check и обработка `signUp` error сохранены.
+- **Подтверждено чтением исходника:** успешный `signUp` показывает экран «Подтвердите адрес» с нейтральной формулировкой и адресом, сбрасывает пароль из state; отсутствие ошибки — одинаковый экран независимо от `identities`, поэтому занятый email не раскрывается.
+- **Подтверждено чтением исходника:** повторная отправка выполняет `supabase.auth.resend({ type: 'signup', email })`, cooldown 60 секунд включается после signup и каждой повторной попытки. Ошибка resend представляется общим русским сообщением, без сырого ответа Supabase.
+- **Не проверено:** сборка/tsc и browser E2E пока не запускались; письмо не отправлялось. CI запустить после выполнения шагов 5–6 по заданному порядку.
+- **Не менялось:** `mailer_autoconfirm`, Auth Hook config, `RECOVERY_CODE_SECRET`, существующие резервные коды и production settings.
+- Следующий шаг: B3 шаг 5 — выдача кодов на первом входе после email confirmation.
