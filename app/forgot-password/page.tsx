@@ -10,47 +10,34 @@ export default function ForgotPasswordPage() {
           🔑 Забыли пароль?
         </h1>
 
-        <div className="rounded-xl border border-emerald-dark/15 bg-cream-warm/30 p-4 mb-6">
-          <p className="text-sm text-brown-dark">
-            Сейчас восстановить пароль можно с помощью резервного кода,
-            который вы сохранили при регистрации или создали в настройках профиля.
-          </p>
-        </div>
-
-        <p className="text-sm text-brown/70 mb-3">
-          Для восстановления понадобятся:
+        <p className="text-sm text-brown/70 mb-5">
+          Укажите email, связанный с аккаунтом. Если адрес зарегистрирован, мы отправим письмо со ссылкой для восстановления пароля. Проверьте также папку «Спам».
         </p>
-        <ul className="text-sm text-brown/70 space-y-1 mb-6 list-disc pl-5">
-          <li>имя пользователя;</li>
-          <li>один неиспользованный резервный код;</li>
-          <li>новый пароль длиной не менее 8 символов.</li>
-        </ul>
-
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/recover-account"
-            className="rounded-full bg-emerald-mid px-5 py-2.5 text-sm text-cream hover:bg-emerald-dark transition-colors"
-          >
-            Восстановить по коду
-          </Link>
-          <Link
-            href="/login"
-            className="rounded-full border border-emerald-dark/20 px-5 py-2.5 text-sm text-brown-dark hover:border-emerald-mid transition-colors"
-          >
-            Ко входу
-          </Link>
-        </div>
 
         <EmailRecoveryResetForm />
 
+        <div className="mt-6 rounded-xl border border-emerald-dark/15 bg-cream-warm/30 p-4">
+          <p className="text-sm text-brown-dark mb-3">
+            Нет доступа к почте или письмо не пришло? Можно восстановить доступ с помощью резервного кода, сохранённого при регистрации.
+          </p>
+          <Link
+            href="/recover-account"
+            className="inline-block rounded-full border border-emerald-dark/20 px-5 py-2.5 text-sm text-brown-dark hover:border-emerald-mid transition-colors"
+          >
+            Восстановить по резервному коду
+          </Link>
+        </div>
+
         {passkeysEnabled && (
           <p className="mt-6 text-sm text-brown/70">
-            Ранее добавляли ключ доступа? На странице входа выберите «Войти с ключом доступа». После входа откройте настройки профиля, смените пароль и создайте новый набор резервных кодов.
+            Ранее добавляли ключ доступа? На странице входа выберите «Войти с ключом доступа». После входа вы сможете сменить пароль в настройках профиля.
           </p>
         )}
 
         <p className="mt-4 text-sm text-brown/60">
-          Email-восстановление доступно только после отдельного подтверждения адреса в настройках профиля. Старые отметки Supabase о подтверждении здесь не учитываются. Если вы потеряли пароль и резервные коды до подтверждения адреса, используйте заранее сохранённый passkey или потребуется ручная проверка.
+          <Link href="/login" className="text-wine hover:underline">
+            Вернуться ко входу
+          </Link>
         </p>
       </div>
     </main>
