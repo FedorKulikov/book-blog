@@ -160,3 +160,11 @@
 - `/auth/confirm` отображает заданный в письме `type=signup`, но передаёт в Supabase `verifyOtp` тип `email`; это соответствует актуальному Supabase API для token_hash signup confirmations. `email_change` передаётся как `email_change`.
 - На этой стадии CI ещё не запускался, functions не deployed, PR/merge отсутствуют. Никакие письма не отправлялись и production Auth настройки не менялись.
 - Следующий gate: открыть PR и получить полный CI success; merge PR; проверить post-merge Edge deploy success и deployed sources; подтвердить secrets presence/Hook parity API preflight; получить от владельца адрес тестового mailbox; только потом выполнять реальную проверку email/SPF/DKIM/confirm session. Signup/login/code flow (Steps 4–6) не изменять до успешного Step 3.
+
+
+## 2026-11-22 — B3 шаг 4: регистрация без автологина
+
+- В `app/signup/page.tsx` убраны автологин после `signUp`, POST `/api/recovery/generate`, `CodesReveal` и экран `recoveryUnavailable`. Добавлен экран «Подтвердите адрес» и повторная отправка `supabase.auth.resend({ type: 'signup', email })` с 60-секундным cooldown.
+- Успешный `signUp` без ошибки отображается одинаково и для нового адреса, и для случая пустого `identities`, не раскрывая существование аккаунта. Username и password validation, предварительные username checks и error handling сохранены.
+- Проверено чтением файла и static assertions в редакторском проходе: нет `signInWithPassword`, `/api/recovery/generate`, `CodesReveal`, `recoveryUnavailable`, `getPostAuthPath`; реальная отправка и build пока не проверялись.
+- `mailer_autoconfirm`, Hook, SMTP, Recovery secret и активные коды не менялись.
