@@ -145,10 +145,15 @@ begin
         'reports_block_deleting_user_writes',
         'action_log_block_deleting_user_writes',
         'messages_block_deleting_user_writes',
+        'notifications_block_deleting_user_writes',
+        'likes_block_deleting_user_writes',
+        'bookmarks_block_deleting_user_writes',
+        'follows_block_deleting_user_writes',
+        'user_blocks_block_deleting_user_writes',
         'post_images_block_deleting_user_references',
         'external_news_block_deleting_user_references'
       )
-  ) <> 9 then
+  ) <> 14 then
     raise exception 'all retention-sensitive write-lock triggers must be enabled';
   end if;
 end;
