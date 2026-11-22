@@ -33,7 +33,6 @@ jobs:
           PAT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           PUBLISHABLE: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          RECOVERY: ${{ secrets.RECOVERY_CODE_SECRET }}
           HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
         run: |
           set +x
@@ -43,7 +42,6 @@ jobs:
           check SUPABASE_ACCESS_TOKEN "$PAT"
           check SUPABASE_SECRET_KEY "$SECRET_KEY"
           check SUPABASE_PUBLISHABLE_KEY "$PUBLISHABLE"
-          check RECOVERY_CODE_SECRET "$RECOVERY"
           check AUTH_EMAIL_HOOK_SECRET "$HOOK"
           if [[ -n "$HOOK" && ! "$HOOK" =~ ^v1,whsec_[A-Za-z0-9+/]+={0,2}$ ]]; then
             echo "invalid_secret_format: AUTH_EMAIL_HOOK_SECRET must be v1,whsec_ followed by base64"
@@ -79,11 +77,13 @@ jobs:
           SUPABASE_ACCESS_TOKEN="$PAT" \
             npx --yes supabase@3.2.0 functions deploy auth-email-hook \
             --remote="$REF" --use-api --yes
+          SUPABASE_ACCESS_TOKEN="$PAT" \
+            npx --yes supabase@3.2.0 functions deploy resend-mailer \
+            --remote="$REF" --use-api --yes
 
       - name: Function Secrets и проверка Email Hook
         env:
           PAT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          RECOVERY: ${{ secrets.RECOVERY_CODE_SECRET }}
           SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           PUBLISHABLE: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
@@ -97,7 +97,6 @@ jobs:
           tmp=$(mktemp)
           trap 'shred -u "$tmp" 2>/dev/null || rm -f "$tmp"' EXIT
           {
-            printf 'RECOVERY_CODE_SECRET=%s\n' "$RECOVERY"
             printf 'AUTH_EMAIL_HOOK_SECRET=%s\n' "$hook"
           } > "$tmp"
 
@@ -119,7 +118,14 @@ jobs:
           echo "hook_unsigned_http: $unsigned"
           [ "$unsigned" = "401" ] || { echo "ожидали 401"; exit 1; }
 
+          mailer_unsigned=$(curl -sS $timeout_opts -o /dev/null -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' -d '{}' \
+            "$BASE/resend-mailer")
+          echo "mailer_unsigned_http: $mailer_unsigned"
+          [ "$mailer_unsigned" = "401" ] || { echo "ожидали 401"; exit 1; }
+
           export EDGE_FUNCTIONS_URL="$BASE"
+          export SUPABASE_SERVICE_ROLE_KEY="$SECRET_KEY"
           export NEXT_PUBLIC_SUPABASE_URL="https://${REF}.supabase.co"
           export NEXT_PUBLIC_SUPABASE_ANON_KEY="$PUBLISHABLE"
           export SUPABASE_SECRET_KEY="$SECRET_KEY"
