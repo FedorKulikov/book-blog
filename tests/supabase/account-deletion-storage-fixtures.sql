@@ -6,9 +6,12 @@
 begin;
 
 insert into storage.buckets (id, name, public)
-values ('chat-media', 'chat-media', false)
+values
+  ('chat-media', 'chat-media', false),
+  ('avatars', 'avatars', true),
+  ('post-images', 'post-images', true)
 on conflict (id) do update
-  set public = false;
+  set public = excluded.public;
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -207,6 +210,9 @@ grant usage on schema public to authenticated, service_role;
 grant select on public.conversations, public.messages to authenticated;
 grant insert on public.messages to authenticated;
 grant all on public.profiles, public.conversations, public.messages to service_role;
+grant all on public.posts, public.comments, public.tickets,
+  public.ticket_messages, public.reports, public.action_log,
+  public.notifications to service_role;
 
 drop policy if exists ci_conversations_read_participant on public.conversations;
 create policy ci_conversations_read_participant
@@ -260,6 +266,26 @@ create policy ci_chat_media_insert_own_path
   to authenticated
   with check (
     bucket_id = 'chat-media'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists ci_avatars_insert_own_path on storage.objects;
+create policy ci_avatars_insert_own_path
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists ci_post_images_insert_own_path on storage.objects;
+create policy ci_post_images_insert_own_path
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'post-images'
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
