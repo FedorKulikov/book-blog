@@ -3,7 +3,7 @@
 // Supabase Auth Send Email Hook.
 //  - signup: sends a confirmation link to user.email;
 //  - email_change: sends the token/hash pair(s) required by Secure Email Change;
-//  - recovery: returns 200 {} without sending a password-reset email;
+//  - recovery: sends a password-reset link to user.email;
 //  - all other event types: 501, so GoTrue never treats unsupported delivery as success.
 //
 // The webhook signature is checked before JSON parsing or payload use.
@@ -41,7 +41,7 @@ type HookPayload = {
 type Recipient = {
   email: string
   tokenHash: string
-  type: 'signup' | 'email_change'
+  type: 'signup' | 'email_change' | 'recovery'
   ordinal: number
   heading: string
   instruction: string
@@ -105,6 +105,7 @@ function confirmationUrl(siteUrl: string, tokenHash: string, type: Recipient['ty
   const url = new URL('/auth/confirm', siteUrl)
   url.searchParams.set('token_hash', tokenHash)
   url.searchParams.set('type', type)
+  if (type === 'recovery') url.searchParams.set('next', '/auth/reset')
   return url.toString()
 }
 
@@ -122,6 +123,18 @@ function recipientsFor(payload: HookPayload, action: string): Recipient[] | null
       ordinal: 0,
       heading: 'Подтвердите адрес электронной почты',
       instruction: 'Завершите регистрацию в «Хлеба и букв», подтвердив, что этот почтовый ящик принадлежит вам.',
+    }]
+  }
+
+  if (action === 'recovery') {
+    if (!isEmail(user.email) || !isTokenHash(emailData.token_hash)) return null
+    return [{
+      email: user.email,
+      tokenHash: emailData.token_hash,
+      type: 'recovery',
+      ordinal: 0,
+      heading: 'Восстановите пароль',
+      instruction: 'Мы получили запрос на восстановление пароля для вашего аккаунта «Хлеба и букв». Перейдите по ссылке, чтобы задать новый пароль.',
     }]
   }
 
@@ -203,8 +216,14 @@ async function sendConfirmation(
 ): Promise<boolean> {
   const link = confirmationUrl(siteUrl, recipient.tokenHash, recipient.type)
   const safeLink = escapeHtml(link)
-  const expiryText =
-    'Ссылка действует ограниченное время согласно настройке срока действия подтверждений в Supabase Auth.'
+  const expiryText = recipient.type === 'recovery'
+    ? 'Ссылка для восстановления пароля действует ограниченное время согласно настройке срока действия ссылок Supabase Auth.'
+    : 'Ссылка действует ограниченное время согласно настройке срока действия подтверждений в Supabase Auth.'
+  const buttonLabel = recipient.type === 'recovery' ? 'Восстановить пароль' : 'Подтвердить email'
+  const linkLabel = recipient.type === 'recovery' ? 'Восстановить пароль' : 'Подтвердить email'
+  const subject = recipient.type === 'recovery'
+    ? 'Восстановление пароля — Хлеба и букв'
+    : SUBJECT
 
   const html = [
     '<!doctype html><html lang="ru"><body>',
@@ -212,7 +231,7 @@ async function sendConfirmation(
     '<h1 style="font-size:22px;color:#214d40">Хлеба и букв</h1>',
     `<h2>${escapeHtml(recipient.heading)}</h2>`,
     `<p>${escapeHtml(recipient.instruction)}</p>`,
-    `<p><a href="${safeLink}" style="display:inline-block;padding:12px 20px;background:#356b59;color:#fff;text-decoration:none;border-radius:24px">Подтвердить email</a></p>`,
+    `<p><a href="${safeLink}" style="display:inline-block;padding:12px 20px;background:#356b59;color:#fff;text-decoration:none;border-radius:24px">${buttonLabel}</a></p>`,
     `<p>${escapeHtml(expiryText)}</p>`,
     '<p>Не пересылайте это письмо и ссылку из него другим людям. Если вы не запрашивали подтверждение, просто проигнорируйте письмо.</p>',
     '</main></body></html>',
@@ -222,7 +241,7 @@ async function sendConfirmation(
     'Хлеба и букв',
     recipient.heading,
     recipient.instruction,
-    `Подтвердить email: ${link}`,
+    `${linkLabel}: ${link}`,
     expiryText,
     'Не пересылайте это письмо и ссылку из него другим людям. Если вы не запрашивали подтверждение, просто проигнорируйте письмо.',
   ].join('\n\n')
@@ -240,7 +259,7 @@ async function sendConfirmation(
         },
         body: JSON.stringify({
           to: recipient.email,
-          subject: SUBJECT,
+          subject,
           html,
           text,
           idempotencyKey: key,
@@ -290,10 +309,7 @@ export async function handle(
   const action = actionOf(payload)
   if (!action) return fail(501, 'unsupported_action')
 
-  // Email password recovery is explicitly disabled. Do not invoke the mailer.
-  if (action === 'recovery') return json({})
-
-  if (action !== 'signup' && action !== 'email_change') {
+  if (action !== 'signup' && action !== 'email_change' && action !== 'recovery') {
     return fail(501, 'email_delivery_not_configured')
   }
 
@@ -343,7 +359,14 @@ export async function handle(
       userId,
       fetcher,
     )
-    if (!sent) return fail(502, 'email_delivery_failed')
+    if (!sent) {
+      if (action === 'signup') {
+        // Do not expose recipient, token, or provider response in logs.
+        console.warn('auth-email-hook: signup confirmation delivery failed; allowing Auth signup to continue')
+        return json({})
+      }
+      return fail(502, 'email_delivery_failed')
+    }
   }
 
   return json({})

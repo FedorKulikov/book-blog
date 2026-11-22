@@ -126,7 +126,7 @@ Deno.test('signed signup sends one confirmation through the internal Edge mailer
   assert(!text.includes('auth-project.supabase.co'), 'never link to Supabase Auth domain')
 })
 
-Deno.test('recovery is suppressed without calling the Resend mailer', async () => {
+Deno.test('recovery sends a password reset link through the internal Edge mailer', async () => {
   const request = await signedRequest({
     user: { id: 'user-synthetic-2', email: 'reader@example.test' },
     email_data: {
@@ -135,14 +135,42 @@ Deno.test('recovery is suppressed without calling the Resend mailer', async () =
     },
   })
   let calls = 0
-  const response = await handle(request, dependencies(async () => {
+  let body: Record<string, unknown> | undefined
+  const response = await handle(request, dependencies(async (_input, init) => {
     calls++
+    body = JSON.parse(String(init?.body)) as Record<string, unknown>
     return new Response('{}', { status: 200 })
   }))
 
   equal(response.status, 200, 'recovery status')
   equal(await response.text(), '{}', 'recovery body')
-  equal(calls, 0, 'recovery must not send a reset link')
+  equal(calls, 1, 'recovery mailer calls')
+  equal(body?.to, 'reader@example.test', 'recovery recipient')
+  equal(body?.subject, 'Восстановление пароля — Хлеба и букв', 'recovery subject')
+
+  const serializedBody = JSON.stringify(body)
+  assert(serializedBody.includes('type=recovery'), 'recovery link type in mailer body')
+  assert(serializedBody.includes('next=%2Fauth%2Freset'), 'recovery next path in mailer body')
+  assert(serializedBody.includes('Не пересылайте это письмо'), 'recovery security warning')
+  assert(serializedBody.includes('ограниченное время'), 'recovery expiry notice')
+})
+
+Deno.test('recovery without user email does not call the Resend mailer', async () => {
+  const request = await signedRequest({
+    user: { id: 'user-synthetic-6' },
+    email_data: {
+      email_action_type: 'recovery',
+      token_hash: 'synthetic_recovery_hash_without_email',
+    },
+  })
+  let calls = 0
+  const response = await handle(request, dependencies(async () => {
+    calls++
+    return new Response('{}', { status: 200 })
+  }))
+
+  equal(response.status, 400, 'recovery without email status')
+  equal(calls, 0, 'recovery without email mailer calls')
 })
 
 Deno.test('secure email change sends current and new address with documented hash mapping', async () => {
@@ -209,6 +237,43 @@ Deno.test('single-token email change sends only to the new address', async () =>
   equal(sent[0].to, 'new@example.test', 'single-token recipient')
 })
 
+Deno.test('signup delivery failure is soft but recovery and email change still fail', async () => {
+  const failingMailer = async () => new Response('{}', { status: 503 })
+
+  const signup = await handle(
+    await signedRequest(signupPayload()),
+    dependencies(failingMailer),
+  )
+  equal(signup.status, 200, 'signup delivery failure status')
+  equal(await signup.text(), '{}', 'signup delivery failure body')
+
+  const recovery = await handle(
+    await signedRequest({
+      user: { id: 'user-synthetic-recovery', email: 'reader@example.test' },
+      email_data: { email_action_type: 'recovery', token_hash: 'synthetic_recovery_hash' },
+    }),
+    dependencies(failingMailer),
+  )
+  equal(recovery.status, 502, 'recovery delivery failure status')
+
+  const emailChange = await handle(
+    await signedRequest({
+      user: {
+        id: 'user-synthetic-email-change',
+        email: 'old@example.test',
+        new_email: 'new@example.test',
+      },
+      email_data: {
+        email_action_type: 'email_change',
+        token_hash: 'synthetic_new_address_hash',
+        token_hash_new: 'synthetic_current_address_hash',
+      },
+    }),
+    dependencies(failingMailer),
+  )
+  equal(emailChange.status, 502, 'email change delivery failure status')
+})
+
 Deno.test('unsupported action returns 501 without sending', async () => {
   const request = await signedRequest({
     user: { id: 'user-synthetic-5', email: 'reader@example.test' },
@@ -246,13 +311,19 @@ Deno.test('invalid signature is rejected before parsing or sending', async () =>
   equal(calls, 0, 'invalid signature must not call mailer')
 })
 
-Deno.test('mailer failure is returned as generic 502 without provider details', async () => {
-  const request = await signedRequest(signupPayload())
+Deno.test('recovery mailer failure is returned as generic 502 without provider details', async () => {
+  const request = await signedRequest({
+    user: { id: 'user-synthetic-recovery-failure', email: 'reader@example.test' },
+    email_data: {
+      email_action_type: 'recovery',
+      token_hash: 'synthetic_recovery_failure_hash',
+    },
+  })
   const response = await handle(request, dependencies(async () =>
     new Response('private provider detail', { status: 502 }),
   ))
 
-  equal(response.status, 502, 'mailer failure status')
+  equal(response.status, 502, 'recovery mailer failure status')
   const body = await response.text()
   assert(!body.includes('private provider detail'), 'provider response must not be exposed')
 })
