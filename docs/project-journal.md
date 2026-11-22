@@ -196,3 +196,15 @@
 **Проверено:** изменения внесены в feature branch PR #69; source files перечитаны после коммитов. Локальный `deno test` в этой среде недоступен, если бинарник Deno не установлен; полный CI ожидается после последнего push.
 
 **Не выполнено / ограничения:** полный CI ещё не подтверждён; live signup и доставка писем не запускались. `mailer_autoconfirm`, Supabase Auth Hook settings/secrets, SMTP, `RECOVERY_CODE_SECRET` и таблица резервных кодов не менялись.
+
+
+## 2026-11-22 — B8 follow-up: CI verification after signup soft-fail
+
+- Первый CI-прогон обнаружил устаревшее ожидание 502 для signup в старом тесте Hook; оно заменено проверкой 502 для recovery. Дополнительно интеграционный скрипт обращается к legacy Next.js endpoint, который по своему контракту подавляет recovery и security notifications; ожидания теста восстановлены под фактический контракт этого endpoint, без изменения его runtime-кода.
+- **Итог CI на head `d8408dcf091d94ec13e3d244b463459f06da95a3`: все четыре workflow зелёные.**
+  - Recovery and email Hook verification: **44 passed | 0 failed**, Edge Function type check и TypeScript check — success.
+  - Test recovery flow: production build, 25 recovery checks, 15 email-hook checks — success.
+  - Chat security smoke — success.
+  - Web quality checks: PostgreSQL 17 migration, Supabase Auth + Storage integration, actionlint, regression tests, TypeScript, ESLint и production build — success.
+- Локально запустить `deno test` не удалось: в рабочей среде нет исполняемого файла Deno. Deno suite успешно выполнен runner GitHub Actions.
+- PR #69 остаётся открытым; `main` не изменялась. Production email delivery/signup не тестировались. `mailer_autoconfirm`, Supabase Hook config/secrets, SMTP, `RECOVERY_CODE_SECRET` и таблица резервных кодов не менялись.
