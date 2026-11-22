@@ -745,6 +745,32 @@ async function testAuthorizationAndDeletedSessionBoundaries(
   assert.equal(beforeDeleteProbe.length, 1, 'user must read their own JWT-protected probe row before deletion')
   assert.equal(beforeDeleteProbe[0]?.marker, 'JWT subject-only access probe', 'probe row must match the synthetic fixture')
 
+  const retainedMediaPath = 'retained/' + messageId + '/session-boundary-photo.png'
+  const { error: retainMediaError } = await admin.storage
+    .from('chat-media')
+    .copy(mediaPath, retainedMediaPath)
+  checkError('service-role copy of session-boundary media', retainMediaError)
+  assert.equal(storageOwner(retainedMediaPath), '<null>', 'retained media must not remain owned by the deleting user')
+
+  const { error: anonymizeMessageError } = await admin
+    .from('messages')
+    .update({
+      sender_id: null,
+      sender_label: 'Удалённый пользователь',
+      image_url: retainedMediaPath,
+    })
+    .eq('id', messageId)
+  checkError('anonymize retained message before Auth deletion', anonymizeMessageError)
+
+  const { error: detachConversationError } = await admin
+    .from('conversations')
+    .update({ user1_id: null })
+    .eq('id', conversationId)
+  checkError('detach deleting user from retained conversation', detachConversationError)
+
+  await expectDownload(counterpart.client, retainedMediaPath, true, 'counterpart reads retained media after detachment')
+  await expectDownload(outsider.client, retainedMediaPath, false, 'outsider cannot read retained media after detachment')
+
   // Storage must be emptied through its API before deleting an Auth user.
   const { error: removeMediaError } = await admin.storage.from('chat-media').remove([mediaPath])
   checkError('service-role cleanup of synthetic media before Auth deletion', removeMediaError)
@@ -784,7 +810,8 @@ async function testAuthorizationAndDeletedSessionBoundaries(
   assert.equal(afterDeleteProbe.length, 1, 'unexpired access JWT still satisfies auth.uid()-based RLS after deletion')
   assert.equal(afterDeleteProbe[0]?.owner_id, author.id, 'residual access is scoped to the old JWT subject')
 
-  await expectDownload(author.client, mediaPath, false, 'deleted user is no longer allowed to read conversation media')
+  await expectDownload(counterpart.client, retainedMediaPath, true, 'counterpart retains media after Auth deletion')
+  await expectDownload(author.client, retainedMediaPath, false, 'deleted user is no longer a conversation participant')
   const { data: counterpartMessages, error: counterpartMessagesError } = await counterpart.client
     .from('messages')
     .select('id, sender_id, sender_label')
