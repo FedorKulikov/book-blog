@@ -8,6 +8,7 @@ on:
       - 'supabase/functions/**'
       - 'supabase/config.toml'
       - 'supabase/deno.json'
+      - 'tsconfig.json'
       - 'scripts/verify-edge-hook-secret.ts'
       - '.github/workflows/recovery-verify.yml'
 
