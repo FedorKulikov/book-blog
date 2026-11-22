@@ -1235,6 +1235,18 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     'another participant must not create a new message reference to media owned by a deleting account',
   )
 
+  const blockedCounterpartMessage = await counterpart.client
+    .from('messages')
+    .insert({
+      conversation_id: conversationId,
+      sender_id: counterpart.id,
+      text: 'A surviving participant must not start a message while this conversation is locked for deletion',
+    })
+  assert.ok(
+    blockedCounterpartMessage.error,
+    'new messages must be rejected from either participant while the other account is being deleted',
+  )
+
   const { data: profileBeforeLockedUpdate, error: profileBeforeLockedUpdateError } = await admin
     .from('profiles')
     .select('username')
