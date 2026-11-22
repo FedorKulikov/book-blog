@@ -66,7 +66,7 @@ begin
     from pg_policies
     where schemaname = 'storage'
       and tablename = 'objects'
-      and policyname = 'ci_chat_media_select_conversation_participants'
+      and policyname = 'chat_media_select_conversation_participants'
       and cmd = 'SELECT'
       and qual ilike '%messages%'
       and qual ilike '%conversations%'
@@ -74,6 +74,34 @@ begin
       and qual ilike '%user2_id%'
   ) then
     raise exception 'chat media policy must authorize by message/conversation participation';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'messages'
+      and policyname = 'messages_insert_own'
+      and cmd = 'INSERT'
+      and with_check ilike '%sender_id%'
+      and with_check ilike '%user1_id%'
+      and with_check ilike '%user2_id%'
+      and with_check ilike '%IS NOT NULL%'
+  ) then
+    raise exception 'message insertion must require two live conversation participants';
+  end if;
+
+  if exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname <> 'chat_media_select_conversation_participants'
+      and cmd = 'SELECT'
+      and qual ilike '%chat-media%'
+      and (qual ilike '%foldername%' or qual ilike '%sender_id%')
+  ) then
+    raise exception 'legacy sender-folder chat media SELECT policy remains';
   end if;
 end;
 $assert$;
