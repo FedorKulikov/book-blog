@@ -22,6 +22,7 @@ const BLOCKER_SOURCES = [
 
 const STORAGE_REFERENCE_SOURCES = [
   { table: 'post_images', column: 'url', code: 'post_image_references', label: 'Изображения в публикациях других пользователей' },
+  { table: 'books', column: 'cover_url', code: 'book_cover_references', label: 'Обложки книг' },
   { table: 'external_news', column: 'cover_url', code: 'external_news_cover_references', label: 'Обложки внешних новостей' },
 ] as const
 
