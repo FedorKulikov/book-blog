@@ -198,3 +198,9 @@
 
 - PR #20 объединял принятие правил и подтверждение ознакомления с политикой в один обязательный checkbox и записывал `terms_accepted_at`/`terms_version` в `user_metadata`. Это поле пользователь редактирует сам; использовать его как надёжное доказательство consent нельзя.
 - Эти изменения не переносились. Текущая ветка добавляет ссылки на /privacy и /rules, но не меняет логику signup и резервных кодов. Согласие для конкретной цели, если оно выбрано основанием, должно быть отдельным, не объединяться с правилами и фиксироваться серверным механизмом.
+
+## 2026-11-22 — Финальный CI результат проекта политики
+
+- На кодовом HEAD `1ea8afe958289c6b8efdb84b941169d7a9a60e11` все проверки завершились success: Web quality (TypeScript, ESLint changed code, production build), Supabase Auth + Storage integration, PostgreSQL 17 migrations, Chat security smoke и Test recovery flow. Run IDs: `45038809266`, `45038809290`, `45038809249`.
+- Это подтверждает сборку и regression/integration checks, но не означает, что /privacy развёрнут на production или просмотрен обычным браузером.
+- PR #64 остаётся Draft; production, Supabase production data/secrets, DNS и Layero не менялись. A не закрыта до browser/preview проверки и подтверждённых owner/legal inputs.
