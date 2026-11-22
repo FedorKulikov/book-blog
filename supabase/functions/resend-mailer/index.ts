@@ -169,4 +169,6 @@ export async function handle(
   }
 }
 
-Deno.serve(handle)
+if (import.meta.main) {
+  Deno.serve(handle)
+}
