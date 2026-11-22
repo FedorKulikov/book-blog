@@ -21,7 +21,6 @@ export default function ImageUploader({ onUploaded, enabled = true, onUploadingC
   const [storagePaths, setStoragePaths] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
 
-
   async function handleFiles(files: FileList | null) {
     if (!enabled || !files || files.length === 0) return
 
@@ -41,8 +40,13 @@ export default function ImageUploader({ onUploaded, enabled = true, onUploadingC
 
     if (accepted.length === 0) return
 
-    // Не больше 5 новых файлов за раз
-    const batch = accepted.slice(0, 5)
+    // Всего не больше пяти изображений для одной публикации.
+    const remaining = Math.max(0, 5 - urls.length)
+    const batch = accepted.slice(0, remaining)
+    if (batch.length === 0) {
+      setError('Для одной публикации можно прикрепить не более пяти фотографий.')
+      return
+    }
 
     setUploading(true)
     onUploadingChange?.(true)
@@ -88,7 +92,12 @@ export default function ImageUploader({ onUploaded, enabled = true, onUploadingC
       if (newPaths.length > 0) {
         const { error: cleanupError } = await supabase.storage.from('post-images').remove(newPaths)
         if (cleanupError) {
-          setError('Загрузка прервалась. Не удалось удалить часть файлов из публичного хранилища; обратитесь к оператору.')
+          const allUrls = [...urls, ...newUrls]
+          setPreviews(allUrls)
+          setStoragePaths(prev => [...prev, ...newPaths])
+          setUrls(allUrls)
+          onUploaded(allUrls)
+          setError('Загрузка прервалась. Не удалось удалить часть файлов из публичного хранилища. Удалите оставшиеся фото кнопкой «×» перед снятием согласия.')
         } else {
           setError('Не удалось загрузить фотографии. Временные файлы удалены; попробуйте ещё раз.')
         }
