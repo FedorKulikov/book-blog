@@ -709,9 +709,14 @@ async function expectStorageRemovalDenied(
   path: string,
   context: string,
 ): Promise<void> {
-  const { data, error } = await client.storage.from('chat-media').remove([path])
-  assert.ok(error || !data || data.length === 0, context + ': authenticated client unexpectedly received a deleted object')
-  assert.equal(storageObjectCount(path), 1, context + ': object must remain after an unauthorized removal attempt')
+  const { error } = await client.storage.from('chat-media').remove([path])
+  // Storage can return the requested path even when RLS filters the DELETE.
+  // The managed objects table is queried read-only here to verify the object
+  // still exists; no SQL write is ever used for Storage operations.
+  if (error) {
+    assert.ok(error, context + ': a denied delete may return a Storage API error')
+  }
+  assert.equal(storageObjectCount(path), 1, context + ': object must remain after a user-side removal attempt')
 }
 
 async function testAuthorizationAndDeletedSessionBoundaries(
