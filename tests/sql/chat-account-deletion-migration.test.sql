@@ -157,5 +157,80 @@ begin
   ) <> 15 then
     raise exception 'all retention-sensitive write-lock triggers must be enabled';
   end if;
+
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_roles r on r.oid = p.proowner
+    where p.oid = 'public.current_user_storage_writes_allowed()'::regprocedure
+      and p.prosecdef
+      and r.rolname = 'postgres'
+      and coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=""%'
+  ) then
+    raise exception 'Storage write guard must be SECURITY DEFINER owned by postgres with empty search_path';
+  end if;
+
+  if exists (
+       select 1
+       from pg_proc p
+       cross join lateral aclexplode(
+         coalesce(p.proacl, acldefault('f', p.proowner))
+       ) privilege
+       where p.oid = 'public.current_user_storage_writes_allowed()'::regprocedure
+         and privilege.grantee = 0
+         and privilege.privilege_type = 'EXECUTE'
+     )
+     or not has_function_privilege('anon', 'public.current_user_storage_writes_allowed()', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.current_user_storage_writes_allowed()', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.current_user_storage_writes_allowed()', 'EXECUTE') then
+    raise exception 'Storage write guard must be callable by anon/authenticated only';
+  end if;
+
+  if (
+    select count(*)
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and cmd = 'INSERT'
+      and policyname in ('avatars_insert_own','chat_media_insert_own','post_images_insert_own')
+      and coalesce(with_check, '') ilike '%current_user_storage_writes_allowed%'
+  ) <> 3 then
+    raise exception 'all three account-owned Storage buckets must validate active-profile status';
+  end if;
+
+  if (
+    select count(*)
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and cmd = 'UPDATE'
+      and policyname in ('avatars_update_own','post_images_update_own')
+      and coalesce(qual, '') ilike '%current_user_storage_writes_allowed%'
+      and coalesce(with_check, '') ilike '%current_user_storage_writes_allowed%'
+  ) <> 2 then
+    raise exception 'avatar/post-image updates must reject stale or deleting users';
+  end if;
+
+  if (
+    select count(*)
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and cmd = 'DELETE'
+      and policyname in ('avatars_owner_delete','chat_media_owner_delete','post_images_delete_own')
+      and coalesce(qual, '') ilike '%current_user_storage_writes_allowed%'
+  ) <> 3 then
+    raise exception 'owner Storage deletes must reject stale or deleting users';
+  end if;
+
+  if exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname in ('avatars_owner_update','Owner delete')
+  ) then
+    raise exception 'legacy permissive Storage owner policies remain';
+  end if;
 end;
 $assert$;
