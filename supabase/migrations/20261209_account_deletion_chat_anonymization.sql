@@ -187,7 +187,6 @@ set search_path = ''
 as $function$
 declare
   v_uid uuid := auth.uid();
-  v_actor_id uuid;
   v_storage_url text;
 begin
   -- A public image URL may be reused by another user's post or a news card.
@@ -213,18 +212,21 @@ begin
     return new;
   end if;
 
-  v_actor_id := coalesce(
-    nullif(to_jsonb(new) ->> 'user_id', '')::uuid,
-    nullif(to_jsonb(new) ->> 'sender_id', '')::uuid,
-    nullif(to_jsonb(new) ->> 'reporter_id', '')::uuid
-  );
-
-  if v_actor_id = v_uid
-     and exists (
-       select 1
-       from private.account_deletion_locks l
-       where l.user_id = v_uid
-     ) then
+  if v_uid is not null and exists (
+    select 1
+    from private.account_deletion_locks l
+    where l.user_id = v_uid
+      and (
+        l.user_id = nullif(to_jsonb(new) ->> 'user_id', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'sender_id', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'reporter_id', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'actor_id', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'blocker_id', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'blocked_id', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'follower_id', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'following_id', '')::uuid
+      )
+  ) then
     raise exception 'account deletion is in progress'
       using errcode = '55000';
   end if;
@@ -270,6 +272,31 @@ create trigger action_log_block_deleting_user_writes
 drop trigger if exists messages_block_deleting_user_writes on public.messages;
 create trigger messages_block_deleting_user_writes
   before insert or update on public.messages
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists notifications_block_deleting_user_writes on public.notifications;
+create trigger notifications_block_deleting_user_writes
+  before insert or update on public.notifications
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists likes_block_deleting_user_writes on public.likes;
+create trigger likes_block_deleting_user_writes
+  before insert or update on public.likes
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists bookmarks_block_deleting_user_writes on public.bookmarks;
+create trigger bookmarks_block_deleting_user_writes
+  before insert or update on public.bookmarks
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists follows_block_deleting_user_writes on public.follows;
+create trigger follows_block_deleting_user_writes
+  before insert or update on public.follows
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists user_blocks_block_deleting_user_writes on public.user_blocks;
+create trigger user_blocks_block_deleting_user_writes
+  before insert or update on public.user_blocks
   for each row execute function public.prevent_writes_for_deleting_account();
 
 drop trigger if exists post_images_block_deleting_user_references on public.post_images;
