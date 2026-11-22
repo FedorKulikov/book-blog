@@ -16,6 +16,7 @@ verify_jwt = false
 [functions.auth-email-hook]
 verify_jwt = false
 
-# Resend mail delivery is only called by server routes with the service-role JWT.
+# Resend mail delivery uses the new secret API key in the apikey header.
+# The function validates the value against SUPABASE_SECRET_KEYS itself.
 [functions.resend-mailer]
-verify_jwt = true
+verify_jwt = false
