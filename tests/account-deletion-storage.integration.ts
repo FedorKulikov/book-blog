@@ -1137,6 +1137,11 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     .insert({ user_id: counterpart.id, actor_id: author.id })
   checkError('insert notification actor blocker', notificationError)
 
+  const { error: ownNotificationError } = await admin
+    .from('notifications')
+    .insert({ user_id: author.id, actor_id: author.id })
+  checkError('insert own notification that will cascade on profile deletion', ownNotificationError)
+
   const { error: postImageError } = await admin
     .from('post_images')
     .insert({ url: `https://storage.example.test/post-images/${author.id}/shared.png` })
