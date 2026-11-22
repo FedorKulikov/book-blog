@@ -7,7 +7,7 @@ import {
 
 type PostType = 'news' | 'creative' | 'discussion'
 
-type CreatePostBody = {
+export type CreatePostBody = {
   title?: unknown
   content?: unknown
   type?: unknown
