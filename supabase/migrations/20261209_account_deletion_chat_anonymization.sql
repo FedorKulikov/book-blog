@@ -194,6 +194,8 @@ begin
   -- reference to a UID-scoped object after deletion preflight has started.
   if tg_table_name = 'post_images' then
     v_storage_url := to_jsonb(new) ->> 'url';
+  elsif tg_table_name = 'profiles' then
+    v_storage_url := to_jsonb(new) ->> 'avatar_url';
   elsif tg_table_name = 'books' or tg_table_name = 'external_news' then
     v_storage_url := to_jsonb(new) ->> 'cover_url';
   end if;
@@ -239,6 +241,11 @@ $function$;
 alter function public.prevent_writes_for_deleting_account() owner to postgres;
 revoke all on function public.prevent_writes_for_deleting_account()
   from public, anon, authenticated, service_role;
+
+drop trigger if exists profiles_block_deleting_user_writes on public.profiles;
+create trigger profiles_block_deleting_user_writes
+  before insert or update on public.profiles
+  for each row execute function public.prevent_writes_for_deleting_account();
 
 drop trigger if exists posts_block_deleting_user_writes on public.posts;
 create trigger posts_block_deleting_user_writes
