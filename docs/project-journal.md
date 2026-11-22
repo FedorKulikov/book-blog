@@ -136,3 +136,14 @@
 - **Preview политики A:** со слов владельца, существующий Layero preview отдаёт устаревший build с 29 placeholders/баннером, несмотря на чистый актуальный source. Ручной Layero deploy не разрешён; preview не пересобирался.
 - **Статус B:** домен verified; source подготовлен на двух отдельных ветках. B НЕ закрыта: необходимы CI success, `RESEND_API_KEY` в Supabase Function Secrets, `SUPABASE_SECRET_KEY` в серверном Layero env, наличие стабильного `AUTH_EMAIL_HOOK_SECRET` в GitHub/Supabase и подтверждение того же значения в Auth Hook configuration, отдельное разрешение на deploy/Hook switch, тестовый mailbox, фактическая доставка и проверка заголовков SPF/DKIM. До выполнения этих условий Hook не переключать и письмо не отправлять.
 - **Статус C:** не начиналась, поскольку B ещё не закрыта.
+
+
+### 2026-11-22 — B: отдельные Draft PR открыты; CI исправления в процессе
+
+- PR #65 (`fix/resend-edge-mailer-and-no-reset-links` → `main`) открыт Draft; merge=false. PR #66 (`ops/resend-mailer-function-preserve-recovery-secret` → `ops/supabase-edge-deploy`) открыт Draft; merge=false. Подтверждено GitHub API. Ни один PR не слит.
+- Подтверждено GitHub compare: app PR — 19 commits ahead/0 behind на момент открытия; ops PR — 16 commits ahead/0 behind. Ветви разделены по назначению; `main` напрямую не обновлялся.
+- CI PR #66, run 45048287978, упал на Deno typecheck: Deno.serve получил handler с лишним параметром dependencies (TS2769/TS2771). Исправлено обёрткой `Deno.serve((request) => handle(request))`; новый run 45048468434 стартовал, результат пока не подтверждён.
+- CI PR #65, run 45048408317, упал на TypeScript: один отрицательный test вызов не передавал обязательный `idempotencyKey` (TS2345). Исправлены test data и обязательность ключа в типе `OutgoingEmail`; новый run для актуального HEAD `016bc9f37f53b85b66ef7cb3430630bb3053193b` запущен (Web quality run 45048506104, Chat security run 45048506115); финальный исход пока не подтверждён.
+- Новое CI состояние помечено как `не проверено` до terminal conclusion success. Первый запуск не скрывается из истории: обе выявленные ошибки записаны и исправлены; результаты повторного запуска не объявляются успешными.
+- Безопасность: PR body и журналы не содержат ключей/значений секретов. Никакие секреты не читались/не писались. Supabase Auth Hook, Function Secrets, Layero env, DNS, SMTP, `RECOVERY_CODE_SECRET`, production Edge Functions остаются неизменными.
+- B остаётся открытой. C не начиналась.
