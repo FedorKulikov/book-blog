@@ -16,17 +16,11 @@ export default function ForgotPasswordPage() {
 
         <EmailRecoveryResetForm />
 
-        <div className="mt-6 rounded-xl border border-emerald-dark/15 bg-cream-warm/30 p-4">
-          <p className="text-sm text-brown-dark mb-3">
-            Нет доступа к почте или письмо не пришло? Можно восстановить доступ с помощью резервного кода, сохранённого при регистрации.
-          </p>
-          <Link
-            href="/recover-account"
-            className="inline-block rounded-full border border-emerald-dark/20 px-5 py-2.5 text-sm text-brown-dark hover:border-emerald-mid transition-colors"
-          >
-            Восстановить по резервному коду
-          </Link>
-        </div>
+        <p className="mt-6 text-sm text-brown/70">
+          Если не приходит письмо или нет доступа к ящику, напишите на{' '}
+          <span className="select-all font-medium text-brown-dark">monikla1312@gmail.com</span>
+          {' '}— восстановим доступ вручную.
+        </p>
 
         {passkeysEnabled && (
           <p className="mt-6 text-sm text-brown/70">
