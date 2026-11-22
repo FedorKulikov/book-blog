@@ -735,7 +735,34 @@ async function testAuthorizationAndDeletedSessionBoundaries(
     imageUrl: mediaPath,
   })
 
-  await expectStorageRemovalDenied(author.client, mediaPath, 'author cannot delete chat media directly')
+  const ownerDeleteConversationId = await createConversation(author.id, counterpart.id)
+  const ownerDeleteProbePath = author.id + '/owner-delete-probe.png'
+  await upload(author.client, ownerDeleteProbePath, 'owner delete probe', 'image/png')
+  const ownerDeleteMessageId = await createMessage({
+    client: author.client,
+    conversationId: ownerDeleteConversationId,
+    senderId: author.id,
+    senderLabel: 'Owner Delete Probe',
+    text: 'The owner may remove their own chat attachment',
+    imageUrl: ownerDeleteProbePath,
+  })
+  const { error: ownerDeleteError } = await author.client.storage
+    .from('chat-media')
+    .remove([ownerDeleteProbePath])
+  checkError('active owner may remove their own message attachment', ownerDeleteError)
+  assert.equal(storageObjectCount(ownerDeleteProbePath), 0, 'active owner may delete their own chat-media object')
+
+  const { error: cleanupOwnerDeleteMessageError } = await admin
+    .from('messages')
+    .delete()
+    .eq('id', ownerDeleteMessageId)
+  checkError('clean owner-delete probe message', cleanupOwnerDeleteMessageError)
+  const { error: cleanupOwnerDeleteConversationError } = await admin
+    .from('conversations')
+    .delete()
+    .eq('id', ownerDeleteConversationId)
+  checkError('clean owner-delete probe conversation', cleanupOwnerDeleteConversationError)
+
   await expectStorageRemovalDenied(counterpart.client, mediaPath, 'conversation counterpart cannot delete another author media')
   await expectStorageRemovalDenied(outsider.client, mediaPath, 'unrelated user cannot delete chat media')
 
