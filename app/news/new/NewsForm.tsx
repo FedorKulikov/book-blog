@@ -304,8 +304,6 @@ function NewPostContent() {
 
         <BookSelect value={bookId} onChange={setBookId} />
 
-        <ImageUploader onUploaded={setImages} />
-
         <div className="rounded-xl border border-emerald-dark/15 bg-cream-warm/20 p-4">
           <div className="flex items-start gap-3">
             <input
@@ -331,6 +329,8 @@ function NewPostContent() {
             </label>
           </div>
         </div>
+
+        <ImageUploader onUploaded={setImages} enabled={distributionConsent} />
 
         {error && <p className="text-wine text-sm">Ошибка: {error}</p>}
 
