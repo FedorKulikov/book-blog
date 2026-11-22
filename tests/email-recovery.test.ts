@@ -211,7 +211,7 @@ test('Edge mailer errors never expose response bodies', async () => {
 test('Edge mailer fails closed when not configured', async () => {
   await assert.rejects(
     sendEmailViaEdgeMailer(
-      { to: 'reader@example.com', subject: 'Verify', html: '', text: '' },
+      { to: 'reader@example.com', subject: 'Verify', html: '', text: '', idempotencyKey: 'email-recovery-verify/user-1/not-configured' },
       null,
       fetch,
     ),
