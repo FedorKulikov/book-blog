@@ -30,6 +30,8 @@
 - `RESEND_API_KEY` должен быть добавлен вручную владельцем только в Supabase Function Secrets. Наличие имени этого секрета в Supabase на текущий момент не проверено; до подтверждения тестовую отправку не запускать.
 
 - В GitHub Actions Secret должен находиться стабильный `AUTH_EMAIL_HOOK_SECRET` формата Standard Webhooks. Workflow только читает его и переносит в Supabase Function Secrets; он не генерирует новый ключ. Существующее значение не ротировать.
+- Перед deploy workflow сначала проверяет список имён Supabase Function Secrets, не выводя значение, и требует существующие `AUTH_EMAIL_HOOK_SECRET` и `RESEND_API_KEY`. Затем отправляет синтетический подписанный recovery event с GitHub secret в уже развёрнутую `auth-email-hook`. Только HTTP 200 `{}` подтверждает, что GitHub secret совпадает с текущим Function Secret; при 401/500 workflow останавливается до deploy и записи секретов.
+- Настройку signing secret в Supabase Auth Send Email Hook нельзя безопасно прочитать доступным API-коннектором. До переключения URI владелец должен отдельно подтвердить в Supabase Dashboard, что Hook settings используют то же значение; фактическое совпадение затем проверяется интеграционным запросом GoTrue после контролируемого переключения.
 - То же значение должно быть указано в Supabase Auth Hook config.
 - `RESEND_API_KEY` владелец добавляет вручную только в Supabase → Edge Function Secrets после verified домена. Перед запуском deploy/delivery владелец должен подтвердить наличие имени секрета в Dashboard; его значение не выводить.
 - Существующий `RECOVERY_CODE_SECRET` не читать, не генерировать, не копировать повторно и не перезаписывать. Workflow его не синхронизирует.
