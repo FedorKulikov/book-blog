@@ -125,9 +125,9 @@ begin
     raise exception 'account deletion lock table must not be accessible to API roles';
   end if;
 
-  if has_function_privilege('authenticated', 'public.begin_account_deletion(uuid)', 'EXECUTE')
+  if has_function_privilege('authenticated', 'public.begin_account_deletion(uuid, text)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.end_account_deletion(uuid)', 'EXECUTE')
-     or not has_function_privilege('service_role', 'public.begin_account_deletion(uuid)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.begin_account_deletion(uuid, text)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.end_account_deletion(uuid)', 'EXECUTE') then
     raise exception 'deletion lock RPC functions must only be executable by service_role';
   end if;
