@@ -843,6 +843,15 @@ async function testAuthorizationAndDeletedSessionBoundaries(
 
   await expectDownload(counterpart.client, retainedMediaPath, true, 'counterpart retains media after Auth deletion')
   await expectDownload(author.client, retainedMediaPath, false, 'deleted user is no longer a conversation participant')
+
+  for (const bucket of ['chat-media', 'avatars', 'post-images']) {
+    const staleUpload = await author.client.storage
+      .from(bucket)
+      .upload(`${author.id}/stale-jwt-after-delete.png`, Buffer.from('stale'), {
+        contentType: 'image/png',
+      })
+    assert.ok(staleUpload.error, `${bucket} upload must reject an old JWT after its profile has been deleted`)
+  }
   const { data: counterpartMessages, error: counterpartMessagesError } = await counterpart.client
     .from('messages')
     .select('id, sender_id, sender_label')
@@ -1005,6 +1014,15 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
       text: 'This write must be blocked while deletion is in progress',
     })
   assert.ok(blockedInsert.error, 'authenticated account writes must stop while deletion lock is active')
+
+  for (const bucket of ['chat-media', 'avatars', 'post-images']) {
+    const blockedUpload = await author.client.storage
+      .from(bucket)
+      .upload(`${author.id}/blocked-during-delete.png`, Buffer.from('blocked'), {
+        contentType: 'image/png',
+      })
+    assert.ok(blockedUpload.error, `${bucket} uploads must be denied while account deletion is locked`)
+  }
 
   const blockedPostImageReference = await admin
     .from('post_images')
