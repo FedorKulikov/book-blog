@@ -35,6 +35,17 @@ begin
   if not exists (
     select 1
     from pg_trigger
+    where tgrelid = 'public.conversations'::regclass
+      and tgname = 'conversations_block_deleting_user_writes'
+      and not tgisinternal
+      and tgenabled <> 'D'
+  ) then
+    raise exception 'conversation participant write-lock trigger is missing or disabled';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
     where tgrelid = 'public.profiles'::regclass
       and tgname = 'profiles_anonymize_before_delete'
       and not tgisinternal
@@ -195,6 +206,7 @@ begin
         'reports_block_deleting_user_writes',
         'action_log_block_deleting_user_writes',
         'messages_block_deleting_user_writes',
+        'conversations_block_deleting_user_writes',
         'notifications_block_deleting_user_writes',
         'likes_block_deleting_user_writes',
         'bookmarks_block_deleting_user_writes',
@@ -204,7 +216,7 @@ begin
         'external_news_block_deleting_user_references',
         'books_block_deleting_user_references'
       )
-  ) <> 16 then
+  ) <> 17 then
     raise exception 'all retention-sensitive write-lock triggers must be enabled';
   end if;
 
@@ -218,6 +230,17 @@ begin
       and coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=""%'
   ) then
     raise exception 'Storage write guard must be SECURITY DEFINER owned by postgres with empty search_path';
+  end if;
+
+  if (
+    select provolatile
+    from pg_proc
+    where oid = 'public.current_user_storage_writes_allowed()'::regprocedure
+  ) <> 'v'
+     or position('pg_advisory_xact_lock' in pg_get_functiondef('public.current_user_storage_writes_allowed()'::regprocedure)) = 0
+     or position('pg_advisory_xact_lock' in pg_get_functiondef('public.begin_account_deletion(uuid, text)'::regprocedure)) = 0
+     or position('pg_advisory_xact_lock' in pg_get_functiondef('public.prevent_writes_for_deleting_account()'::regprocedure)) = 0 then
+    raise exception 'Storage and database writers must serialize with account deletion start';
   end if;
 
   if exists (

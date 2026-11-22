@@ -143,9 +143,19 @@ as $function$
 declare
   v_existing_mode text;
 begin
+  if p_user_id is null then
+    raise exception 'account deletion requires a user id';
+  end if;
+
   if p_chat_mode not in ('preserve', 'delete_own_messages') then
     raise exception 'unsupported chat deletion mode';
   end if;
+
+  -- Serialize deletion start with all Storage/database writers that reference
+  -- this user. The transaction lock is held until the RPC transaction commits.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_user_id::text, 0)
+  );
 
   insert into private.account_deletion_locks (user_id, chat_mode)
   values (p_user_id, p_chat_mode)
@@ -167,6 +177,14 @@ security definer
 set search_path = ''
 as $function$
 begin
+  if p_user_id is null then
+    return false;
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_user_id::text, 0)
+  );
+
   delete from private.account_deletion_locks
    where user_id = p_user_id;
   return true;
@@ -191,109 +209,283 @@ security definer
 set search_path = ''
 as $function$
 declare
+  v_new_json jsonb;
+  v_old_json jsonb;
   v_storage_url text;
+  v_uuid_pattern constant text := '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+  v_reference_user_id uuid;
+  v_old_image_user_id uuid;
+  v_old_audio_user_id uuid;
+  v_old_user1_id uuid;
+  v_old_user2_id uuid;
+  v_old_sender_id uuid;
 begin
-  -- A public image URL may be reused by another user's post or a news card.
-  -- Do not allow any writer (including staff/service code) to create a new
-  -- reference to a UID-scoped object after deletion preflight has started.
+  v_new_json := pg_catalog.to_jsonb(new);
+  if tg_op = 'UPDATE' then
+    v_old_json := pg_catalog.to_jsonb(old);
+  end if;
+
+  -- Values that can contain a user-owned public Storage path.
   if tg_table_name = 'post_images' then
-    v_storage_url := to_jsonb(new) ->> 'url';
+    v_storage_url := v_new_json ->> 'url';
   elsif tg_table_name = 'profiles' then
-    v_storage_url := to_jsonb(new) ->> 'avatar_url';
+    v_storage_url := v_new_json ->> 'avatar_url';
   elsif tg_table_name = 'books' or tg_table_name = 'external_news' then
-    v_storage_url := to_jsonb(new) ->> 'cover_url';
+    v_storage_url := v_new_json ->> 'cover_url';
   end if;
 
-  if v_storage_url is not null and exists (
-    select 1
-    from private.account_deletion_locks l
-    where v_storage_url ilike l.user_id::text || '/%'
-       or v_storage_url ilike '%/' || l.user_id::text || '/%'
-  ) then
-    raise exception 'storage reference belongs to an account being deleted'
-      using errcode = '55000';
-  end if;
-
-  -- A normal message must not start referencing a file owned by an account
-  -- whose deletion lock is active. This applies even when another participant
-  -- authors the new message.
-  if tg_table_name = 'messages' and exists (
-    select 1
-    from private.account_deletion_locks l
-    cross join lateral (
-      values
-        (to_jsonb(new) ->> 'image_url'),
-        (to_jsonb(new) ->> 'audio_url')
-    ) as media_refs(object_url)
-    where media_refs.object_url is not null
-      and (
-        media_refs.object_url ilike l.user_id::text || '/%'
-        or media_refs.object_url ilike '%/' || l.user_id::text || '/%'
-      )
-  ) then
-    raise exception 'chat media belongs to an account being deleted'
-      using errcode = '55000';
-  end if;
-
-  -- During preserve-mode deletion, service_role may rewrite only attachment
-  -- references on messages authored by the locked account. Every other column
-  -- must remain unchanged, and each changed reference must move into the
-  -- retained/<conversation UUID>/ namespace. The invoker trigger below
-  -- separately rejects this operation when an authenticated client tries it.
+  -- Auth profile deletion deliberately anonymizes a message by changing only
+  -- sender_id + sender_label. That is a detach operation, not a new reference.
   if tg_table_name = 'messages'
      and tg_op = 'UPDATE'
-     and (to_jsonb(new) - 'image_url' - 'audio_url')
-       = (to_jsonb(old) - 'image_url' - 'audio_url')
-     and (
-       (to_jsonb(new) ->> 'image_url') is distinct from (to_jsonb(old) ->> 'image_url')
-       or (to_jsonb(new) ->> 'audio_url') is distinct from (to_jsonb(old) ->> 'audio_url')
-     )
-     and exists (
-       select 1
-       from private.account_deletion_locks l
-       where l.user_id = nullif(to_jsonb(old) ->> 'sender_id', '')::uuid
-     )
-     and (
-       (to_jsonb(new) ->> 'image_url') is not distinct from (to_jsonb(old) ->> 'image_url')
-       or (to_jsonb(new) ->> 'image_url') like
-          'retained/' || (to_jsonb(new) ->> 'conversation_id') || '/%'
-       or (to_jsonb(new) ->> 'image_url') like
-          '%/chat-media/retained/' || (to_jsonb(new) ->> 'conversation_id') || '/%'
-     )
-     and (
-       (to_jsonb(new) ->> 'audio_url') is not distinct from (to_jsonb(old) ->> 'audio_url')
-       or (to_jsonb(new) ->> 'audio_url') like
-          'retained/' || (to_jsonb(new) ->> 'conversation_id') || '/%'
-       or (to_jsonb(new) ->> 'audio_url') like
-          '%/chat-media/retained/' || (to_jsonb(new) ->> 'conversation_id') || '/%'
-     ) then
-    return new;
+     and (v_new_json - 'sender_id' - 'sender_label')
+       = (v_old_json - 'sender_id' - 'sender_label')
+     and v_new_json ->> 'sender_id' is null
+     and v_new_json ->> 'sender_label' = 'Удалённый пользователь' then
+    v_old_sender_id := case
+      when v_old_json ->> 'sender_id' ~* ('^' || v_uuid_pattern || '$')
+      then (v_old_json ->> 'sender_id')::uuid
+      else null
+    end;
+
+    if v_old_sender_id is not null then
+      perform pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended(v_old_sender_id::text, 0)
+      );
+
+      if exists (
+        select 1
+        from private.account_deletion_locks l
+        where l.user_id = v_old_sender_id
+      ) then
+        return new;
+      end if;
+    end if;
   end if;
 
-  -- Reject new references to a deleting UUID regardless of who performs
-  -- the write. This closes races such as another user creating a notification
-  -- whose actor_id points to the account currently being removed.
-  if exists (
-    select 1
-    from private.account_deletion_locks l
-    cross join lateral (
-      values
-        (nullif(to_jsonb(new) ->> 'user_id', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'sender_id', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'reporter_id', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'actor_id', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'blocker_id', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'blocked_id', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'follower_id', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'following_id', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'created_by', '')::uuid),
-        (nullif(to_jsonb(new) ->> 'id', '')::uuid)
-    ) as refs(referenced_user_id)
-    where refs.referenced_user_id = l.user_id
-  ) then
-    raise exception 'account deletion is in progress'
-      using errcode = '55000';
+  -- Profile anonymization detaches only the participant(s) being deleted.
+  -- Allow that nulling operation even if the other participant is also in the
+  -- process of deletion; no new participant reference is introduced.
+  if tg_table_name = 'conversations'
+     and tg_op = 'UPDATE'
+     and (v_new_json - 'user1_id' - 'user2_id')
+       = (v_old_json - 'user1_id' - 'user2_id')
+     and (
+       (v_new_json ->> 'user1_id') is distinct from (v_old_json ->> 'user1_id')
+       or (v_new_json ->> 'user2_id') is distinct from (v_old_json ->> 'user2_id')
+     )
+     and (
+       (v_new_json ->> 'user1_id') is not distinct from (v_old_json ->> 'user1_id')
+       or (
+         v_new_json ->> 'user1_id' is null
+         and v_old_json ->> 'user1_id' ~* ('^' || v_uuid_pattern || '$')
+       )
+     )
+     and (
+       (v_new_json ->> 'user2_id') is not distinct from (v_old_json ->> 'user2_id')
+       or (
+         v_new_json ->> 'user2_id' is null
+         and v_old_json ->> 'user2_id' ~* ('^' || v_uuid_pattern || '$')
+       )
+     ) then
+    v_old_user1_id := case
+      when v_old_json ->> 'user1_id' ~* ('^' || v_uuid_pattern || '$')
+      then (v_old_json ->> 'user1_id')::uuid
+      else null
+    end;
+    v_old_user2_id := case
+      when v_old_json ->> 'user2_id' ~* ('^' || v_uuid_pattern || '$')
+      then (v_old_json ->> 'user2_id')::uuid
+      else null
+    end;
+
+    for v_reference_user_id in
+      select distinct participant_id
+      from (
+        values
+          (
+            case
+              when v_new_json ->> 'user1_id' is null
+               and v_old_json ->> 'user1_id' ~* ('^' || v_uuid_pattern || '$')
+              then v_old_user1_id
+              else null
+            end
+          ),
+          (
+            case
+              when v_new_json ->> 'user2_id' is null
+               and v_old_json ->> 'user2_id' ~* ('^' || v_uuid_pattern || '$')
+              then v_old_user2_id
+              else null
+            end
+          )
+      ) as participants(participant_id)
+      where participant_id is not null
+      order by participant_id
+    loop
+      perform pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended(v_reference_user_id::text, 0)
+      );
+    end loop;
+
+    if (
+      (v_new_json ->> 'user1_id') is not distinct from (v_old_json ->> 'user1_id')
+      or exists (
+        select 1 from private.account_deletion_locks l
+        where l.user_id = v_old_user1_id
+      )
+    ) and (
+      (v_new_json ->> 'user2_id') is not distinct from (v_old_json ->> 'user2_id')
+      or exists (
+        select 1 from private.account_deletion_locks l
+        where l.user_id = v_old_user2_id
+      )
+    ) then
+      return new;
+    end if;
   end if;
+
+  -- During preserve-mode deletion, a trusted server flow may rewrite only
+  -- attachment references on a message. The source object owner(s) must be
+  -- locked first, and every changed path must become retained/<conversation>/.
+  if tg_table_name = 'messages'
+     and tg_op = 'UPDATE'
+     and (v_new_json - 'image_url' - 'audio_url')
+       = (v_old_json - 'image_url' - 'audio_url')
+     and (
+       (v_new_json ->> 'image_url') is distinct from (v_old_json ->> 'image_url')
+       or (v_new_json ->> 'audio_url') is distinct from (v_old_json ->> 'audio_url')
+     ) then
+    v_old_image_user_id := case
+      when v_old_json ->> 'image_url' is not null
+       and v_old_json ->> 'image_url' !~ '(^|/)retained/'
+       and pg_catalog.regexp_match(
+         v_old_json ->> 'image_url',
+         '(^|/)(' || v_uuid_pattern || ')/'
+       ) is not null
+      then (pg_catalog.regexp_match(
+        v_old_json ->> 'image_url',
+        '(^|/)(' || v_uuid_pattern || ')/'
+      ))[2]::uuid
+      else null
+    end;
+
+    v_old_audio_user_id := case
+      when v_old_json ->> 'audio_url' is not null
+       and v_old_json ->> 'audio_url' !~ '(^|/)retained/'
+       and pg_catalog.regexp_match(
+         v_old_json ->> 'audio_url',
+         '(^|/)(' || v_uuid_pattern || ')/'
+       ) is not null
+      then (pg_catalog.regexp_match(
+        v_old_json ->> 'audio_url',
+        '(^|/)(' || v_uuid_pattern || ')/'
+      ))[2]::uuid
+      else null
+    end;
+
+    for v_reference_user_id in
+      select distinct source_owner_id
+      from (
+        values (v_old_image_user_id), (v_old_audio_user_id)
+      ) as source_owners(source_owner_id)
+      where source_owner_id is not null
+      order by source_owner_id
+    loop
+      perform pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended(v_reference_user_id::text, 0)
+      );
+    end loop;
+
+    if (
+      (v_new_json ->> 'image_url') is not distinct from (v_old_json ->> 'image_url')
+      or (
+        v_old_image_user_id is not null
+        and (v_new_json ->> 'image_url') like
+          'retained/' || (v_new_json ->> 'conversation_id') || '/%'
+        and exists (
+          select 1 from private.account_deletion_locks l
+          where l.user_id = v_old_image_user_id
+        )
+      )
+    ) and (
+      (v_new_json ->> 'audio_url') is not distinct from (v_old_json ->> 'audio_url')
+      or (
+        v_old_audio_user_id is not null
+        and (v_new_json ->> 'audio_url') like
+          'retained/' || (v_new_json ->> 'conversation_id') || '/%'
+        and exists (
+          select 1 from private.account_deletion_locks l
+          where l.user_id = v_old_audio_user_id
+        )
+      )
+    ) then
+      return new;
+    end if;
+  end if;
+
+  -- Serialize every new row/reference with deletion start. UUID values are
+  -- accepted only in exact UUID form; URLs are parsed only for user folders,
+  -- never for the retained/<conversation UUID>/ namespace.
+  for v_reference_user_id in
+    with raw_references(reference_value) as (
+      select reference_value
+      from (
+        values
+          (v_new_json ->> 'user_id'),
+          (v_new_json ->> 'sender_id'),
+          (v_new_json ->> 'reporter_id'),
+          (v_new_json ->> 'actor_id'),
+          (v_new_json ->> 'blocker_id'),
+          (v_new_json ->> 'blocked_id'),
+          (v_new_json ->> 'follower_id'),
+          (v_new_json ->> 'following_id'),
+          (v_new_json ->> 'created_by'),
+          (v_new_json ->> 'id'),
+          (v_new_json ->> 'user1_id'),
+          (v_new_json ->> 'user2_id'),
+          (v_storage_url),
+          (case when tg_table_name = 'messages' then v_new_json ->> 'image_url' end),
+          (case when tg_table_name = 'messages' then v_new_json ->> 'audio_url' end)
+      ) as candidates(reference_value)
+    ),
+    parsed_references as (
+      select
+        case
+          when reference_value ~* ('^' || v_uuid_pattern || '$')
+          then reference_value::uuid
+          when reference_value is not null
+           and reference_value !~ '(^|/)retained/'
+           and pg_catalog.regexp_match(
+             reference_value,
+             '(^|/)(' || v_uuid_pattern || ')/'
+           ) is not null
+          then (pg_catalog.regexp_match(
+            reference_value,
+            '(^|/)(' || v_uuid_pattern || ')/'
+          ))[2]::uuid
+          else null
+        end as referenced_user_id
+      from raw_references
+    )
+    select distinct referenced_user_id
+    from parsed_references
+    where referenced_user_id is not null
+    order by referenced_user_id
+  loop
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(v_reference_user_id::text, 0)
+    );
+
+    if exists (
+      select 1
+      from private.account_deletion_locks l
+      where l.user_id = v_reference_user_id
+    ) then
+      raise exception 'account deletion is in progress'
+        using errcode = '55000';
+    end if;
+  end loop;
 
   return new;
 end;
@@ -343,6 +535,11 @@ create trigger messages_block_deleting_user_writes
   before insert or update on public.messages
   for each row execute function public.prevent_writes_for_deleting_account();
 
+drop trigger if exists conversations_block_deleting_user_writes on public.conversations;
+create trigger conversations_block_deleting_user_writes
+  before insert or update on public.conversations
+  for each row execute function public.prevent_writes_for_deleting_account();
+
 drop trigger if exists notifications_block_deleting_user_writes on public.notifications;
 create trigger notifications_block_deleting_user_writes
   before insert or update on public.notifications
@@ -388,23 +585,36 @@ create trigger books_block_deleting_user_references
 -- also verify that auth.uid() still has a profile and no deletion lock.
 create or replace function public.current_user_storage_writes_allowed()
 returns boolean
-language sql
-stable
+language plpgsql
+volatile
 security definer
 set search_path = ''
 as $function$
-  select
-    (select auth.uid()) is not null
-    and exists (
-      select 1
-      from public.profiles p
-      where p.id = (select auth.uid())
-    )
-    and not exists (
-      select 1
-      from private.account_deletion_locks l
-      where l.user_id = (select auth.uid())
-    );
+declare
+  v_user_id uuid;
+begin
+  v_user_id := auth.uid();
+  if v_user_id is null then
+    return false;
+  end if;
+
+  -- Storage INSERT/UPDATE/DELETE serializes with the transaction that opens
+  -- the account-deletion fence. A pre-existing upload must finish before
+  -- deletion preflight can begin; a later upload waits and then sees the fence.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(v_user_id::text, 0)
+  );
+
+  return exists (
+    select 1
+    from public.profiles p
+    where p.id = v_user_id
+  ) and not exists (
+    select 1
+    from private.account_deletion_locks l
+    where l.user_id = v_user_id
+  );
+end;
 $function$;
 
 alter function public.current_user_storage_writes_allowed() owner to postgres;
@@ -715,6 +925,15 @@ begin
 
   if not exists (
     select 1 from pg_trigger
+    where tgrelid = 'public.conversations'::regclass
+      and tgname = 'conversations_block_deleting_user_writes'
+      and not tgisinternal and tgenabled <> 'D'
+  ) then
+    raise exception 'conversation participant write-lock trigger is missing or disabled';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger
     where tgrelid = 'public.post_images'::regclass
       and tgname = 'post_images_block_deleting_user_references'
       and not tgisinternal and tgenabled <> 'D'
@@ -741,6 +960,18 @@ begin
       and coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=""%'
   ) then
     raise exception 'Storage write guard must be SECURITY DEFINER owned by postgres with empty search_path';
+  end if;
+
+  if (
+    select provolatile
+    from pg_proc
+    where oid = 'public.current_user_storage_writes_allowed()'::regprocedure
+  ) <> 'v'
+     or position('pg_advisory_xact_lock' in pg_get_functiondef('public.current_user_storage_writes_allowed()'::regprocedure)) = 0
+     or position('pg_advisory_xact_lock' in pg_get_functiondef('public.begin_account_deletion(uuid, text)'::regprocedure)) = 0
+     or position('pg_advisory_xact_lock' in pg_get_functiondef('public.end_account_deletion(uuid)'::regprocedure)) = 0
+     or position('pg_advisory_xact_lock' in pg_get_functiondef('public.prevent_writes_for_deleting_account()'::regprocedure)) = 0 then
+    raise exception 'account deletion and user write paths must share the transaction advisory lock';
   end if;
 
   if exists (

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import {
@@ -55,6 +55,65 @@ function queryDatabase(query: string): string {
     [dbUrl, '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c', query],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   ).trim()
+}
+
+function startPsqlTransaction(sql: string): { ready: Promise<void>; done: Promise<void> } {
+  const child = spawn(
+    'psql',
+    [dbUrl, '-X', '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c', sql],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  let output = ''
+  let stderr = ''
+  let readySettled = false
+  let resolveReady!: () => void
+  let rejectReady!: (error: Error) => void
+
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
+  })
+
+  const done = new Promise<void>((resolve, reject) => {
+    child.stdout.on('data', chunk => {
+      output += chunk.toString()
+      if (!readySettled && output.includes('LOCK_READY')) {
+        readySettled = true
+        resolveReady()
+      }
+    })
+    child.stderr.on('data', chunk => {
+      stderr += chunk.toString()
+    })
+    child.on('error', error => {
+      if (!readySettled) {
+        readySettled = true
+        rejectReady(error)
+      }
+      reject(error)
+    })
+    child.on('close', code => {
+      if (code === 0) {
+        if (!readySettled) {
+          readySettled = true
+          rejectReady(new Error('PostgreSQL lock transaction exited before its ready marker'))
+        }
+        resolve()
+        return
+      }
+
+      const error = new Error(stderr || `PostgreSQL lock transaction exited with code ${code}`)
+      if (!readySettled) {
+        readySettled = true
+        rejectReady(error)
+      }
+      reject(error)
+    })
+  })
+
+  // Attach a handler immediately; callers still await the original promise.
+  void done.catch(() => undefined)
+  return { ready, done }
 }
 
 async function createTestUser(label: string): Promise<TestUser> {
@@ -1037,6 +1096,90 @@ async function testProfileDeletionAnonymizesPreservedRecords(counterpart: TestUs
   console.log('[account-deletion-storage] profile BEFORE DELETE anonymization hook passed')
 }
 
+async function testAccountDeletionAdvisoryLockConcurrency(): Promise<void> {
+  console.log('[account-deletion-storage] testing advisory-lock serialization of concurrent writes')
+
+  const storageUser = await createTestUser('advisory-storage-race')
+  const avatarPath = `${storageUser.id}/race-upload.png`
+  const storageLockProcess = startPsqlTransaction(`
+    begin;
+    select public.begin_account_deletion('${storageUser.id}'::uuid, 'preserve');
+    select 'LOCK_READY';
+    select pg_catalog.pg_sleep(1.2);
+    commit;
+  `)
+
+  try {
+    await storageLockProcess.ready
+    const uploadStartedAt = Date.now()
+    const blockedUpload = await storageUser.client.storage
+      .from('avatars')
+      .upload(avatarPath, Buffer.from('concurrent upload'), { contentType: 'image/png' })
+    const uploadDuration = Date.now() - uploadStartedAt
+    await storageLockProcess.done
+
+    assert.ok(
+      blockedUpload.error,
+      'a Storage write that races with deletion start must wait and then see the committed deletion lock',
+    )
+    assert.ok(
+      uploadDuration >= 500,
+      `Storage write must wait for the deletion transaction advisory lock (waited ${uploadDuration} ms)`,
+    )
+  } finally {
+    await storageLockProcess.done.catch(() => undefined)
+    await endAccountDeletion(admin, storageUser.id).catch(() => undefined)
+    await admin.storage.from('avatars').remove([avatarPath])
+    await deleteAuthUser(storageUser.id, 'advisory-storage-race')
+  }
+
+  const mediaOwner = await createTestUser('advisory-reference-owner')
+  const writer = await createTestUser('advisory-reference-writer')
+  const conversationId = await createConversation(writer.id, mediaOwner.id)
+  const referencedPath = `${mediaOwner.id}/concurrent-reference.png`
+  const referenceLockProcess = startPsqlTransaction(`
+    begin;
+    select pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended('${mediaOwner.id}'::text, 0)
+    );
+    select 'LOCK_READY';
+    select pg_catalog.pg_sleep(1.2);
+    commit;
+  `)
+
+  try {
+    await referenceLockProcess.ready
+    const insertStartedAt = Date.now()
+    const messageId = await createMessage({
+      client: writer.client,
+      conversationId,
+      senderId: writer.id,
+      senderLabel: 'Advisory Lock Writer',
+      text: 'This insert must serialize with a media-owner deletion lock',
+      imageUrl: referencedPath,
+    })
+    const insertDuration = Date.now() - insertStartedAt
+    await referenceLockProcess.done
+
+    assert.ok(
+      insertDuration >= 500,
+      `message reference must wait for the media-owner advisory lock (waited ${insertDuration} ms)`,
+    )
+    const { error: cleanupMessageError } = await admin
+      .from('messages')
+      .delete()
+      .eq('id', messageId)
+    checkError('clean concurrent reference-lock message', cleanupMessageError)
+  } finally {
+    await referenceLockProcess.done.catch(() => undefined)
+    await admin.from('conversations').delete().eq('id', conversationId)
+    await deleteAuthUser(mediaOwner.id, 'advisory-reference-owner')
+    await deleteAuthUser(writer.id, 'advisory-reference-writer')
+  }
+
+  console.log('[account-deletion-storage] advisory-lock concurrency checks passed')
+}
+
 async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
   console.log('[account-deletion-storage] testing retention preflight and deletion write lock')
 
@@ -1552,6 +1695,7 @@ async function main(): Promise<void> {
   await testProfileDeletionAnonymizesPreservedRecords(counterpart)
   await testDeletingBothParticipantsRemovesOrphanConversation()
   await testAccountDeletionPreflightAndWriteLock()
+  await testAccountDeletionAdvisoryLockConcurrency()
   await testAccountDeletionServicePreserveMode()
   await testAccountDeletionServiceDeleteOwnMessagesMode()
 
