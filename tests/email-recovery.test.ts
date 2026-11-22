@@ -78,9 +78,8 @@ test('email recovery stays disabled unless server-only prerequisites are present
   const keys = [
     'NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY',
     'EMAIL_RECOVERY_SECRET',
-    'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_SECRET_KEY',
     'NEXT_PUBLIC_SUPABASE_URL',
-    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
     'AUTH_EMAIL_SITE_URL',
   ] as const
   const previous = new Map(keys.map(key => [key, process.env[key]]))
@@ -106,7 +105,7 @@ test('email recovery stays disabled unless server-only prerequisites are present
 
 test('Edge mailer config is server-side and restricted to the project URL', () => {
   const keys = [
-    'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_SECRET_KEY',
     'NEXT_PUBLIC_SUPABASE_URL',
     'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   ] as const
@@ -118,8 +117,7 @@ test('Edge mailer config is server-side and restricted to the project URL', () =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'public-test-key'
     assert.deepEqual(getEdgeMailerConfig(), {
       supabaseUrl: 'https://project.supabase.co',
-      publishableKey: 'public-test-key',
-      serviceRoleKey: 'server-service-role-test',
+      secretKey: 'sb_secret_test',
     })
 
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://attacker.example'
@@ -160,8 +158,7 @@ test('verification email is sent through the protected Supabase Edge Function', 
     },
     {
       supabaseUrl: 'https://project.supabase.co',
-      publishableKey: 'sb_publishable_test',
-      serviceRoleKey: 'server-service-role-test',
+      secretKey: 'sb_secret_test',
     },
     fakeFetch,
   )
@@ -171,8 +168,8 @@ test('verification email is sent through the protected Supabase Edge Function', 
     'https://project.supabase.co/functions/v1/resend-mailer',
   )
   const headers = new Headers(capturedHeaders)
-  assert.equal(headers.get('Authorization'), 'Bearer server-service-role-test')
-  assert.equal(headers.get('apikey'), 'sb_publishable_test')
+  assert.equal(headers.get('Authorization'), null)
+  assert.equal(headers.get('apikey'), 'sb_secret_test')
   assert.deepEqual(capturedBody, {
     to: 'reader@example.com',
     subject: 'Verify',
