@@ -234,3 +234,40 @@
 **Проверено:** файл перечитан после коммита; synthetic payload содержит только фиктивный `user.id` и `email_action_type: recovery`, не содержит адреса, token hash или данных для отправки письма. Секрет и подпись не выводятся.
 
 **Не выполнено / ограничения:** выполнение preflight против production Hook и CI на этой записи ещё не подтверждены. Исходная PR #69 уже была слита; исправление вынесено в отдельную feature-ветку для нового PR. Auth Hook settings/secrets, `mailer_autoconfirm`, SMTP, `RECOVERY_CODE_SECRET` и таблица резервных кодов не менялись.
+
+
+## 2026-11-23 — B9: удаление клиентского пути резервных кодов
+
+**Решение владельца:** резервные коды убираются из продукта. Самостоятельное восстановление пароля остаётся только по email: `/forgot-password` → письмо → подтверждение ссылки → новый пароль. Если письмо не приходит или нет доступа к ящику, пользователь обращается по публичному адресу `monikla1312@gmail.com`.
+
+**Причина:** production-путь резервных кодов не настроен (`configured: false`) и требует `SUPABASE_SERVICE_ROLE_KEY` в окружении Layero. Владелец решил не добавлять привилегированный ключ в общее окружение и удалить клиентскую/Next.js реализацию.
+
+**Изменения B9:** удаляются пользовательские страницы и компоненты резервных кодов, Next.js API-маршруты `status/generate/redeem`, `lib/recovery.ts` и выделенный сквозной тестовый сценарий. На страницах входа/восстановления и ошибках email-flow показывается публичный адрес. CI сохраняет отдельные проверки email Hook; production health smoke проверяет 404 удалённого маршрута после деплоя.
+
+**Границы:** Edge Function `recovery`, её unit tests, таблицы `private.recovery_codes` и `private.recovery_attempts` не удаляются. Email password recovery, Send Email Hook, `mailer_autoconfirm`, secrets и конфигурация Supabase Auth не меняются.
+
+**Политика конфиденциальности:** изменение категорий данных и сроков хранения резервных кодов остаётся отдельной работой в открытом PR #64 (ветка `fac5ecc`). PR #64 и `/privacy` в B9 не изменяются; второй экземпляр страницы политики не создаётся.
+
+**Проверки на момент записи:** публичные страницы и workflow обновлены в feature-ветке. Build, TypeScript, три обязательных поиска и CI будут отражены после их фактического выполнения.
+
+
+### B9 — итог проверки CI и статического поиска (23.11.2026)
+
+**Проверенный кодовый HEAD:** `dd17138125a0cd069ee6f948aa1e00f6ac26cae9` (PR #71, base `main` = `2b79d62c0ec8ac468a9df3e6494198a13f468b3c`).
+
+**Поиск:**
+- `recover-account|CodesReveal` в `app lib proxy.ts next.config.ts` — совпадений нет.
+- `recovery/generate|recovery/status|recovery/redeem` в `app lib scripts tests` — совпадений с удалёнными Next.js API нет. Единственное потенциальное ложное совпадение — действующий `/api/email-recovery/status` в `EmailRecoverySecurity.tsx`; это endpoint подтверждения email, его намеренно сохранили. CI исключает только этот email endpoint, не исключая `/api/recovery/*`.
+- README: упоминаний резервных кодов, `/recover-account` и `/api/recovery/*` нет.
+
+**Проверки CI на этом HEAD — все success:**
+- Web quality checks run `45078289052`: явные grep-проверки, actionlint, Auth navigation regression, Verified email recovery tests, Chat media path tests, `npx tsc --noEmit`, ESLint и Production build.
+- Email recovery migration (PostgreSQL 17) — success.
+- Supabase Auth + Storage integration — success.
+- Test email Hook run `45078289063`: `npm run build`, старт Next.js server и Email Hook scenarios — success.
+- Chat security smoke run `45078289057` — success.
+- Production health smoke run `45078289090` — success, проверки доменов пройдены.
+
+**Не выполнено / ограничения:** PR ещё не слит и production deploy не выполнялся. Поэтому HTTP 404 на production URL `/recover-account` пока не заявляется; production health smoke пропускает этот запрос на PR и выполнит его после push/deploy в main. Сама страница и все её ссылки удалены из кода.
+
+**Безопасность и границы:** Edge Function `recovery`, её tests, таблицы `private.recovery_codes` и `private.recovery_attempts`, Send Email Hook, `mailer_autoconfirm`, Supabase Function Secrets не изменялись. PR #64 и `/privacy` не менялись; правка политики остаётся отдельной задачей в ветке `fac5ecc`.

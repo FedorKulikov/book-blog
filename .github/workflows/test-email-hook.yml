@@ -1,11 +1,9 @@
-name: Test recovery flow
+name: Test email Hook
 
-# Сквозная проверка восстановления пароля по резервным кодам.
-# Поднимает реальный next start и настоящую базу, меняет пароль тестового
-# пользователя и проверяет вход с новым паролем. Тестовые пользователи
-# удаляются в конце прогона.
+# Проверка Next.js email Hook endpoint, событий Auth, регистрации и входа.
+# Тестовые пользователи удаляются в конце прогона.
 #
-# Запуск: Actions → Test recovery flow → Run workflow.
+# Запуск: Actions → Test email Hook → Run workflow.
 
 on:
   pull_request:
@@ -15,12 +13,9 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/dependency-audit.yml'
-      - 'scripts/test-recovery.ts'
       - 'scripts/test-email-hook.ts'
-      - '.github/workflows/test-recovery.yml'
-      - 'app/api/recovery/**'
+      - '.github/workflows/test-email-hook.yml'
       - 'app/api/auth/email-hook/**'
-      - 'lib/recovery.ts'
       - 'lib/supabase/admin.ts'
       - 'app/signup/page.tsx'
       - 'supabase/functions/**'
@@ -54,12 +49,10 @@ jobs:
       - name: Установить зависимости
         run: npm ci
 
-      # Секреты живут только в рамках прогона: в проде свои, тестовый прогон
-      # не может повлиять на боевые коды и подписи хука.
-      - name: Сгенерировать секреты для прогона
+      # Секрет хука генерируется только для локального тестового Next.js server.
+      - name: Сгенерировать секрет тестового Hook
         run: |
           {
-            echo "RECOVERY_CODE_SECRET=$(openssl rand -hex 32)"
             echo "AUTH_EMAIL_HOOK_SECRET=v1,whsec_$(openssl rand -base64 32)"
           } >> "$GITHUB_ENV"
 
@@ -80,10 +73,8 @@ jobs:
           tail -80 /tmp/next.log
           exit 1
 
-      - name: Сценарии восстановления
-        run: npx tsx scripts/test-recovery.ts
 
-      - name: Сценарии email-хука
+      - name: Email Hook scenarios
         run: npx tsx scripts/test-email-hook.ts
 
       - name: Лог сервера

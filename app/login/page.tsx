@@ -216,7 +216,11 @@ export default function LoginPage() {
           <Link href="/forgot-password" className="text-wine hover:underline">
             Забыли пароль?
           </Link>
-          {' '}Восстановление по резервному коду{passkeysEnabled ? ' или вход с ключом доступа' : ''}.
+        </p>
+        <p className="mt-2 text-sm text-brown/70">
+          Если не приходит письмо или нет доступа к ящику, напишите на{' '}
+          <span className="select-all font-medium text-brown-dark">monikla1312@gmail.com</span>
+          {' '}— восстановим доступ вручную.
         </p>
       </div>
     </main>

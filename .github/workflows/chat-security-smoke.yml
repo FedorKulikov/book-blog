@@ -18,9 +18,6 @@ on:
       - 'app/auth/confirm/**'
       - 'app/welcome/**'
       - 'app/auth/reset/page.tsx'
-      - 'app/recover-account/page.tsx'
-      - 'app/api/recovery/redeem/route.ts'
-      - 'lib/recovery.ts'
       - 'lib/errors.ts'
 
 permissions:
