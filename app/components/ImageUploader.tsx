@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   IMAGE_ACCEPT_ATTR,
@@ -10,16 +10,41 @@ import {
 
 type Props = {
   onUploaded: (urls: string[]) => void
+  enabled?: boolean
 }
 
-export default function ImageUploader({ onUploaded }: Props) {
+export default function ImageUploader({ onUploaded, enabled = true }: Props) {
   const [uploading, setUploading] = useState(false)
   const [previews, setPreviews] = useState<string[]>([])
   const [urls, setUrls] = useState<string[]>([])
+  const [storagePaths, setStoragePaths] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  // post-images is a public bucket. If the user withdraws the checkbox
+  // before submitting the post, remove any objects already uploaded in this form.
+  useEffect(() => {
+    if (enabled || storagePaths.length === 0) return
+
+    const pathsToRemove = [...storagePaths]
+    void (async () => {
+      const { error: removeError } = await supabase.storage
+        .from('post-images')
+        .remove(pathsToRemove)
+
+      if (removeError) {
+        setError('Не удалось удалить загруженные фото после снятия согласия. Отметьте согласие снова и повторите снятие.')
+        return
+      }
+
+      setStoragePaths([])
+      setUrls([])
+      setPreviews([])
+      onUploaded([])
+    })()
+  }, [enabled, storagePaths, onUploaded])
+
   async function handleFiles(files: FileList | null) {
-    if (!files || files.length === 0) return
+    if (!enabled || !files || files.length === 0) return
 
     setError(null)
 
@@ -50,6 +75,7 @@ export default function ImageUploader({ onUploaded }: Props) {
     }
 
     const newUrls: string[] = []
+    const newPaths: string[] = []
 
     for (const file of batch) {
       const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
@@ -71,17 +97,31 @@ export default function ImageUploader({ onUploaded }: Props) {
         .getPublicUrl(fileName)
 
       newUrls.push(data.publicUrl)
+      newPaths.push(fileName)
     }
 
     setPreviews(prev => [...prev, ...newUrls])
+    setStoragePaths(prev => [...prev, ...newPaths])
     const allUrls = [...urls, ...newUrls]
     setUrls(allUrls)
     onUploaded(allUrls)
     setUploading(false)
   }
 
-  function removeImage(index: number) {
+  async function removeImage(index: number) {
+    const path = storagePaths[index]
+    if (path) {
+      const { error: removeError } = await supabase.storage
+        .from('post-images')
+        .remove([path])
+      if (removeError) {
+        setError('Не удалось удалить фотографию. Попробуйте ещё раз.')
+        return
+      }
+    }
+
     const updated = urls.filter((_, i) => i !== index)
+    setStoragePaths(prev => prev.filter((_, i) => i !== index))
     setUrls(updated)
     setPreviews(updated)
     onUploaded(updated)
@@ -102,7 +142,7 @@ export default function ImageUploader({ onUploaded }: Props) {
           // Сбрасываем input: иначе повторный выбор того же файла не сработает
           e.currentTarget.value = ''
         }}
-        disabled={uploading}
+        disabled={!enabled || uploading}
         className="block w-full text-sm text-brown-dark file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-emerald-mid file:text-cream hover:file:bg-emerald-dark file:cursor-pointer cursor-pointer"
       />
 
@@ -110,6 +150,11 @@ export default function ImageUploader({ onUploaded }: Props) {
         JPG, PNG, WebP или GIF. До 5 МБ ({(MAX_IMAGE_BYTES / 1024 / 1024).toFixed(0)} МБ)
         на файл.
       </p>
+      {!enabled && (
+        <p className="mt-2 text-xs text-brown/60">
+          Чтобы изображения не становились публичными раньше согласия, сначала отметьте отдельный пункт согласия ниже.
+        </p>
+      )}
 
       {uploading && (
         <p className="text-sm text-brown/60 mt-2">Загрузка фото…</p>
