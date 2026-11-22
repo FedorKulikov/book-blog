@@ -114,7 +114,7 @@ Deno.test('signed signup sends one confirmation through the internal Edge mailer
   const html = String(body?.html ?? '')
   const text = String(body?.text ?? '')
   const htmlLink = html.match(/href="([^"]+)"/)?.[1] ?? ''
-  const link = new URL(htmlLink)
+  const link = new URL(htmlLink.replace(/&amp;/g, '&'))
 
   equal(link.origin, 'https://bukleb.ru', 'confirmation link origin')
   equal(link.pathname, '/auth/confirm', 'confirmation path')
