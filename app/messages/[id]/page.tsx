@@ -67,7 +67,7 @@ type Counterpart = {
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024 // 10 МБ
 const MAX_RECORD_SECONDS = 300 // 5 минут
 const MESSAGE_FIELDS =
-  'id, text, image_url, audio_url, audio_duration, created_at, read_at, sender_id'
+  'id, text, image_url, audio_url, audio_duration, created_at, read_at, sender_id, sender_label'
 
 function formatDuration(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60)
@@ -96,6 +96,7 @@ export default function ConversationPage() {
 
   const [uid, setUid] = useState<string | null>(null)
   const [otherUser, setOtherUser] = useState<Counterpart | null>(null)
+  const [deletedCounterpart, setDeletedCounterpart] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
@@ -183,7 +184,7 @@ export default function ConversationPage() {
         .from('messages')
         .update({ read_at: new Date().toISOString() })
         .eq('conversation_id', id)
-        .neq('sender_id', userId)
+        .or(`sender_id.is.null,sender_id.neq.${userId}`)
         .is('read_at', null)
         .select('id')
 
@@ -230,22 +231,30 @@ export default function ConversationPage() {
       }
 
       const otherId = conv.user1_id === user.id ? conv.user2_id : conv.user1_id
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url')
-        .eq('id', otherId)
-        .maybeSingle()
+      if (otherId === null) {
+        setDeletedCounterpart(true)
+        setOtherUser(null)
+        setBlockedByOther(false)
+        setIBlock(false)
+      } else {
+        setDeletedCounterpart(false)
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .eq('id', otherId)
+          .maybeSingle()
 
-      setOtherUser(
-        (prof as Counterpart | null) ?? { id: otherId, username: null, avatar_url: null }
-      )
+        setOtherUser(
+          (prof as Counterpart | null) ?? { id: otherId, username: null, avatar_url: null }
+        )
 
-      const [{ data: blockedByOtherData }, { data: iBlockData }] = await Promise.all([
-        supabase.rpc('is_blocked_by_other', { other_user_id: otherId }),
-        supabase.rpc('is_blocking', { other_user_id: otherId }),
-      ])
-      setBlockedByOther(!!blockedByOtherData)
-      setIBlock(!!iBlockData)
+        const [{ data: blockedByOtherData }, { data: iBlockData }] = await Promise.all([
+          supabase.rpc('is_blocked_by_other', { other_user_id: otherId }),
+          supabase.rpc('is_blocking', { other_user_id: otherId }),
+        ])
+        setBlockedByOther(!!blockedByOtherData)
+        setIBlock(!!iBlockData)
+      }
 
       const list = await fetchMessages()
       setMessages(list ?? [])
@@ -261,6 +270,24 @@ export default function ConversationPage() {
   useEffect(() => {
     const timer = setInterval(async () => {
       if (!uid || !readyRef.current) return
+
+      const { data: currentConversation } = await supabase
+        .from('conversations')
+        .select('user1_id, user2_id')
+        .eq('id', id)
+        .maybeSingle()
+      if (currentConversation) {
+        const currentOtherId =
+          currentConversation.user1_id === uid
+            ? currentConversation.user2_id
+            : currentConversation.user1_id
+        if (currentOtherId === null) {
+          setDeletedCounterpart(true)
+          setOtherUser(null)
+          setBlockedByOther(false)
+          setIBlock(false)
+        }
+      }
 
       const last = messages[messages.length - 1]
       let fresh: ChatMessage[] = []
@@ -347,7 +374,7 @@ export default function ConversationPage() {
 
   const finishRecording = useCallback(
     async (chunks: Blob[], mimeType: string) => {
-      if (!uid) return
+      if (!uid || deletedCounterpart) return
 
       const blob = new Blob(chunks, { type: mimeType || 'audio/webm' })
       const ext = blob.type.includes('mp4')
@@ -394,7 +421,7 @@ export default function ConversationPage() {
       setError(null)
       setMessages(prev => [...prev, message])
     },
-    [id, uid]
+    [id, uid, deletedCounterpart]
   )
 
   const stopRecording = useCallback(
@@ -424,8 +451,12 @@ export default function ConversationPage() {
     return () => clearInterval(timer)
   }, [recording, stopRecording])
 
+  useEffect(() => {
+    if (deletedCounterpart && recording) stopRecording(true)
+  }, [deletedCounterpart, recording, stopRecording])
+
   async function startRecording() {
-    if (recording || uploading || !uid) return
+    if (recording || uploading || !uid || deletedCounterpart) return
 
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       alert('Запись голоса не поддерживается этим браузером')
@@ -478,7 +509,7 @@ export default function ConversationPage() {
   async function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = '' // чтобы можно было выбрать тот же файл повторно
-    if (!file || !uid || uploading) return
+    if (!file || !uid || uploading || deletedCounterpart) return
 
     if (!file.type.startsWith('image/')) {
       setError('Можно прикрепить только изображение')
@@ -526,7 +557,7 @@ export default function ConversationPage() {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     const body = text.trim()
-    if (!body || !uid || sending) return
+    if (!body || !uid || sending || deletedCounterpart) return
 
     setSending(true)
     const { data, error: sendError } = await supabase
@@ -547,7 +578,7 @@ export default function ConversationPage() {
   }
 
   async function toggleBlock() {
-    if (!uid || !otherUser?.id || blockBusy) return
+    if (!uid || deletedCounterpart || !otherUser?.id || blockBusy) return
 
     setMenuOpen(false)
     setBlockBusy(true)
@@ -624,7 +655,7 @@ export default function ConversationPage() {
         </button>
 
         <Link
-          href={otherUser?.username ? `/profile/${otherUser.username}` : '/messages'}
+          href={!deletedCounterpart && otherUser?.username ? `/profile/${otherUser.username}` : '/messages'}
           className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-90 transition-opacity"
         >
           <div className="w-9 h-9 rounded-full bg-cream/15 flex items-center justify-center font-bold overflow-hidden flex-shrink-0">
@@ -635,15 +666,15 @@ export default function ConversationPage() {
                 className="w-full h-full object-cover"
               />
             ) : (
-              (otherUser?.username?.[0] || '?').toUpperCase()
+              (deletedCounterpart ? 'У' : otherUser?.username?.[0] || '?').toUpperCase()
             )}
           </div>
           <span className="font-medium truncate">
-            {otherUser?.username || 'Аноним'}
+            {deletedCounterpart ? 'Удалённый пользователь' : otherUser?.username || 'Аноним'}
           </span>
         </Link>
 
-        <ChatMuteButton conversationId={id} />
+        {!deletedCounterpart && <ChatMuteButton conversationId={id} />}
 
         <button
           type="button"
@@ -663,7 +694,7 @@ export default function ConversationPage() {
           )}
         </button>
 
-        <div className="relative" ref={menuRef}>
+        {!deletedCounterpart && <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen(open => !open)}
@@ -694,7 +725,7 @@ export default function ConversationPage() {
               </button>
             </div>
           )}
-        </div>
+        </div>}
       </header>
 
       {/* Сообщения */}
@@ -752,7 +783,11 @@ export default function ConversationPage() {
         </p>
       )}
 
-      {blockedByOther ? (
+      {deletedCounterpart ? (
+        <div className="bg-cream border-t border-emerald-dark/10 p-4 text-center text-sm text-brown/60 flex-shrink-0">
+          Пользователь удалил аккаунт. История переписки сохранена, но отправка новых сообщений отключена.
+        </div>
+      ) : blockedByOther ? (
         <div className="bg-cream border-t border-emerald-dark/10 p-4 text-center text-sm text-brown/60 flex-shrink-0">
           Вы не можете отправлять сообщения этому пользователю.
         </div>

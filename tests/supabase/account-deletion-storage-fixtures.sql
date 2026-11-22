@@ -1,24 +1,29 @@
 -- Minimal isolated schema used only by the local Supabase integration job.
--- It models the relationship changes required by account deletion; it is not a
--- production migration and must never be applied to a hosted project.
+-- It deliberately models the CURRENT pre-migration chat schema (NOT NULL /
+-- ON DELETE CASCADE). CI applies the real production migration after this file.
+-- This fixture is disposable and must never be applied to a hosted project.
 
 begin;
 
 insert into storage.buckets (id, name, public)
-values ('chat-media', 'chat-media', false)
+values
+  ('chat-media', 'chat-media', false),
+  ('avatars', 'avatars', true),
+  ('post-images', 'post-images', true)
 on conflict (id) do update
-  set public = false;
+  set public = excluded.public;
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null,
+  avatar_url text,
   role text not null default 'user'
 );
 
 create table public.conversations (
   id uuid primary key default gen_random_uuid(),
-  user1_id uuid constraint conversations_user1_id_fkey references public.profiles(id) on delete set null,
-  user2_id uuid constraint conversations_user2_id_fkey references public.profiles(id) on delete set null,
+  user1_id uuid not null constraint conversations_user1_id_fkey references public.profiles(id) on delete cascade,
+  user2_id uuid not null constraint conversations_user2_id_fkey references public.profiles(id) on delete cascade,
   last_message_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   muted_by_user1 boolean default false,
@@ -29,13 +34,36 @@ create table public.conversations (
 create table public.messages (
   id uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references public.conversations(id) on delete cascade,
-  sender_id uuid constraint messages_sender_id_fkey references public.profiles(id) on delete set null,
-  sender_label text not null default 'Удалённый пользователь',
+  sender_id uuid not null constraint messages_sender_id_fkey references public.profiles(id) on delete cascade,
   text text,
   image_url text,
   audio_url text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  read_at timestamptz
 );
+
+-- Match production's INSERT behavior when updating the visible conversation order.
+create or replace function public.update_conversation_last_message()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  update public.conversations
+  set last_message_at = new.created_at
+  where id = new.conversation_id;
+  return new;
+end;
+$function$;
+
+alter function public.update_conversation_last_message() owner to postgres;
+revoke all on function public.update_conversation_last_message()
+  from public, anon, authenticated, service_role;
+
+create trigger trigger_update_conversation_last_message
+  after insert on public.messages
+  for each row execute function public.update_conversation_last_message();
 
 alter table public.profiles enable row level security;
 alter table public.conversations enable row level security;
@@ -44,7 +72,83 @@ alter table public.messages enable row level security;
 -- Production also has a nullable creator UUID without a profile FK in this table.
 create table public.external_news (
   id uuid primary key default gen_random_uuid(),
-  created_by uuid
+  created_by uuid,
+  cover_url text
+);
+
+-- Minimal content/support tables for the deletion preflight and write lock.
+-- They deliberately start empty: the migration must refuse deletion when
+-- retention-sensitive rows exist.
+create table public.posts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.comments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.tickets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.ticket_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.action_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.post_images (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid,
+  url text not null,
+  sort_order integer
+);
+
+create table public.books (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  cover_url text,
+  created_by uuid references public.profiles(id) on delete set null
+);
+
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  actor_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.likes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.bookmarks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.follows (
+  id uuid primary key default gen_random_uuid(),
+  follower_id uuid not null references public.profiles(id) on delete cascade,
+  following_id uuid not null references public.profiles(id) on delete cascade
+);
+
+create table public.user_blocks (
+  id uuid primary key default gen_random_uuid(),
+  blocker_id uuid not null references public.profiles(id) on delete cascade,
+  blocked_id uuid not null references public.profiles(id) on delete cascade
 );
 
 grant all on public.external_news to service_role;
@@ -136,41 +240,41 @@ create trigger messages_protect_fields
   before update on public.messages
   for each row execute function public.protect_message_fields();
 
--- Disposable target-state profile deletion hook. The production migration
--- will be tested against this exact behavior before it is prepared.
-create or replace function public.anonymize_profile_before_delete()
+-- Match production's recipient-only, one-way read receipt protection.
+create or replace function public.protect_message_read_at()
 returns trigger
 language plpgsql
-security definer
 set search_path = ''
 as $function$
+declare
+  v_uid uuid := auth.uid();
 begin
-  update public.messages
-     set sender_id = null,
-         sender_label = 'Удалённый пользователь'
-   where sender_id = old.id;
+  if current_user in ('postgres', 'service_role') then
+    return new;
+  end if;
 
-  update public.conversations
-     set user1_id = null
-   where user1_id = old.id;
+  if v_uid is null or v_uid = old.sender_id then
+    raise exception 'только получатель может отметить сообщение прочитанным';
+  end if;
 
-  update public.conversations
-     set user2_id = null
-   where user2_id = old.id;
+  if new.read_at is null then
+    raise exception 'нельзя сбрасывать отметку прочтения';
+  end if;
 
-  update public.external_news
-     set created_by = null
-   where created_by = old.id;
+  if old.read_at is not null and new.read_at is distinct from old.read_at then
+    raise exception 'нельзя менять установленную отметку прочтения';
+  end if;
 
-  return old;
+  return new;
 end;
 $function$;
 
-alter function public.anonymize_profile_before_delete() owner to postgres;
+create trigger messages_protect_read_at
+  before update of read_at on public.messages
+  for each row execute function public.protect_message_read_at();
 
-create trigger profiles_anonymize_before_delete
-  before delete on public.profiles
-  for each row execute function public.anonymize_profile_before_delete();
+-- No anonymization trigger is created here. The production migration under
+-- test must add it after converting the old cascade constraints.
 
 -- A deliberately unlinked row models records whose access relies on the JWT
 -- subject alone. It demonstrates why deleting auth.users does not itself
@@ -200,7 +304,12 @@ alter table storage.objects enable row level security;
 grant usage on schema public to authenticated, service_role;
 grant select on public.conversations, public.messages to authenticated;
 grant insert on public.messages to authenticated;
+grant update (read_at) on public.messages to authenticated;
 grant all on public.profiles, public.conversations, public.messages to service_role;
+grant all on public.posts, public.comments, public.tickets,
+  public.ticket_messages, public.reports, public.action_log,
+  public.notifications, public.post_images, public.books, public.likes,
+  public.bookmarks, public.follows, public.user_blocks to service_role;
 
 drop policy if exists ci_conversations_read_participant on public.conversations;
 create policy ci_conversations_read_participant
@@ -229,8 +338,36 @@ create policy ci_messages_read_participant
     )
   );
 
-drop policy if exists ci_messages_insert_own on public.messages;
-create policy ci_messages_insert_own
+drop policy if exists ci_messages_update_read_participant on public.messages;
+create policy ci_messages_update_read_participant
+  on public.messages
+  for update
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.conversations c
+      where c.id = messages.conversation_id
+        and (
+          c.user1_id = (select auth.uid())
+          or c.user2_id = (select auth.uid())
+        )
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.conversations c
+      where c.id = messages.conversation_id
+        and (
+          c.user1_id = (select auth.uid())
+          or c.user2_id = (select auth.uid())
+        )
+    )
+  );
+
+drop policy if exists messages_insert_own on public.messages;
+create policy messages_insert_own
   on public.messages
   for insert
   to authenticated
@@ -247,8 +384,8 @@ create policy ci_messages_insert_own
     )
   );
 
-drop policy if exists ci_chat_media_insert_own_path on storage.objects;
-create policy ci_chat_media_insert_own_path
+drop policy if exists chat_media_insert_own on storage.objects;
+create policy chat_media_insert_own
   on storage.objects
   for insert
   to authenticated
@@ -257,8 +394,110 @@ create policy ci_chat_media_insert_own_path
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
-drop policy if exists ci_chat_media_select_conversation_participants on storage.objects;
-create policy ci_chat_media_select_conversation_participants
+drop policy if exists avatars_insert_own on storage.objects;
+create policy avatars_insert_own
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists post_images_insert_own on storage.objects;
+create policy post_images_insert_own
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists chat_media_owner_delete on storage.objects;
+create policy chat_media_owner_delete
+  on storage.objects
+  for delete
+  to public
+  using (
+    bucket_id = 'chat-media'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists avatars_owner_delete on storage.objects;
+create policy avatars_owner_delete
+  on storage.objects
+  for delete
+  to public
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists avatars_owner_update on storage.objects;
+create policy avatars_owner_update
+  on storage.objects
+  for update
+  to public
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  )
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists avatars_update_own on storage.objects;
+create policy avatars_update_own
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  )
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists "Owner delete" on storage.objects;
+create policy "Owner delete"
+  on storage.objects
+  for delete
+  to public
+  using (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists post_images_delete_own on storage.objects;
+create policy post_images_delete_own
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists post_images_update_own on storage.objects;
+create policy post_images_update_own
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  )
+  with check (
+    bucket_id = 'post-images'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists chat_media_select_conversation_participants on storage.objects;
+create policy chat_media_select_conversation_participants
   on storage.objects
   for select
   to authenticated
@@ -267,15 +506,19 @@ create policy ci_chat_media_select_conversation_participants
     and exists (
       select 1
       from public.messages m
-      join public.conversations c on c.id = m.conversation_id
-      where (
-        c.user1_id = (select auth.uid())
-        or c.user2_id = (select auth.uid())
-      )
-      and (
-        m.image_url = storage.objects.name
-        or m.audio_url = storage.objects.name
-      )
+      where m.sender_id::text = (storage.foldername(storage.objects.name))[1]
+        and (
+          m.image_url = storage.objects.name
+          or m.audio_url = storage.objects.name
+          or right(
+            coalesce(m.image_url, ''),
+            char_length('/storage/v1/object/public/chat-media/' || storage.objects.name)
+          ) = '/storage/v1/object/public/chat-media/' || storage.objects.name
+          or right(
+            coalesce(m.audio_url, ''),
+            char_length('/storage/v1/object/public/chat-media/' || storage.objects.name)
+          ) = '/storage/v1/object/public/chat-media/' || storage.objects.name
+        )
     )
   );
 

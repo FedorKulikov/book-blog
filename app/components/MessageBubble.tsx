@@ -12,7 +12,8 @@ export type ChatMessage = {
   audio_duration: number | null
   created_at: string
   read_at: string | null
-  sender_id: string
+  sender_id: string | null
+  sender_label?: string | null
   image_object_path?: string | null
   audio_object_path?: string | null
   media_unavailable?: boolean
@@ -59,6 +60,12 @@ export default function MessageBubble({
           isOwn ? 'bg-wine text-white' : 'bg-cream-warm text-brown-dark'
         } ${bubbleShape}`}
       >
+        {!isOwn && message.sender_id === null && (
+          <div className="mb-1 text-[10px] font-semibold text-brown/55">
+            {message.sender_label || 'Удалённый пользователь'}
+          </div>
+        )}
+
         {hasImage && (
           onImageClick ? (
             <button

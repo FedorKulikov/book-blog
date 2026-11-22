@@ -64,6 +64,9 @@ jobs:
       - name: Chat media path tests
         run: npm run test:chat-media-paths
 
+      - name: Account deletion authentication tests
+        run: npm run test:account-deletion-auth
+
       - name: TypeScript
         run: npx tsc --noEmit
 
@@ -122,6 +125,12 @@ jobs:
             lib/chat-media-path.ts \
             app/messages/'[id]'/page.tsx \
             app/components/MessageBubble.tsx \
+            app/api/account/delete/route.ts \
+            app/profile/delete-account/page.tsx \
+            lib/account-deletion.ts \
+            lib/account-deletion-auth.ts \
+            tests/account-deletion-auth.test.ts \
+            tests/account-deletion-storage.integration.ts \
             proxy.ts \
             next.config.ts
       - name: Production build
@@ -374,9 +383,17 @@ jobs:
           done
           printf 'DB_URL=%s\n' "$admin_db_url" >> "$GITHUB_ENV"
 
-      - name: Apply isolated account deletion fixtures
+      - name: Apply legacy account deletion fixtures
         run: |
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f tests/supabase/account-deletion-storage-fixtures.sql
+
+      - name: Apply production chat anonymization migration to local Supabase
+        run: |
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261209_account_deletion_chat_anonymization.sql
+
+      - name: Verify chat anonymization migration guarantees
+        run: |
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f tests/sql/chat-account-deletion-migration.test.sql
 
       - name: Test real Auth, Storage copy ownership, and participant RLS
         run: npm run test:account-deletion-storage
@@ -388,4 +405,3 @@ jobs:
           if command -v supabase >/dev/null 2>&1; then
             supabase stop --no-backup || true
           fi
-
