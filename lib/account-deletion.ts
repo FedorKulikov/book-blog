@@ -328,11 +328,14 @@ export async function executeAccountDeletion(
 export async function beginAccountDeletion(
   admin: SupabaseClient,
   userId: string,
-): Promise<void> {
-  const { error } = await admin.rpc('begin_account_deletion', {
+  mode: ChatDeletionMode,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc('begin_account_deletion', {
     p_user_id: userId,
+    p_chat_mode: mode,
   })
   if (error) throw new Error('could not lock account for deletion')
+  return data === true
 }
 
 export async function endAccountDeletion(
