@@ -11,7 +11,7 @@ import {
   getEmailRecoverySecret,
   hashEmailForRecovery,
   isEmailRecoveryConfigured,
-  sendEmailViaResend,
+  sendEmailViaEdgeMailer,
 } from '@/lib/email-recovery'
 
 export const runtime = 'nodejs'
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
   const expiresText = `${EMAIL_RECOVERY_TOKEN_TTL_MINUTES} минут`
 
   try {
-    await sendEmailViaResend({
+    await sendEmailViaEdgeMailer({
       to: user.email,
       subject: 'Подтвердите email для восстановления аккаунта',
       html: [
