@@ -173,8 +173,10 @@ Deno.test('secure email change sends current and new address with documented has
   equal(sent[0].to, 'old@example.test', 'current address')
   equal(sent[1].to, 'new@example.test', 'new address')
 
-  const currentLink = new URL(sent[0].html.match(/href="([^"]+)"/)?.[1] ?? '')
-  const newLink = new URL(sent[1].html.match(/href="([^"]+)"/)?.[1] ?? '')
+  const currentHref = sent[0].html.match(/href="([^"]+)"/)?.[1] ?? ''
+  const newHref = sent[1].html.match(/href="([^"]+)"/)?.[1] ?? ''
+  const currentLink = new URL(currentHref.replace(/&amp;/g, '&'))
+  const newLink = new URL(newHref.replace(/&amp;/g, '&'))
   equal(currentLink.searchParams.get('token_hash'), 'synthetic_hash_for_current_address_123456', 'current hash mapping')
   equal(newLink.searchParams.get('token_hash'), 'synthetic_hash_for_new_address_123456', 'new address hash mapping')
   equal(currentLink.searchParams.get('type'), 'email_change', 'current email change type')
