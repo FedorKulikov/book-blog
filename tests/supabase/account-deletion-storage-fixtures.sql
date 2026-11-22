@@ -91,6 +91,13 @@ create table public.post_images (
   sort_order integer
 );
 
+create table public.books (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  cover_url text,
+  created_by uuid references public.profiles(id) on delete set null
+);
+
 create table public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -242,7 +249,7 @@ grant insert on public.messages to authenticated;
 grant all on public.profiles, public.conversations, public.messages to service_role;
 grant all on public.posts, public.comments, public.tickets,
   public.ticket_messages, public.reports, public.action_log,
-  public.notifications, public.post_images, public.likes,
+  public.notifications, public.post_images, public.books, public.likes,
   public.bookmarks, public.follows, public.user_blocks to service_role;
 
 drop policy if exists ci_conversations_read_participant on public.conversations;
