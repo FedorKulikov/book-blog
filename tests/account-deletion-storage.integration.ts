@@ -1068,6 +1068,12 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     })
   assert.ok(blockedExternalNewsReference.error, 'new external-news references to an account being deleted must be rejected')
 
+  const blockedAvatarReference = await admin
+    .from('profiles')
+    .update({ avatar_url: `https://storage.example.test/avatars/${author.id}/avatar.png` })
+    .eq('id', counterpart.id)
+  assert.ok(blockedAvatarReference.error, 'another profile must not reference an account-owned avatar during deletion')
+
   await endAccountDeletion(admin, author.id)
 
   const messageId = await createMessage({
@@ -1078,6 +1084,12 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     text: 'This write succeeds after lock release',
   })
   assert.ok(messageId, 'unlocking the account must restore normal writes')
+
+  const { error: avatarReferenceError } = await admin
+    .from('profiles')
+    .update({ avatar_url: `https://storage.example.test/avatars/${author.id}/avatar.png` })
+    .eq('id', counterpart.id)
+  checkError('create shared avatar reference for preflight test', avatarReferenceError)
 
   const { error: postError } = await admin.from('posts').insert({ user_id: author.id })
   checkError('insert post blocker', postError)
@@ -1130,6 +1142,7 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
       'post_image_references',
       'external_news_cover_references',
       'book_cover_references',
+      'other_profile_avatar_references',
     ],
     'preflight must identify every unapproved retention-sensitive data category',
   )
@@ -1150,6 +1163,12 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     const { error } = await admin.from(table).delete().eq(column, author.id)
     checkError(`clean preflight fixture ${table}`, error)
   }
+
+  const { error: removeAvatarReferenceError } = await admin
+    .from('profiles')
+    .update({ avatar_url: null })
+    .eq('id', counterpart.id)
+  checkError('remove shared avatar reference blocker', removeAvatarReferenceError)
 
   assert.deepEqual(
     await inspectAccountDeletionBlockers(admin, author.id),
