@@ -76,3 +76,14 @@
 - Diff PR #20 подтверждает: в signup добавлялся один обязательный checkbox «принимаю Правила и ознакомился с Политикой», а дата/версия записывались в `user_metadata` при регистрации. Это объединяет разные юридические действия и не является надёжным доказательством согласия, поскольку user metadata редактируется пользователем.
 - Решение: не переносить checkbox из PR #20 и не использовать `user_metadata` для доказательства consent. В текущий signup добавлена ссылка на страницу политики, регистрация/выдача резервных кодов остаются без изменений. Если для отдельной цели потребуется согласие, оно оформляется отдельным действием и фиксируется доверенным серверным механизмом.
 - Полезное из PR #20: consent gate для необязательной Метрики, настройка повторного выбора и footer link. Перенесено с уточнением о client-side localStorage и отсутствии server-side evidence. Статус: подтверждено diff PR #20 и актуальным кодом ветки.
+
+### 2026-11-22 — A: финальный результат CI для проекта политики
+
+- Текущий кодовый HEAD `1ea8afe958289c6b8efdb84b941169d7a9a60e11` прошёл все workflow с conclusion=success.
+- Web quality checks run `45038809266`: TypeScript success, ESLint changed code success, Production build success.
+- В том же run: Supabase Auth + Storage integration success; PostgreSQL 17 Email recovery migration + private chat media checks success.
+- Chat security smoke run `45038809290`: success.
+- Test recovery flow run `45038809249`: success.
+- Проверка GitHub source подтверждает, что маршрут, ссылки и noindex/sitemap metadata находятся в коммите, который собран успешным production build. Это подтверждение сборки, а не публикации production.
+- Browser/preview проверка /privacy остаётся не подтверждена: обращение к preview URL через доступный browser endpoint вернуло Internal Error; локальный браузер не подключён. Production/Layero не изменялись.
+- Чек-лист A: исходники, документы, PR20 review, ссылки, решение по checkbox и CI/build завершены. A остаётся открытой до подтверждения страницы обычным браузером/preview и получения юридических сведений/решений владельца с последующей юридической проверкой. B и C не начинались.
