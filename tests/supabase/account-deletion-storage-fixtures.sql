@@ -47,7 +47,8 @@ alter table public.messages enable row level security;
 -- Production also has a nullable creator UUID without a profile FK in this table.
 create table public.external_news (
   id uuid primary key default gen_random_uuid(),
-  created_by uuid
+  created_by uuid,
+  cover_url text
 );
 
 -- Minimal content/support tables for the deletion preflight and write lock.
@@ -81,6 +82,13 @@ create table public.reports (
 create table public.action_log (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete cascade
+);
+
+create table public.post_images (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid,
+  url text not null,
+  sort_order integer
 );
 
 create table public.notifications (
@@ -212,7 +220,7 @@ grant insert on public.messages to authenticated;
 grant all on public.profiles, public.conversations, public.messages to service_role;
 grant all on public.posts, public.comments, public.tickets,
   public.ticket_messages, public.reports, public.action_log,
-  public.notifications to service_role;
+  public.notifications, public.post_images to service_role;
 
 drop policy if exists ci_conversations_read_participant on public.conversations;
 create policy ci_conversations_read_participant
