@@ -2,15 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildEmailVerificationUrl,
-  buildPasswordRecoveryUrl,
   emailRecoveryHmac,
   escapeEmailHtml,
   generateEmailRecoveryToken,
-  hashEmailForRecovery,
   getAuthEmailSiteUrl,
+  getEdgeMailerConfig,
+  hashEmailForRecovery,
   isEmailRecoveryConfigured,
   isValidEmailRecoveryToken,
-  sendEmailViaResend,
+  sendEmailViaEdgeMailer,
 } from '../lib/email-recovery'
 
 const SECRET = 'a'.repeat(64)
@@ -50,15 +50,6 @@ test('email verification URL contains only the single-use token', () => {
   assert.equal(url.searchParams.has('next'), false)
 })
 
-test('password recovery URL is pinned to the internal reset route', () => {
-  const url = new URL(buildPasswordRecoveryUrl('https://bukleb.ru', 'a'.repeat(30)))
-  assert.equal(url.origin, 'https://bukleb.ru')
-  assert.equal(url.pathname, '/auth/confirm')
-  assert.equal(url.searchParams.get('type'), 'recovery')
-  assert.equal(url.searchParams.get('next'), '/auth/reset')
-  assert.equal(url.searchParams.get('token_hash'), 'a'.repeat(30))
-})
-
 test('email HTML escapes untrusted values', () => {
   assert.equal(
     escapeEmailHtml('<script a="b">&\''),
@@ -66,51 +57,7 @@ test('email HTML escapes untrusted values', () => {
   )
 })
 
-test('Resend delivery sends only the intended recipient and fails closed', async () => {
-  let capturedUrl = ''
-  let capturedHeaders: HeadersInit | undefined
-  let capturedBody: Record<string, unknown> | undefined
-
-  const fakeFetch: typeof fetch = async (input, init) => {
-    capturedUrl = String(input)
-    capturedHeaders = init?.headers
-    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
-    return new Response(JSON.stringify({ id: 'email_test_id' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  await sendEmailViaResend(
-    {
-      to: 'reader@example.com',
-      subject: 'Verify',
-      html: '<p>Verify</p>',
-      text: 'Verify',
-      idempotencyKey: 'test-message-key',
-    },
-    { apiKey: 're_test_key', from: 'Book Blog <no-reply@mail.bukleb.ru>' },
-    fakeFetch,
-  )
-
-  assert.equal(capturedUrl, 'https://api.resend.com/emails')
-  const headers = new Headers(capturedHeaders)
-  assert.equal(headers.get('Authorization'), 'Bearer re_test_key')
-  assert.equal(headers.get('Idempotency-Key'), 'test-message-key')
-  assert.deepEqual(capturedBody?.to, ['reader@example.com'])
-  assert.equal(capturedBody?.from, 'Book Blog <no-reply@mail.bukleb.ru>')
-
-  await assert.rejects(
-    sendEmailViaResend(
-      { to: 'reader@example.com', subject: 'Verify', html: '', text: '' },
-      null,
-      fakeFetch,
-    ),
-    /not configured/,
-  )
-})
-
-test('production email links are pinned to the verified domain', () => {
+test('production email verification links are pinned to bukleb.ru', () => {
   const previous = process.env.AUTH_EMAIL_SITE_URL
   try {
     process.env.AUTH_EMAIL_SITE_URL = 'https://bukleb.ru'
@@ -127,14 +74,13 @@ test('production email links are pinned to the verified domain', () => {
   }
 })
 
-test('email recovery stays disabled unless every server prerequisite is present', () => {
+test('email recovery stays disabled unless server-only prerequisites are present', () => {
   const keys = [
     'NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY',
     'EMAIL_RECOVERY_SECRET',
     'SUPABASE_SERVICE_ROLE_KEY',
-    'AUTH_EMAIL_HOOK_SECRET',
-    'RESEND_API_KEY',
-    'AUTH_EMAIL_FROM',
+    'NEXT_PUBLIC_SUPABASE_URL',
+    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
     'AUTH_EMAIL_SITE_URL',
   ] as const
   const previous = new Map(keys.map(key => [key, process.env[key]]))
@@ -143,10 +89,11 @@ test('email recovery stays disabled unless every server prerequisite is present'
     for (const key of keys) process.env[key] = 'configured-test-value'
     process.env.NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY = 'true'
     process.env.EMAIL_RECOVERY_SECRET = 'a'.repeat(64)
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co'
     process.env.AUTH_EMAIL_SITE_URL = 'https://bukleb.ru'
     assert.equal(isEmailRecoveryConfigured(), true)
 
-    delete process.env.RESEND_API_KEY
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY
     assert.equal(isEmailRecoveryConfigured(), false)
   } finally {
     for (const key of keys) {
@@ -157,28 +104,122 @@ test('email recovery stays disabled unless every server prerequisite is present'
   }
 })
 
-test('Resend rejects provider failures without exposing response bodies', async () => {
+test('Edge mailer config is server-side and restricted to the project URL', () => {
+  const keys = [
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'NEXT_PUBLIC_SUPABASE_URL',
+    'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  ] as const
+  const previous = new Map(keys.map(key => [key, process.env[key]]))
+
+  try {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'server-service-role-test'
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co'
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'public-test-key'
+    assert.deepEqual(getEdgeMailerConfig(), {
+      supabaseUrl: 'https://project.supabase.co',
+      publishableKey: 'public-test-key',
+      serviceRoleKey: 'server-service-role-test',
+    })
+
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://attacker.example'
+    assert.equal(getEdgeMailerConfig(), null)
+  } finally {
+    for (const key of keys) {
+      const value = previous.get(key)
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+})
+
+test('verification email is sent through the protected Supabase Edge Function', async () => {
+  let capturedUrl = ''
+  let capturedHeaders: HeadersInit | undefined
+  let capturedBody: Record<string, unknown> | undefined
+  let hasTimeout = false
+
+  const fakeFetch: typeof fetch = async (input, init) => {
+    capturedUrl = String(input)
+    capturedHeaders = init?.headers
+    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+    hasTimeout = init?.signal instanceof AbortSignal
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  await sendEmailViaEdgeMailer(
+    {
+      to: 'reader@example.com',
+      subject: 'Verify',
+      html: '<p>Verify</p>',
+      text: 'Verify',
+      idempotencyKey: 'email-recovery-verify/user-1/abc123',
+    },
+    {
+      supabaseUrl: 'https://project.supabase.co',
+      publishableKey: 'sb_publishable_test',
+      serviceRoleKey: 'server-service-role-test',
+    },
+    fakeFetch,
+  )
+
+  assert.equal(
+    capturedUrl,
+    'https://project.supabase.co/functions/v1/resend-mailer',
+  )
+  const headers = new Headers(capturedHeaders)
+  assert.equal(headers.get('Authorization'), 'Bearer server-service-role-test')
+  assert.equal(headers.get('apikey'), 'sb_publishable_test')
+  assert.deepEqual(capturedBody, {
+    to: 'reader@example.com',
+    subject: 'Verify',
+    html: '<p>Verify</p>',
+    text: 'Verify',
+    idempotencyKey: 'email-recovery-verify/user-1/abc123',
+  })
+  assert.equal(hasTimeout, true)
+})
+
+test('Edge mailer provider errors never expose response bodies', async () => {
   const fakeFetch: typeof fetch = async () => new Response(
-    JSON.stringify({ message: 'sensitive provider response with recipient details' }),
-    { status: 500 },
+    JSON.stringify({ message: 'recipient private data and token' }),
+    { status: 502 },
   )
 
   await assert.rejects(
-    sendEmailViaResend(
+    sendEmailViaEdgeMailer(
       {
         to: 'reader@example.com',
-        subject: 'Reset',
-        html: '<p>Reset</p>',
-        text: 'Reset',
+        subject: 'Verify',
+        html: '<p>Verify</p>',
+        text: 'Verify',
       },
-      { apiKey: 're_test_key', from: 'Book Blog <no-reply@mail.bukleb.ru>' },
+      {
+        supabaseUrl: 'https://project.supabase.co',
+        publishableKey: 'sb_publishable_test',
+        serviceRoleKey: 'server-service-role-test',
+      },
       fakeFetch,
     ),
     error => {
       assert.ok(error instanceof Error)
-      assert.match(error.message, /HTTP 500/)
-      assert.doesNotMatch(error.message, /recipient details/)
+      assert.match(error.message, /HTTP 502/)
+      assert.doesNotMatch(error.message, /recipient private data|token/)
       return true
     },
+  )
+})
+
+test('Edge mailer fails closed when not configured', async () => {
+  await assert.rejects(
+    sendEmailViaEdgeMailer(
+      { to: 'reader@example.com', subject: 'Verify', html: '', text: '' },
+      null,
+      fetch,
+    ),
+    /not configured/,
   )
 })
