@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   IMAGE_ACCEPT_ATTR,
@@ -11,37 +11,16 @@ import {
 type Props = {
   onUploaded: (urls: string[]) => void
   enabled?: boolean
+  onUploadingChange?: (uploading: boolean) => void
 }
 
-export default function ImageUploader({ onUploaded, enabled = true }: Props) {
+export default function ImageUploader({ onUploaded, enabled = true, onUploadingChange }: Props) {
   const [uploading, setUploading] = useState(false)
   const [previews, setPreviews] = useState<string[]>([])
   const [urls, setUrls] = useState<string[]>([])
   const [storagePaths, setStoragePaths] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  // post-images is a public bucket. If the user withdraws the checkbox
-  // before submitting the post, remove any objects already uploaded in this form.
-  useEffect(() => {
-    if (enabled || storagePaths.length === 0) return
-
-    const pathsToRemove = [...storagePaths]
-    void (async () => {
-      const { error: removeError } = await supabase.storage
-        .from('post-images')
-        .remove(pathsToRemove)
-
-      if (removeError) {
-        setError('Не удалось удалить загруженные фото после снятия согласия. Отметьте согласие снова и повторите снятие.')
-        return
-      }
-
-      setStoragePaths([])
-      setUrls([])
-      setPreviews([])
-      onUploaded([])
-    })()
-  }, [enabled, storagePaths, onUploaded])
 
   async function handleFiles(files: FileList | null) {
     if (!enabled || !files || files.length === 0) return
@@ -66,18 +45,19 @@ export default function ImageUploader({ onUploaded, enabled = true }: Props) {
     const batch = accepted.slice(0, 5)
 
     setUploading(true)
+    onUploadingChange?.(true)
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      alert('Войдите, чтобы загрузить фото')
-      setUploading(false)
-      return
-    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('Войдите, чтобы загрузить фото')
+        return
+      }
 
-    const newUrls: string[] = []
-    const newPaths: string[] = []
+      const newUrls: string[] = []
+      const newPaths: string[] = []
 
-    for (const file of batch) {
+      for (const file of batch) {
       const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
       const fileName = `${user.id}/${Date.now()}-${Math.random()
         .toString(36)
@@ -87,25 +67,30 @@ export default function ImageUploader({ onUploaded, enabled = true }: Props) {
         .from('post-images')
         .upload(fileName, file, { contentType: file.type })
 
-      if (uploadError) {
-        setError('Ошибка загрузки: ' + uploadError.message)
-        continue
+        if (uploadError) {
+          setError('Ошибка загрузки: ' + uploadError.message)
+          continue
+        }
+
+        const { data } = supabase.storage
+          .from('post-images')
+          .getPublicUrl(fileName)
+
+        newUrls.push(data.publicUrl)
+        newPaths.push(fileName)
       }
 
-      const { data } = supabase.storage
-        .from('post-images')
-        .getPublicUrl(fileName)
-
-      newUrls.push(data.publicUrl)
-      newPaths.push(fileName)
+      setPreviews(prev => [...prev, ...newUrls])
+      setStoragePaths(prev => [...prev, ...newPaths])
+      const allUrls = [...urls, ...newUrls]
+      setUrls(allUrls)
+      onUploaded(allUrls)
+    } catch {
+      setError('Не удалось загрузить фотографии. Проверьте соединение и попробуйте ещё раз.')
+    } finally {
+      setUploading(false)
+      onUploadingChange?.(false)
     }
-
-    setPreviews(prev => [...prev, ...newUrls])
-    setStoragePaths(prev => [...prev, ...newPaths])
-    const allUrls = [...urls, ...newUrls]
-    setUrls(allUrls)
-    onUploaded(allUrls)
-    setUploading(false)
   }
 
   async function removeImage(index: number) {
@@ -174,6 +159,7 @@ export default function ImageUploader({ onUploaded, enabled = true }: Props) {
               <button
                 type="button"
                 onClick={() => removeImage(i)}
+                disabled={!enabled}
                 className="absolute -top-2 -right-2 bg-wine text-white w-6 h-6 rounded-full text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 aria-label="Удалить фото"
               >
