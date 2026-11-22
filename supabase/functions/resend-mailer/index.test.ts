@@ -14,26 +14,8 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
   }
 }
 
-function serviceRoleToken(role = 'service_role'): string {
-  const payload = btoa(JSON.stringify({ role }))
-  return `test.${payload}.test`
-}
-
-function request(
-  body: unknown,
-  options: { method?: string; role?: string; includeAuth?: boolean } = {},
-): Request {
-  const headers = new Headers({ 'Content-Type': 'application/json' })
-  if (options.includeAuth !== false) {
-    headers.set('Authorization', `Bearer ${serviceRoleToken(options.role)}`)
-  }
-
-  return new Request('https://project.supabase.co/functions/v1/resend-mailer', {
-    method: options.method ?? 'POST',
-    headers,
-    body: options.method === 'GET' ? undefined : JSON.stringify(body),
-  })
-}
+const SUPABASE_SECRET_KEY = 'sb_secret_test_only'
+const RESEND_API_KEY = 're_test_only'
 
 const MESSAGE = {
   to: 'reader@example.com',
@@ -43,36 +25,58 @@ const MESSAGE = {
   idempotencyKey: 'email-recovery-verify/user-1/abc123',
 }
 
-Deno.test('rejects requests without a server authorization token', async () => {
-  const response = await handle(request(MESSAGE, { includeAuth: false }), {
-    apiKey: 'test-key',
+function request(
+  body: unknown,
+  options: { method?: string; apiKey?: string | null } = {},
+): Request {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  if (options.apiKey !== null) {
+    headers.set('apikey', options.apiKey ?? SUPABASE_SECRET_KEY)
+  }
+
+  return new Request('https://project.supabase.co/functions/v1/resend-mailer', {
+    method: options.method ?? 'POST',
+    headers,
+    body: options.method === 'GET' ? undefined : JSON.stringify(body),
   })
-  assertEqual(response.status, 403, 'status')
+}
+
+Deno.test('rejects requests without an apikey', async () => {
+  const response = await handle(
+    request(MESSAGE, { apiKey: null }),
+    { apiKey: RESEND_API_KEY, supabaseSecretKey: SUPABASE_SECRET_KEY },
+  )
+  assertEqual(response.status, 401, 'status')
 })
 
-Deno.test('rejects ordinary authenticated users', async () => {
-  const response = await handle(request(MESSAGE, { role: 'authenticated' }), {
-    apiKey: 'test-key',
-  })
-  assertEqual(response.status, 403, 'status')
+Deno.test('rejects an incorrect Supabase secret key', async () => {
+  const response = await handle(
+    request(MESSAGE, { apiKey: 'sb_secret_wrong' }),
+    { apiKey: RESEND_API_KEY, supabaseSecretKey: SUPABASE_SECRET_KEY },
+  )
+  assertEqual(response.status, 401, 'status')
 })
 
 Deno.test('rejects non-POST methods', async () => {
-  const response = await handle(request(MESSAGE, { method: 'GET' }), {
-    apiKey: 'test-key',
-  })
+  const response = await handle(
+    request(MESSAGE, { method: 'GET' }),
+    { apiKey: RESEND_API_KEY, supabaseSecretKey: SUPABASE_SECRET_KEY },
+  )
   assertEqual(response.status, 405, 'status')
 })
 
 Deno.test('fails closed when RESEND_API_KEY is absent', async () => {
-  const response = await handle(request(MESSAGE), { apiKey: '' })
+  const response = await handle(request(MESSAGE), {
+    apiKey: '',
+    supabaseSecretKey: SUPABASE_SECRET_KEY,
+  })
   assertEqual(response.status, 503, 'status')
 })
 
 Deno.test('rejects malformed outgoing email data', async () => {
   const response = await handle(
     request({ ...MESSAGE, to: 'not-an-email' }),
-    { apiKey: 'test-key' },
+    { apiKey: RESEND_API_KEY, supabaseSecretKey: SUPABASE_SECRET_KEY },
   )
   assertEqual(response.status, 400, 'status')
 })
@@ -84,7 +88,8 @@ Deno.test('sends only the fixed sender and the requested recipient', async () =>
   let hasTimeout = false
 
   const response = await handle(request(MESSAGE), {
-    apiKey: 'test-key',
+    apiKey: RESEND_API_KEY,
+    supabaseSecretKey: SUPABASE_SECRET_KEY,
     fetcher: async (input, init) => {
       target = String(input)
       headers = init?.headers
@@ -97,7 +102,7 @@ Deno.test('sends only the fixed sender and the requested recipient', async () =>
   assertEqual(response.status, 200, 'status')
   assertEqual(target, 'https://api.resend.com/emails', 'provider URL')
   const sentHeaders = new Headers(headers)
-  assertEqual(sentHeaders.get('Authorization'), 'Bearer test-key', 'authorization')
+  assertEqual(sentHeaders.get('Authorization'), `Bearer ${RESEND_API_KEY}`, 'authorization')
   assertEqual(sentHeaders.get('Idempotency-Key'), MESSAGE.idempotencyKey, 'idempotency')
   assertEqual(body?.from, 'Хлеба и букв <no-reply@bukleb.ru>', 'fixed sender')
   assertEqual(JSON.stringify(body?.to), JSON.stringify([MESSAGE.to]), 'recipient')
@@ -108,7 +113,8 @@ Deno.test('sends only the fixed sender and the requested recipient', async () =>
 
 Deno.test('does not expose the provider response body on failure', async () => {
   const response = await handle(request(MESSAGE), {
-    apiKey: 'test-key',
+    apiKey: RESEND_API_KEY,
+    supabaseSecretKey: SUPABASE_SECRET_KEY,
     fetcher: async () =>
       new Response('recipient private data and token', { status: 500 }),
   })
@@ -119,7 +125,8 @@ Deno.test('does not expose the provider response body on failure', async () => {
 
 Deno.test('maps network and timeout errors to a generic response', async () => {
   const response = await handle(request(MESSAGE), {
-    apiKey: 'test-key',
+    apiKey: RESEND_API_KEY,
+    supabaseSecretKey: SUPABASE_SECRET_KEY,
     fetcher: async () => {
       throw new Error('private recipient and token')
     },
