@@ -69,6 +69,23 @@ export async function inspectAccountDeletionBlockers(
     }
   }
 
+  const { count: avatarReferences, error: avatarError } = await admin
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .neq('id', userId)
+    .or(`avatar_url.ilike.${userId}/%,avatar_url.ilike.%/${userId}/%`)
+
+  if (avatarError || avatarReferences === null) {
+    throw new Error('account deletion avatar-reference preflight failed')
+  }
+  if (avatarReferences > 0) {
+    blockers.push({
+      code: 'other_profile_avatar_references',
+      label: 'Аватары других пользователей, использующие файлы аккаунта',
+      count: avatarReferences,
+    })
+  }
+
   // A UID-prefixed post image may have been reused by another author's post
   // or an external-news card. Preserve those public references rather than
   // deleting a shared object merely because its Storage path starts with UID.
