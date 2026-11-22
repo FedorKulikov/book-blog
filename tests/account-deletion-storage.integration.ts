@@ -352,6 +352,268 @@ async function testOptionalOwnMessageRemoval(counterpart: TestUser, outsider: Te
   console.log('[account-deletion-storage] optional own-message removal mode passed')
 }
 
+
+async function createSignedUrl(client: SupabaseClient, path: string, context: string): Promise<string> {
+  const { data, error } = await client.storage.from('chat-media').createSignedUrl(path, 60)
+  checkError(context, error)
+  if (!data?.signedUrl) throw new Error(context + ': Supabase returned no signed URL')
+  return new URL(data.signedUrl, apiUrl).toString()
+}
+
+async function expectSignedUrl(url: string, shouldSucceed: boolean, context: string): Promise<void> {
+  const response = await fetch(url)
+  assert.equal(
+    response.ok,
+    shouldSucceed,
+    context + ': expected HTTP ' + (shouldSucceed ? 'success' : 'failure') + ', received ' + response.status,
+  )
+  await response.body?.cancel()
+}
+
+async function ensureCopiedIfMissing(source: string, destination: string, context: string): Promise<boolean> {
+  const existingCount = storageObjectCount(destination)
+  assert.ok(existingCount === 0 || existingCount === 1, context + ': destination path is not unique')
+  if (existingCount === 1) return false
+
+  const { error } = await admin.storage.from('chat-media').copy(source, destination)
+  checkError(context, error)
+  assert.equal(storageObjectCount(destination), 1, context + ': expected exactly one retained copy')
+  return true
+}
+
+async function removeExistingObjects(paths: string[], context: string): Promise<void> {
+  const existingPaths = paths.filter(path => storageObjectCount(path) > 0)
+  if (existingPaths.length === 0) return
+
+  const { error } = await admin.storage.from('chat-media').remove(existingPaths)
+  checkError(context, error)
+  for (const path of existingPaths) {
+    assert.equal(storageObjectCount(path), 0, context + ': object should be absent after Storage API removal')
+  }
+}
+
+// This test exercises a recoverable operation sequence against the real local
+// Supabase APIs. It does not call or claim to test a production deletion route.
+async function testRecoverableRehomeAndSignedUrls(counterpart: TestUser, outsider: TestUser): Promise<void> {
+  console.log('[account-deletion-storage] testing partial failure, retry, and signed URL behavior')
+
+  const author = await createTestUser('retry-author')
+  const conversationId = await createConversation(author.id, counterpart.id)
+  const originalPhoto = author.id + '/retry-photo.png'
+  const originalAudio = author.id + '/retry-voice.webm'
+
+  await upload(author.client, originalPhoto, 'synthetic retry photo', 'image/png')
+  const messageId = await createMessage({
+    client: author.client,
+    conversationId,
+    senderId: author.id,
+    senderLabel: 'Retry Author',
+    text: 'Message retained after a recoverable cleanup failure',
+    imageUrl: originalPhoto,
+    audioUrl: originalAudio,
+  })
+
+  const oldPhotoSignedUrl = await createSignedUrl(author.client, originalPhoto, 'sign original user photo')
+  await expectSignedUrl(oldPhotoSignedUrl, true, 'signed URL works while the original object exists')
+
+  const retainedPhoto = 'retained/' + messageId + '/photo.png'
+  const retainedAudio = 'retained/' + messageId + '/voice.webm'
+  assert.ok(!retainedPhoto.includes(author.id), 'retained photo path must not contain the user UUID')
+  assert.ok(!retainedAudio.includes(author.id), 'retained audio path must not contain the user UUID')
+
+  await ensureCopiedIfMissing(originalPhoto, retainedPhoto, 'copy photo before the injected failure')
+
+  // Fault injection: the message references an audio object which is absent.
+  // The photo copy succeeds first; copying audio must fail without removing
+  // the original photo, changing the message, or deleting the Auth account.
+  let missingAudioCopyFailed = false
+  try {
+    await ensureCopiedIfMissing(originalAudio, retainedAudio, 'copy missing audio should fail')
+  } catch {
+    missingAudioCopyFailed = true
+  }
+
+  assert.equal(missingAudioCopyFailed, true, 'copying an absent source object must fail')
+  assert.equal(storageObjectCount(retainedPhoto), 1, 'successful photo copy must survive the partial failure')
+  assert.equal(storageObjectCount(retainedAudio), 0, 'absent audio must not produce a retained object')
+  assert.equal(storageObjectCount(originalPhoto), 1, 'original photo must remain after partial copy failure')
+
+  const { data: beforeDbRetry, error: beforeDbRetryError } = await admin
+    .from('messages')
+    .select('sender_id, sender_label, image_url, audio_url')
+    .eq('id', messageId)
+    .single()
+  checkError('read message after partial copy failure', beforeDbRetryError)
+  assert.equal(beforeDbRetry?.sender_id, author.id, 'sender must remain linked until all copies are staged')
+  assert.equal(beforeDbRetry?.image_url, originalPhoto, 'message path must remain unchanged after partial copy failure')
+  assert.equal(beforeDbRetry?.audio_url, originalAudio, 'missing source path must remain unchanged after partial copy failure')
+
+  // Restore the missing test object, then retry. The existing photo copy must
+  // be reused rather than copied a second time.
+  await upload(author.client, originalAudio, 'synthetic retry voice', 'audio/webm')
+  const photoCopiedAgain = await ensureCopiedIfMissing(originalPhoto, retainedPhoto, 'retry photo copy')
+  const audioCopiedOnRetry = await ensureCopiedIfMissing(originalAudio, retainedAudio, 'retry audio copy')
+  assert.equal(photoCopiedAgain, false, 'retry must reuse the already-staged photo')
+  assert.equal(audioCopiedOnRetry, true, 'retry must stage the previously missing audio')
+  assert.equal(storageObjectCount(retainedPhoto), 1, 'retry must not duplicate the retained photo')
+  assert.equal(storageObjectCount(retainedAudio), 1, 'retry must create exactly one retained audio object')
+  assert.equal(storageOwner(retainedPhoto), '<null>', 'retained photo must not be owned by the deleted user')
+  assert.equal(storageOwner(retainedAudio), '<null>', 'retained audio must not be owned by the deleted user')
+
+  // Fault injection at the DB stage: NOT NULL violation after the copies exist.
+  // The transaction must leave the original message references intact and the
+  // user-owned originals must not be removed before a valid DB update.
+  const { error: injectedDatabaseFailure } = await admin
+    .from('messages')
+    .update({
+      sender_id: null,
+      sender_label: null,
+      image_url: retainedPhoto,
+      audio_url: retainedAudio,
+    })
+    .eq('id', messageId)
+  assert.ok(injectedDatabaseFailure, 'invalid anonymization update must fail at the database constraint')
+
+  const { data: afterDbFailure, error: afterDbFailureError } = await admin
+    .from('messages')
+    .select('sender_id, sender_label, image_url, audio_url')
+    .eq('id', messageId)
+    .single()
+  checkError('verify message after injected DB failure', afterDbFailureError)
+  assert.equal(afterDbFailure?.sender_id, author.id, 'failed DB update must not detach the sender')
+  assert.equal(afterDbFailure?.image_url, originalPhoto, 'failed DB update must not change the photo path')
+  assert.equal(afterDbFailure?.audio_url, originalAudio, 'failed DB update must not change the audio path')
+  assert.equal(storageObjectCount(originalPhoto), 1, 'source photo must remain until DB references are switched')
+  assert.equal(storageObjectCount(originalAudio), 1, 'source audio must remain until DB references are switched')
+
+  const { error: validUpdateError } = await admin
+    .from('messages')
+    .update({
+      sender_id: null,
+      sender_label: 'Удалённый пользователь',
+      image_url: retainedPhoto,
+      audio_url: retainedAudio,
+    })
+    .eq('id', messageId)
+  checkError('retry message update after DB recovers', validUpdateError)
+
+  const { error: conversationUpdateError } = await admin
+    .from('conversations')
+    .update({ user1_id: null })
+    .eq('id', conversationId)
+  checkError('detach deleted participant after successful message update', conversationUpdateError)
+
+  await expectDownload(counterpart.client, retainedPhoto, true, 'counterpart can read retained photo after retry')
+  await expectDownload(counterpart.client, retainedAudio, true, 'counterpart can read retained audio after retry')
+  await expectDownload(outsider.client, retainedPhoto, false, 'outsider cannot read retained photo after retry')
+  const retainedPhotoSignedUrl = await createSignedUrl(
+    counterpart.client,
+    retainedPhoto,
+    'counterpart signs retained photo',
+  )
+  await expectSignedUrl(retainedPhotoSignedUrl, true, 'counterpart signed URL serves retained photo')
+
+  await removeExistingObjects([originalPhoto, originalAudio], 'remove user-owned source objects after DB commit')
+  await removeExistingObjects([originalPhoto, originalAudio], 'repeat source cleanup safely')
+  assert.equal(storageObjectCount(originalPhoto), 0, 'original photo must be absent after cleanup')
+  assert.equal(storageObjectCount(originalAudio), 0, 'original audio must be absent after cleanup')
+  await expectSignedUrl(oldPhotoSignedUrl, false, 'old signed URL must stop serving the removed original object')
+
+  // Replaying the post-commit cleanup must be a no-op: no duplicate retained
+  // copies, no resurrected original objects, and no second deletion operation.
+  const photoCopiedOnReplay = await ensureCopiedIfMissing(originalPhoto, retainedPhoto, 'replay photo stage')
+  const audioCopiedOnReplay = await ensureCopiedIfMissing(originalAudio, retainedAudio, 'replay audio stage')
+  assert.equal(photoCopiedOnReplay, false, 'replay must not recreate an existing retained photo')
+  assert.equal(audioCopiedOnReplay, false, 'replay must not recreate an existing retained audio')
+  await removeExistingObjects([originalPhoto, originalAudio], 'replay completed source cleanup')
+  assert.equal(storageObjectCount(retainedPhoto), 1, 'replay must not duplicate retained photo')
+  assert.equal(storageObjectCount(retainedAudio), 1, 'replay must not duplicate retained audio')
+
+  await deleteAuthUser(author.id, 'retry-author')
+  const { data: deletedProfile, error: deletedProfileError } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('id', author.id)
+    .maybeSingle()
+  checkError('verify retry author profile was deleted', deletedProfileError)
+  assert.equal(deletedProfile, null, 'Auth user deletion must remove the detached profile')
+
+  await expectDownload(counterpart.client, retainedPhoto, true, 'counterpart still reads retained photo after Auth deletion')
+  await expectDownload(counterpart.client, retainedAudio, true, 'counterpart still reads retained audio after Auth deletion')
+  await expectDownload(author.client, retainedPhoto, false, 'deleted author can no longer read retained photo')
+  await expectSignedUrl(retainedPhotoSignedUrl, true, 'counterpart signed URL remains valid for its token lifetime')
+  await expectSignedUrl(oldPhotoSignedUrl, false, 'old signed URL remains unusable after account deletion')
+
+  const { data: finalMessages, error: finalMessagesError } = await counterpart.client
+    .from('messages')
+    .select('id, sender_id, sender_label, image_url, audio_url')
+    .eq('conversation_id', conversationId)
+  checkError('read recovered conversation after account deletion', finalMessagesError)
+  assert.equal(finalMessages?.length, 1, 'recovered conversation must retain one message')
+  assert.equal(finalMessages?.[0]?.sender_id, null, 'deleted sender ID must remain detached')
+  assert.equal(finalMessages?.[0]?.sender_label, 'Удалённый пользователь', 'recovered sender must be anonymized')
+  assert.equal(finalMessages?.[0]?.image_url, retainedPhoto, 'recovered message must reference retained photo')
+  assert.equal(finalMessages?.[0]?.audio_url, retainedAudio, 'recovered message must reference retained audio')
+
+  console.log('[account-deletion-storage] partial failure, retry, and signed URL checks passed')
+}
+
+async function testEmptyConversationCleanup(counterpart: TestUser): Promise<void> {
+  console.log('[account-deletion-storage] testing cleanup of an empty conversation')
+
+  const deletingUser = await createTestUser('empty-conversation-author')
+  const conversationId = await createConversation(deletingUser.id, counterpart.id)
+  const ownPhoto = deletingUser.id + '/only-message.png'
+  await upload(deletingUser.client, ownPhoto, 'synthetic last-message photo', 'image/png')
+
+  const ownMessageId = await createMessage({
+    client: deletingUser.client,
+    conversationId,
+    senderId: deletingUser.id,
+    senderLabel: 'Empty Conversation Author',
+    text: 'The only message in this conversation',
+    imageUrl: ownPhoto,
+  })
+
+  await removeExistingObjects([ownPhoto], 'remove attachment of the only message')
+  const { data: removedMessages, error: removedMessagesError } = await admin
+    .from('messages')
+    .delete()
+    .eq('conversation_id', conversationId)
+    .eq('sender_id', deletingUser.id)
+    .select('id')
+  checkError('delete only message authored by deleting user', removedMessagesError)
+  assert.equal(removedMessages?.length, 1, 'the deleting user own message must be removed')
+  assert.equal(removedMessages?.[0]?.id, ownMessageId, 'the removed message must be the deleting user message')
+
+  const { count: remainingCount, error: remainingCountError } = await admin
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId)
+  checkError('count messages after optional own-message deletion', remainingCountError)
+  assert.equal(remainingCount, 0, 'conversation must be empty before it is removed')
+
+  const { data: removedConversations, error: removedConversationsError } = await admin
+    .from('conversations')
+    .delete()
+    .eq('id', conversationId)
+    .select('id')
+  checkError('remove conversation after its final message is gone', removedConversationsError)
+  assert.equal(removedConversations?.length, 1, 'empty conversation should be removed exactly once')
+  assert.equal(storageObjectCount(ownPhoto), 0, 'attachment of the removed final message must be absent')
+
+  await deleteAuthUser(deletingUser.id, 'empty-conversation-author')
+  const { data: counterpartConversation, error: counterpartConversationError } = await counterpart.client
+    .from('conversations')
+    .select('id')
+    .eq('id', conversationId)
+    .maybeSingle()
+  checkError('verify counterpart no longer sees an empty conversation', counterpartConversationError)
+  assert.equal(counterpartConversation, null, 'counterpart must not retain an empty conversation row')
+
+  console.log('[account-deletion-storage] empty conversation cleanup passed')
+}
+
 async function main(): Promise<void> {
   const bucketIsPrivate = queryDatabase(
     "select public::text from storage.buckets where id = 'chat-media'",
@@ -360,6 +622,8 @@ async function main(): Promise<void> {
 
   const { counterpart, outsider } = await testDefaultPreservation()
   await testOptionalOwnMessageRemoval(counterpart, outsider)
+  await testRecoverableRehomeAndSignedUrls(counterpart, outsider)
+  await testEmptyConversationCleanup(counterpart)
 
   console.log('[account-deletion-storage] all real Auth + Storage integration checks passed')
 }
