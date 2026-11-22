@@ -164,6 +164,9 @@ export default function DeleteAccountPage() {
         return
       }
 
+      setMfaRequired(false)
+      setMfaFactors([])
+      setMfaFactorId('')
       setMfaChallengeId('')
       setMfaCode('')
       await sendDeletionRequest()
