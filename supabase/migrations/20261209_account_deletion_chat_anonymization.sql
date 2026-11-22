@@ -118,23 +118,39 @@ grant usage on schema private to service_role;
 
 create table if not exists private.account_deletion_locks (
   user_id uuid primary key references auth.users(id) on delete cascade,
+  chat_mode text not null check (chat_mode in ('preserve', 'delete_own_messages')),
   requested_at timestamptz not null default now()
 );
 
 alter table private.account_deletion_locks enable row level security;
 revoke all on private.account_deletion_locks from public, anon, authenticated, service_role;
 
-create or replace function public.begin_account_deletion(p_user_id uuid)
+create or replace function public.begin_account_deletion(
+  p_user_id uuid,
+  p_chat_mode text
+)
 returns boolean
 language plpgsql
 security definer
 set search_path = ''
 as $function$
+declare
+  v_existing_mode text;
 begin
-  insert into private.account_deletion_locks (user_id)
-  values (p_user_id)
+  if p_chat_mode not in ('preserve', 'delete_own_messages') then
+    raise exception 'unsupported chat deletion mode';
+  end if;
+
+  insert into private.account_deletion_locks (user_id, chat_mode)
+  values (p_user_id, p_chat_mode)
   on conflict (user_id) do nothing;
-  return true;
+
+  select chat_mode
+    into v_existing_mode
+    from private.account_deletion_locks
+   where user_id = p_user_id;
+
+  return v_existing_mode = p_chat_mode;
 end;
 $function$;
 
@@ -151,13 +167,13 @@ begin
 end;
 $function$;
 
-alter function public.begin_account_deletion(uuid) owner to postgres;
+alter function public.begin_account_deletion(uuid, text) owner to postgres;
 alter function public.end_account_deletion(uuid) owner to postgres;
-revoke all on function public.begin_account_deletion(uuid)
+revoke all on function public.begin_account_deletion(uuid, text)
   from public, anon, authenticated, service_role;
 revoke all on function public.end_account_deletion(uuid)
   from public, anon, authenticated, service_role;
-grant execute on function public.begin_account_deletion(uuid) to service_role;
+grant execute on function public.begin_account_deletion(uuid, text) to service_role;
 grant execute on function public.end_account_deletion(uuid) to service_role;
 
 -- The trigger checks only writes performed by the user whose Auth UID matches
@@ -351,9 +367,9 @@ begin
     raise exception 'profile anonymization trigger function must not be exposed as an RPC';
   end if;
 
-  if has_function_privilege('anon', 'public.begin_account_deletion(uuid)', 'EXECUTE')
-     or has_function_privilege('authenticated', 'public.begin_account_deletion(uuid)', 'EXECUTE')
-     or not has_function_privilege('service_role', 'public.begin_account_deletion(uuid)', 'EXECUTE')
+  if has_function_privilege('anon', 'public.begin_account_deletion(uuid, text)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.begin_account_deletion(uuid, text)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.begin_account_deletion(uuid, text)', 'EXECUTE')
      or has_function_privilege('anon', 'public.end_account_deletion(uuid)', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.end_account_deletion(uuid)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.end_account_deletion(uuid)', 'EXECUTE') then
