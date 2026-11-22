@@ -164,11 +164,12 @@ async function rehomeRemainingReferences(
   userId: string,
   mode: ChatDeletionMode,
 ): Promise<void> {
-  const userPathPattern = `%/${userId}/%`
+  const userPathPrefix = `${userId}/%`
+  const userPathInUrl = `%/${userId}/%`
   const { data, error } = await admin
     .from('messages')
     .select('id, sender_id, image_url, audio_url')
-    .or(`image_url.ilike.${userPathPattern},audio_url.ilike.${userPathPattern}`)
+    .or(`image_url.ilike.${userPathPrefix},audio_url.ilike.${userPathPrefix},image_url.ilike.${userPathInUrl},audio_url.ilike.${userPathInUrl}`)
 
   if (error) throw new Error('could not inspect chat-media references')
 
