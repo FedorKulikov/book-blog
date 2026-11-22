@@ -11,23 +11,25 @@ on conflict (id) do update
 
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  username text not null
+  username text not null,
+  role text not null default 'user'
 );
 
 create table public.conversations (
   id uuid primary key default gen_random_uuid(),
-  user1_id uuid references public.profiles(id) on delete set null,
-  user2_id uuid references public.profiles(id) on delete set null,
+  user1_id uuid constraint conversations_user1_id_fkey references public.profiles(id) on delete set null,
+  user2_id uuid constraint conversations_user2_id_fkey references public.profiles(id) on delete set null,
   last_message_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
-  constraint conversations_keep_at_least_one_participant
-    check (user1_id is not null or user2_id is not null)
+  muted_by_user1 boolean default false,
+  muted_by_user2 boolean default false,
+  constraint conversations_users_different check (user1_id <> user2_id)
 );
 
 create table public.messages (
   id uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references public.conversations(id) on delete cascade,
-  sender_id uuid references public.profiles(id) on delete set null,
+  sender_id uuid constraint messages_sender_id_fkey references public.profiles(id) on delete set null,
   sender_label text not null default 'Удалённый пользователь',
   text text,
   image_url text,
@@ -38,6 +40,137 @@ create table public.messages (
 alter table public.profiles enable row level security;
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
+
+-- Production also has a nullable creator UUID without a profile FK in this table.
+create table public.external_news (
+  id uuid primary key default gen_random_uuid(),
+  created_by uuid
+);
+
+grant all on public.external_news to service_role;
+
+-- Mirror the production message/conversation guards from
+-- 20261133_chat_write_least_privilege.sql. The deletion hook below must be
+-- SECURITY DEFINER owned by postgres so it can perform trusted anonymization.
+create or replace function public.is_staff()
+returns boolean
+language sql
+stable
+set search_path = ''
+as $function$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role = any (array['admin'::text, 'moderator'::text])
+  );
+$function$;
+
+create or replace function public.protect_conversation_fields()
+returns trigger
+language plpgsql
+set search_path = ''
+as $function$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if current_user in ('postgres', 'service_role') then
+    return new;
+  end if;
+
+  if new.user1_id is distinct from old.user1_id
+     or new.user2_id is distinct from old.user2_id then
+    raise exception 'нельзя менять участников беседы';
+  end if;
+
+  if v_uid = old.user1_id then
+    if new.muted_by_user2 is distinct from old.muted_by_user2 then
+      raise exception 'нельзя менять настройки собеседника';
+    end if;
+  elsif v_uid = old.user2_id then
+    if new.muted_by_user1 is distinct from old.muted_by_user1 then
+      raise exception 'нельзя менять настройки собеседника';
+    end if;
+  else
+    raise exception 'только участники беседы могут менять настройки';
+  end if;
+
+  return new;
+end;
+$function$;
+
+create trigger conversations_protect_fields
+  before update of user1_id, user2_id, muted_by_user1, muted_by_user2
+  on public.conversations
+  for each row execute function public.protect_conversation_fields();
+
+create or replace function public.protect_message_fields()
+returns trigger
+language plpgsql
+set search_path = ''
+as $function$
+begin
+  if current_user in ('postgres', 'service_role') then
+    return new;
+  end if;
+
+  if not public.is_staff() then
+    if new.sender_id is distinct from old.sender_id then
+      raise exception 'нельзя менять автора сообщения';
+    end if;
+
+    if new.conversation_id is distinct from old.conversation_id then
+      raise exception 'нельзя переносить сообщение в другую беседу';
+    end if;
+
+    if new.created_at is distinct from old.created_at then
+      raise exception 'нельзя менять дату создания сообщения';
+    end if;
+  end if;
+
+  return new;
+end;
+$function$;
+
+create trigger messages_protect_fields
+  before update on public.messages
+  for each row execute function public.protect_message_fields();
+
+-- Disposable target-state profile deletion hook. The production migration
+-- will be tested against this exact behavior before it is prepared.
+create or replace function public.anonymize_profile_before_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  update public.messages
+     set sender_id = null,
+         sender_label = 'Удалённый пользователь'
+   where sender_id = old.id;
+
+  update public.conversations
+     set user1_id = null
+   where user1_id = old.id;
+
+  update public.conversations
+     set user2_id = null
+   where user2_id = old.id;
+
+  update public.external_news
+     set created_by = null
+   where created_by = old.id;
+
+  return old;
+end;
+$function$;
+
+alter function public.anonymize_profile_before_delete() owner to postgres;
+
+create trigger profiles_anonymize_before_delete
+  before delete on public.profiles
+  for each row execute function public.anonymize_profile_before_delete();
 
 -- A deliberately unlinked row models records whose access relies on the JWT
 -- subject alone. It demonstrates why deleting auth.users does not itself
