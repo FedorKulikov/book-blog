@@ -340,3 +340,14 @@
 - Для совместимости с workflow apply-migrations строка ops.applied_migrations заполнена именем файла и SHA-256 92c594c5539429f985c3f52cab51e0eb56d207429caab27f477eeee7787cd7b9; applied_by = postgres.
 - Supabase Security Advisor показал INFO о RLS без policies для private.personal_data_consents: это ожидаемая модель default-deny при отсутствии прямых grants. Существующие предупреждения по increment_book_views/increment_post_views и leaked password protection относятся к другим объектам и не менялись.
 - Не менялись таблицы private.recovery_codes/private.recovery_attempts, Edge Function recovery, Send Email Hook, mailer_autoconfirm, Function Secrets и тексты политики.
+
+### 2026-11-23 — B12, этап 1.5: пользовательские RPC согласий
+
+- Перед началом этапа слит docs-only PR #77 после успешного CI (4/4 jobs); merge commit: 37793c9ef8f77664b4018f0506bbabee08dc79ac. В нём append-only задокументировано применение этапа 1 в production.
+- Требовалось устранить блокер: исходные record/revoke RPC этапа 1 доступны только service_role, которого нет и не будет в приложении.
+- Подготовлена миграция supabase/migrations/20261210_distribution_consent_user_rpcs.sql с тремя функциями: record_my_distribution_consent, revoke_my_distribution_consent и my_distribution_consents. Все SECURITY DEFINER с пустым search_path; список согласий STABLE. Идентификатор пользователя всегда берётся через auth.uid(); пользовательского параметра user_id нет.
+- Запись проверяет обязательную авторизацию (SQLSTATE 28000), допустимый scope, непустой список категорий и версию документа. Отзыв обновляет только активные строки текущего пользователя и выбранного scope. Чтение возвращает историю только текущего пользователя; без auth.uid() также возвращает 28000.
+- EXECUTE отозван у PUBLIC/anon; granted authenticated и service_role. Прямые grants на private.personal_data_consents не добавлялись и не менялись. Старые административные функции этапа 1 оставлены без изменений.
+- Добавлены отдельный SQL-тест и CI-шаг: две синтетические учётные записи A/B, вызовы без сессии, проверка отсутствия user_id в сигнатуре, чтение только собственных записей, отзыв только собственного scope, grants, SECURITY DEFINER/search_path/owner и STABLE.
+- На момент записи PR/CI ещё не завершены; production-миграция не применялась, данные пользователей не читались и не изменялись. Этап 2 до зелёного CI и выката этапа 1.5 не начинался.
+- Не менялись /privacy, recovery-таблицы и Edge Function, Send Email Hook, mailer_autoconfirm и Function Secrets. SUPABASE_SERVICE_ROLE_KEY в приложение не добавлялся.
