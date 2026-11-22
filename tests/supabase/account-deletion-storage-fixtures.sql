@@ -42,6 +42,29 @@ create table public.messages (
   read_at timestamptz
 );
 
+-- Match production's INSERT behavior when updating the visible conversation order.
+create or replace function public.update_conversation_last_message()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  update public.conversations
+  set last_message_at = new.created_at
+  where id = new.conversation_id;
+  return new;
+end;
+$function$;
+
+alter function public.update_conversation_last_message() owner to postgres;
+revoke all on function public.update_conversation_last_message()
+  from public, anon, authenticated, service_role;
+
+create trigger trigger_update_conversation_last_message
+  after insert on public.messages
+  for each row execute function public.update_conversation_last_message();
+
 alter table public.profiles enable row level security;
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
