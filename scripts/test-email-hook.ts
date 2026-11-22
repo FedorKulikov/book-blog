@@ -102,7 +102,16 @@ function recoveryPayload(withUser: boolean) {
 }
 
 function payloadFor(action: string) {
-  return { user: { id: '00000000-0000-0000-0000-000000000002' }, email_data: { email_action_type: action } }
+  return {
+    user: {
+      id: '00000000-0000-0000-0000-000000000002',
+      ...(action === 'signup' ? { email: 'hook-probe@example.com' } : {}),
+    },
+    email_data: {
+      email_action_type: action,
+      ...(action === 'signup' ? { token_hash: 'synthetic_signup_hash_for_delivery_failure' } : {}),
+    },
+  }
 }
 
 async function main() {
@@ -139,10 +148,10 @@ async function main() {
   // 6. Прочие события                                              //
   // ---------------------------------------------------------------- //
   const signup = await postHook(payloadFor('signup'))
-  check('signup с недоставляемым тестовым адресом не блокирует регистрацию', signup.status === 400, `статус ${signup.status}; synthetic payload lacks email/token hash`)
+  check('signup с недоставляемым тестовым адресом не блокирует регистрацию', signup.status === 200, `статус ${signup.status}`)
 
   const notification = await postHook(payloadFor('password_changed_notification'))
-  check('уведомление подавлено', notification.status === 200, `статус ${notification.status}`)
+  check('неподдерживаемое уведомление — 501', notification.status === 501, `статус ${notification.status}`)
 
   const magic = await postHook(payloadFor('magiclink'))
   check('неподключённая доставка даёт 501, а не ложный успех', magic.status === 501, `статус ${magic.status}`)
