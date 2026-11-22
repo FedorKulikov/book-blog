@@ -26,6 +26,7 @@ function NewPostContent() {
   const [tagsInput, setTagsInput] = useState('')
   const [bookId, setBookId] = useState<string | null>(preselectedBookId)
   const [images, setImages] = useState<string[]>([])
+  const [imagesUploading, setImagesUploading] = useState(false)
   const [distributionConsent, setDistributionConsent] = useState(false)
   // Поля новостного портала (актуальны только для type === 'news')
   const [newsCategory, setNewsCategory] = useState<NewsCategory>('news')
@@ -311,7 +312,8 @@ function NewPostContent() {
               type="checkbox"
               checked={distributionConsent}
               onChange={(event) => setDistributionConsent(event.target.checked)}
-              className="mt-1 h-4 w-4 accent-wine"
+              disabled={loading || imagesUploading || images.length > 0}
+              className="mt-1 h-4 w-4 accent-wine disabled:opacity-50"
             />
             <label htmlFor="distribution-consent" className="text-sm leading-relaxed text-brown-dark">
               Я отдельно соглашаюсь на распространение персональных данных,
@@ -328,15 +330,24 @@ function NewPostContent() {
               .
             </label>
           </div>
+          {images.length > 0 && (
+            <p className="mt-2 text-xs text-brown/60">
+              Чтобы снять согласие, сначала удалите все прикреплённые фотографии кнопкой «×». Пока фото загружены в публичное хранилище, пункт согласия нельзя снять.
+            </p>
+          )}
         </div>
 
-        <ImageUploader onUploaded={setImages} enabled={distributionConsent} />
+        <ImageUploader
+          onUploaded={setImages}
+          onUploadingChange={setImagesUploading}
+          enabled={distributionConsent && !loading}
+        />
 
         {error && <p className="text-wine text-sm">Ошибка: {error}</p>}
 
         <button
           type="submit"
-          disabled={loading || !user}
+          disabled={loading || !user || imagesUploading}
           className="w-full bg-wine text-white py-2.5 rounded-full hover:bg-wine-dark disabled:opacity-50 transition-colors"
         >
           {loading ? 'Публикуем…' : 'Опубликовать'}
