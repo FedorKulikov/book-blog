@@ -1063,6 +1063,15 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     .insert({ cover_url: `https://storage.example.test/post-images/${author.id}/cover.png` })
   checkError('insert external news cover reference blocker', externalCoverError)
 
+  const { error: bookCoverError } = await admin
+    .from('books')
+    .insert({
+      title: 'Synthetic CI book',
+      cover_url: `https://storage.example.test/post-images/${author.id}/book-cover.png`,
+      created_by: author.id,
+    })
+  checkError('insert book cover reference blocker', bookCoverError)
+
   const blockers = await inspectAccountDeletionBlockers(admin, author.id)
   assert.deepEqual(
     blockers.map(blocker => blocker.code),
@@ -1076,6 +1085,7 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
       'notifications_as_actor',
       'post_image_references',
       'external_news_cover_references',
+      'book_cover_references',
     ],
     'preflight must identify every unapproved retention-sensitive data category',
   )
@@ -1091,6 +1101,7 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     ['notifications', 'actor_id'],
     ['post_images', 'url'],
     ['external_news', 'cover_url'],
+    ['books', 'cover_url'],
   ] as const) {
     const { error } = await admin.from(table).delete().eq(column, author.id)
     checkError(`clean preflight fixture ${table}`, error)
