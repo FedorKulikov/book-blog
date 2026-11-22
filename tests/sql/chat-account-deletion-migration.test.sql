@@ -144,9 +144,11 @@ begin
         'ticket_messages_block_deleting_user_writes',
         'reports_block_deleting_user_writes',
         'action_log_block_deleting_user_writes',
-        'messages_block_deleting_user_writes'
+        'messages_block_deleting_user_writes',
+        'post_images_block_deleting_user_references',
+        'external_news_block_deleting_user_references'
       )
-  ) <> 7 then
+  ) <> 9 then
     raise exception 'all retention-sensitive write-lock triggers must be enabled';
   end if;
 end;
