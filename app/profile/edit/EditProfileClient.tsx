@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import AvatarUploader from '@/app/components/AvatarUploader'
 import { ChevronLeft } from '@/app/components/icons'
-import RecoveryCodes from '@/app/components/RecoveryCodes'
 import PasskeySecurity from '@/app/components/PasskeySecurity'
 import ChangePassword from '@/app/components/ChangePassword'
 import EmailRecoverySecurity from '@/app/components/EmailRecoverySecurity'
@@ -156,7 +155,6 @@ export default function EditProfilePage() {
         <EmailRecoverySecurity />
         <PasskeySecurity />
         <ChangePassword />
-        <RecoveryCodes />
       </section>
     </main>
   )

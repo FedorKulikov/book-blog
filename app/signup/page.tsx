@@ -1,12 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import Link from 'next/link'
-import CodesReveal from '@/app/components/CodesReveal'
-import { getPostAuthPath } from '@/lib/auth-navigation'
 
 type UsernameStatus = 'idle' | 'checking' | 'free' | 'taken'
 
@@ -37,12 +34,10 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [codes, setCodes] = useState<string[] | null>(null)
-  const [recoveryUnavailable, setRecoveryUnavailable] = useState(false)
-  const [recoveryError, setRecoveryError] = useState<string | null>(null)
-  const [recoveryPassword, setRecoveryPassword] = useState('')
-  const [recoveryLoading, setRecoveryLoading] = useState(false)
-  const [acknowledgedRecoveryRisk, setAcknowledgedRecoveryRisk] = useState(false)
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(null)
+  const [resendCountdown, setResendCountdown] = useState(0)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMessage, setResendMessage] = useState<string | null>(null)
 
   // Храним результат проверки вместе с проверенным именем. Для нового
   // значения статус checking вычисляется без синхронного setState в эффекте.
@@ -58,7 +53,6 @@ export default function SignupPage() {
         ? 'checking'
         : usernameCheck.status
 
-  const router = useRouter()
 
   useEffect(() => {
     const clean = username.trim()
@@ -92,6 +86,16 @@ export default function SignupPage() {
       clearTimeout(timer)
     }
   }, [username])
+
+  useEffect(() => {
+    if (!verificationEmail || resendCountdown <= 0) return
+
+    const timer = window.setInterval(() => {
+      setResendCountdown(current => Math.max(0, current - 1))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [verificationEmail, resendCountdown])
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
@@ -130,9 +134,11 @@ export default function SignupPage() {
       return
     }
 
-    // Регистрируем пользователя
+    // Создаём аккаунт, но не выполняем автологин и не выдаём коды
+    // до подтверждения email. Пустой identities от Supabase для уже
+    // существующего адреса показываем точно так же: не раскрываем наличие.
     const { error: signUpError } = await supabase.auth.signUp({
-      email,
+      email: email.trim(),
       password,
       options: { data: { username: cleanUsername } },
     })
@@ -143,190 +149,72 @@ export default function SignupPage() {
       return
     }
 
-    // Сразу входим (так как email подтверждать не нужно)
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (signInError) {
-      setError('Регистрация прошла, но войти не удалось. ' + humanizeError(signInError.message))
-      setLoading(false)
-      return
-    }
-
-    // Резервные коды — единственный доступный пользователю способ
-    // самостоятельно восстановить пароль, поэтому ошибку нельзя скрывать.
-    try {
-      const res = await fetch('/api/recovery/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      })
-      const data = (await res.json().catch(() => ({}))) as {
-        codes?: string[]
-        saved?: number
-        error?: string
-      }
-
-      if (
-        res.ok &&
-        Array.isArray(data.codes) &&
-        data.codes.length > 0 &&
-        data.saved === data.codes.length
-      ) {
-        setCodes(data.codes)
-        setLoading(false)
-        return
-      }
-
-      setRecoveryError(
-        data.error ||
-          'Не удалось сохранить полный набор резервных кодов. Попробуйте ещё раз.',
-      )
-    } catch {
-      setRecoveryError(
-        'Не удалось связаться с сервисом резервных кодов. Проверьте соединение и повторите попытку.',
-      )
-    }
-
-    // Аккаунт уже создан и пользователь вошёл. Не отправляем его дальше
-    // молча: сначала явно сообщаем, что восстановление пока не настроено.
     setPassword('')
-    setRecoveryUnavailable(true)
+    setVerificationEmail(email.trim())
+    setResendCountdown(60)
+    setResendMessage(null)
     setLoading(false)
   }
 
-  async function retryRecoveryCodes(e: React.FormEvent) {
-    e.preventDefault()
-    setRecoveryError(null)
-    setRecoveryLoading(true)
+  async function resendSignupEmail() {
+    if (!verificationEmail || resendLoading || resendCountdown > 0) return
 
-    try {
-      const res = await fetch('/api/recovery/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: recoveryPassword }),
-      })
-      const data = (await res.json().catch(() => ({}))) as {
-        codes?: string[]
-        saved?: number
-        error?: string
-      }
+    setResendLoading(true)
+    setResendMessage(null)
+    setResendCountdown(60)
 
-      if (
-        !res.ok ||
-        !Array.isArray(data.codes) ||
-        data.codes.length === 0 ||
-        data.saved !== data.codes.length
-      ) {
-        setRecoveryError(
-          data.error ||
-            'Не удалось сохранить полный набор резервных кодов. Проверьте пароль и попробуйте ещё раз.',
-        )
-        return
-      }
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
+      email: verificationEmail,
+    })
 
-      setCodes(data.codes)
-      setRecoveryUnavailable(false)
-      setRecoveryPassword('')
-      setAcknowledgedRecoveryRisk(false)
-    } catch {
-      setRecoveryError(
-        'Не удалось связаться с сервисом резервных кодов. Проверьте соединение и повторите попытку.',
-      )
-    } finally {
-      setRecoveryLoading(false)
-    }
-  }
-
-  function finishSignup() {
-    router.push(getPostAuthPath(window.location.search))
-    router.refresh()
+    setResendMessage(
+      resendError
+        ? 'Не удалось запросить письмо. Попробуйте ещё раз позже.'
+        : 'Запрос принят. Проверьте почту и папку «Спам».',
+    )
+    setResendLoading(false)
   }
 
   const submitDisabled =
     loading || usernameStatus === 'taken' || usernameStatus === 'checking'
 
-  if (codes) {
+  if (verificationEmail) {
     return (
       <main className="p-4 md:p-8 flex justify-center">
-        <div className="w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-2 text-emerald-dark">
-            Аккаунт создан
+        <div className="w-full max-w-md text-center">
+          <h1 className="text-3xl font-bold mb-4 text-emerald-dark">
+            Подтвердите адрес
           </h1>
-          <p className="text-sm text-brown/70 mb-4">
-            Это единственный момент, когда резервные коды видны. Если потеряете
-            пароль, доступ можно будет вернуть по имени пользователя и одному
-            из этих кодов — почта для этого не нужна.
+          <p className="text-sm text-brown/75 mb-2">
+            Мы отправили письмо на <strong>{verificationEmail}</strong>. Перейдите по ссылке из письма, чтобы активировать аккаунт.
           </p>
-          <CodesReveal
-            codes={codes}
-            doneLabel="Продолжить"
-            onDone={finishSignup}
-          />
-        </div>
-      </main>
-    )
-  }
-
-  if (recoveryUnavailable) {
-    return (
-      <main className="p-4 md:p-8 flex justify-center">
-        <div className="w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-3 text-wine">
-            Аккаунт создан, но резервные коды не выданы
-          </h1>
-          <p className="text-sm text-brown/75 mb-4">
-            Вы уже вошли в аккаунт. Сейчас самостоятельное восстановление
-            пароля не настроено, пока не удастся сохранить резервные коды.
-            Попробуйте повторить выдачу сейчас.
+          <p className="text-sm text-brown/60 mb-6">
+            Если письмо не пришло, проверьте папку «Спам» или запросите повторную отправку.
           </p>
-
-          <form onSubmit={retryRecoveryCodes} className="space-y-3">
-            <label htmlFor="recovery-retry-password" className="block text-sm font-medium text-brown-dark">
-              Подтвердите пароль
-            </label>
-            <input
-              id="recovery-retry-password"
-              type="password"
-              value={recoveryPassword}
-              onChange={e => setRecoveryPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-              className="ym-disable-keys w-full border border-emerald-dark/20 rounded px-3 py-2 bg-cream-warm/50"
-              placeholder="Пароль, который вы только что задали"
-            />
-            {recoveryError && <p role="alert" className="text-sm text-wine">{recoveryError}</p>}
-            <button
-              type="submit"
-              disabled={recoveryLoading}
-              className="w-full bg-emerald-mid text-cream py-2 rounded hover:bg-emerald-dark disabled:opacity-50"
-            >
-              {recoveryLoading ? 'Пробуем ещё раз…' : 'Повторить выдачу кодов'}
-            </button>
-          </form>
-
-          <label className="mt-5 flex items-start gap-2 text-sm text-brown/70">
-            <input
-              type="checkbox"
-              checked={acknowledgedRecoveryRisk}
-              onChange={e => setAcknowledgedRecoveryRisk(e.target.checked)}
-              className="mt-1"
-            />
-            <span>
-              Я понимаю, что без сохранённого резервного кода не смогу
-              самостоятельно восстановить пароль, если забуду его.
-            </span>
-          </label>
           <button
             type="button"
-            disabled={!acknowledgedRecoveryRisk}
-            onClick={finishSignup}
-            className="mt-4 w-full rounded-full border border-emerald-dark/20 px-5 py-2.5 text-sm text-brown-dark disabled:opacity-40"
+            onClick={() => void resendSignupEmail()}
+            disabled={resendLoading || resendCountdown > 0}
+            className="w-full bg-emerald-mid text-cream py-2 rounded hover:bg-emerald-dark disabled:opacity-50 transition-colors"
           >
-            Продолжить без кодов
+            {resendLoading
+              ? 'Отправляем…'
+              : resendCountdown > 0
+                ? `Отправить письмо ещё раз (${resendCountdown} сек.)`
+                : 'Отправить письмо ещё раз'}
           </button>
+          {resendMessage && (
+            <p role="status" className="mt-3 text-sm text-brown/70">
+              {resendMessage}
+            </p>
+          )}
+          <p className="mt-6 text-sm text-brown/70">
+            Уже подтвердили адрес?{' '}
+            <Link href="/login" className="text-wine hover:underline">
+              Войти
+            </Link>
+          </p>
         </div>
       </main>
     )

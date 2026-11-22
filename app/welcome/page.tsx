@@ -38,7 +38,10 @@ export default function WelcomePage() {
   const [loading, setLoading] = useState(false)
 
   async function finish() {
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     if (user) {
       await supabase
         .from('profiles')

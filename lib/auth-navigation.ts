@@ -43,7 +43,6 @@ export function getPostAuthPath(search: string, fallback = '/welcome'): string {
     '/login',
     '/signup',
     '/forgot-password',
-    '/recover-account',
   ])
 
   // После успешной авторизации нельзя возвращать пользователя на экран,

@@ -26,7 +26,19 @@ function ConfirmContent() {
   const next = safeNext === '/' ? '/welcome' : safeNext
   const isRecovery = next === '/auth/reset'
   const tokenHash = searchParams.get('token_hash')
-  const type = searchParams.get('type') || 'email'
+  const requestedType = searchParams.get('type') || 'email'
+  // The email link uses the product-facing type=signup. Supabase's current
+  // token_hash verification API expects type=email for signup confirmations.
+  const type: EmailOtpType | null =
+    requestedType === 'signup'
+      ? 'email'
+      : requestedType === 'email_change'
+        ? 'email_change'
+        : requestedType === 'email'
+          ? 'email'
+          : requestedType === 'recovery'
+            ? 'recovery'
+            : null
 
   useEffect(() => {
     let alive = true
@@ -38,8 +50,14 @@ function ConfirmContent() {
 
       // Do not consume token_hash on GET. Email scanners often prefetch links;
       // verification happens only after the user explicitly presses the button.
-      if (tokenHash) {
+      if (tokenHash && type) {
         setStatus('pending')
+        return
+      }
+
+      if (tokenHash && !type) {
+        setErrorMsg('Тип ссылки подтверждения не поддерживается. Запросите новое письмо. Если не приходит письмо или нет доступа к ящику, напишите на monikla1312@gmail.com.')
+        setStatus('error')
         return
       }
 
@@ -61,7 +79,7 @@ function ConfirmContent() {
 
       setErrorMsg(
         isRecovery
-          ? 'Ссылка недействительна или устарела. Используйте резервный код либо запросите новую ссылку.'
+          ? 'Ссылка недействительна или устарела. Запросите новое письмо на странице «Забыли пароль?». Если не приходит письмо или нет доступа к ящику, напишите на monikla1312@gmail.com.'
           : 'Не удалось восстановить сессию. Возможно, ссылка устарела — попробуйте подтвердить email ещё раз.',
       )
       setStatus('error')
@@ -73,10 +91,10 @@ function ConfirmContent() {
       alive = false
       if (timer) window.clearTimeout(timer)
     }
-  }, [searchParams, router, next, isRecovery, tokenHash])
+  }, [searchParams, router, next, isRecovery, tokenHash, type])
 
   async function verifyToken() {
-    if (!tokenHash || confirming) return
+    if (!tokenHash || !type || confirming) return
 
     setConfirming(true)
     setErrorMsg('')
@@ -84,7 +102,7 @@ function ConfirmContent() {
     try {
       const { error } = await supabase.auth.verifyOtp({
         token_hash: tokenHash,
-        type: type as EmailOtpType,
+        type,
       })
 
       if (error) {
@@ -192,10 +210,10 @@ function ConfirmContent() {
             </h1>
             <p className="text-brown-dark/70 mb-6">{errorMsg}</p>
             <Link
-              href={isRecovery ? '/recover-account' : '/login'}
+              href={isRecovery ? '/forgot-password' : '/login'}
               className="inline-block bg-wine hover:bg-wine-dark text-white px-5 py-2.5 rounded-full text-sm transition-colors"
             >
-              {isRecovery ? 'Восстановить по резервному коду' : 'Попробовать снова'}
+              {isRecovery ? 'Запросить новое письмо' : 'Попробовать снова'}
             </Link>
           </>
         )}

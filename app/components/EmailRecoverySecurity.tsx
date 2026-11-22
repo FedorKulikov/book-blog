@@ -99,7 +99,7 @@ export default function EmailRecoverySecurity() {
 
       {status && !status.configured && (
         <p className="text-sm text-wine">
-          Подтверждение email ещё не настроено на сервере. Резервные коды пока остаются основным способом восстановления.
+          Подтверждение email для восстановления сейчас не настроено. Если не получается получить письмо или нет доступа к ящику, напишите на monikla1312@gmail.com.
         </p>
       )}
 

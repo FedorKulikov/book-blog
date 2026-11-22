@@ -1,7 +1,7 @@
 // scripts/test-email-hook.ts
 //
-// Проверка Supabase Send Email Hook: подпись Standard Webhooks, подавление
-// recovery, отсутствие фиктивного успеха и неизменность регистрации/входа.
+// Проверка Supabase Send Email Hook: подпись Standard Webhooks, ответы Auth actions
+// и неизменность регистрации/входа без зависимости от доставки email.
 //
 // Запускается против поднятого сервера. Секрет хука передаётся через
 // AUTH_EMAIL_HOOK_SECRET — тот же, с которым стартовал сервер.
@@ -102,21 +102,24 @@ function recoveryPayload(withUser: boolean) {
 }
 
 function payloadFor(action: string) {
-  return { user: { id: '00000000-0000-0000-0000-000000000002' }, email_data: { email_action_type: action } }
+  return {
+    user: {
+      id: '00000000-0000-0000-0000-000000000002',
+      ...(action === 'signup' ? { email: 'hook-probe@example.com' } : {}),
+    },
+    email_data: {
+      email_action_type: action,
+      ...(action === 'signup' ? { token_hash: 'synthetic_signup_hash_for_delivery_failure' } : {}),
+    },
+  }
 }
 
 async function main() {
   // ---------------------------------------------------------------- //
-  // 1–4. Подпись и recovery                                        //
+  // 1–4. Подпись и recovery suppression on the Next.js endpoint   //
   // ---------------------------------------------------------------- //
   const valid = await postHook(recoveryPayload(true))
-  check('валидная подпись принимается', valid.status === 200, `статус ${valid.status}`)
-  // Контракт Supabase: успех — пустой HTTP 200 без тела
-  check(
-    'recovery подавлен без выдачи токена',
-    Object.keys(valid.body).length === 0 && !('token' in valid.body),
-    `поля: ${Object.keys(valid.body).join(',') || 'нет'}`,
-  )
+  check('Next.js endpoint suppresses recovery without exposing tokens', valid.status === 200 && Object.keys(valid.body).length === 0, `статус ${valid.status}`)
 
   const badSig = await postHook(recoveryPayload(true), { signature: 'v1,AAAA' })
   check('невалидная подпись отклоняется', badSig.status === 401, `статус ${badSig.status}`)
@@ -145,10 +148,10 @@ async function main() {
   // 6. Прочие события                                              //
   // ---------------------------------------------------------------- //
   const signup = await postHook(payloadFor('signup'))
-  check('signup подавлен без ошибки', signup.status === 200, `статус ${signup.status}`)
+  check('signup с недоставляемым тестовым адресом не блокирует регистрацию', signup.status === 200, `статус ${signup.status}`)
 
   const notification = await postHook(payloadFor('password_changed_notification'))
-  check('уведомление подавлено', notification.status === 200, `статус ${notification.status}`)
+  check('уведомление подавлено Next.js endpoint', notification.status === 200, `статус ${notification.status}`)
 
   const magic = await postHook(payloadFor('magiclink'))
   check('неподключённая доставка даёт 501, а не ложный успех', magic.status === 501, `статус ${magic.status}`)
@@ -187,7 +190,19 @@ async function main() {
     if (shortBody.user?.id) createdIds.push(shortBody.user.id)
     check('Auth rejects passwords shorter than eight characters', shortSignup.status >= 400, `status ${shortSignup.status}`)
 
-    const signupRes = await fetch(`${SUPA_URL}/auth/v1/signup`, {
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    })
+    if (createError) throw new Error(`admin createUser: ${createError.message}`)
+    const userId = created.user?.id
+    if (!userId) throw new Error('admin createUser: no user id')
+    createdIds.push(userId)
+
+    check('admin creates a confirmed test user without email delivery', true)
+
+    const signupRes = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: { apikey: ANON, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -196,12 +211,11 @@ async function main() {
       access_token?: string
       user?: { id?: string }
     }
-    if (signupBody.user?.id) createdIds.push(signupBody.user.id)
     const hasSession = Boolean(signupBody.access_token)
     check(
-      'registration with the exact eight-character minimum works',
-      signupRes.status === 200 && hasSession,
-      `status ${signupRes.status}, session ${hasSession}, fields: ${Object.keys(signupBody).join(',')}`,
+      'login for the admin-created confirmed user works',
+      signupRes.status === 200 && hasSession && signupBody.user?.id === userId,
+      `status ${signupRes.status}, session ${hasSession}`,
     )
 
     const loginRes = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {

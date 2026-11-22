@@ -1,0 +1,135 @@
+name: Deploy Supabase Edge Functions (main)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/edge-deploy.yml'
+      - 'scripts/verify-edge-hook-secret.ts'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edge-deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      REF: tbqjyaxbymntdqzldrjz
+      BASE: https://tbqjyaxbymntdqzldrjz.supabase.co/functions/v1
+
+    steps:
+      - name: Check required GitHub secrets without printing values
+        env:
+          PAT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
+        run: |
+          set +x
+          set -euo pipefail
+
+          check() {
+            if [ -z "$2" ]; then
+              echo "missing_github_secret: $1"
+              exit 1
+            fi
+          }
+
+          check SUPABASE_ACCESS_TOKEN "$PAT"
+          check AUTH_EMAIL_HOOK_SECRET "$HOOK"
+
+          if [[ ! "$HOOK" =~ ^v1,whsec_[A-Za-z0-9+/]+={0,2}$ ]]; then
+            echo "invalid_secret_format: AUTH_EMAIL_HOOK_SECRET"
+            exit 1
+          fi
+
+          decoded_bytes="$(printf '%s' "${HOOK#v1,whsec_}" | base64 --decode | wc -c)"
+          if [[ "$decoded_bytes" -ne 32 ]]; then
+            echo "invalid_secret_length: AUTH_EMAIL_HOOK_SECRET"
+            exit 1
+          fi
+
+          echo "github_secret_preflight: passed"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: "Read-only preflight: Function Secrets and existing Hook signature"
+        env:
+          PAT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
+        run: |
+          set +x
+          set -euo pipefail
+
+          secret_names="$(SUPABASE_ACCESS_TOKEN="$PAT" npx --yes supabase@3.2.0 secrets list --project-ref="$REF" 2>/dev/null)" || {
+            echo "function_secret_inventory_failed"
+            exit 1
+          }
+
+          for name in AUTH_EMAIL_HOOK_SECRET RESEND_API_KEY RECOVERY_CODE_SECRET; do
+            if ! grep -Fq "$name" <<< "$secret_names"; then
+              echo "missing_function_secret: $name"
+              exit 1
+            fi
+          done
+          unset secret_names
+
+          export EDGE_FUNCTIONS_URL="$BASE"
+          export AUTH_EMAIL_HOOK_SECRET="$HOOK"
+          npx --yes tsx scripts/verify-edge-hook-secret.ts
+
+      - name: Deploy Resend mailer first, then recovery and Auth Hook
+        env:
+          PAT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set +x
+          set -euo pipefail
+
+          SUPABASE_ACCESS_TOKEN="$PAT" npx --yes supabase@3.2.0 functions deploy resend-mailer --project-ref="$REF" --use-api --yes
+          SUPABASE_ACCESS_TOKEN="$PAT" npx --yes supabase@3.2.0 functions deploy recovery --project-ref="$REF" --use-api --yes
+          SUPABASE_ACCESS_TOKEN="$PAT" npx --yes supabase@3.2.0 functions deploy auth-email-hook --project-ref="$REF" --use-api --yes
+
+      - name: Set public site origin and verify the deployed Hook
+        env:
+          PAT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
+        run: |
+          set +x
+          set -euo pipefail
+
+          # Do not rewrite or rotate AUTH_EMAIL_HOOK_SECRET or RECOVERY_CODE_SECRET.
+          # The read-only preflight has already proven that the stable GitHub
+          # value matches the existing Function Secret used by the deployed Hook.
+          SUPABASE_ACCESS_TOKEN="$PAT" npx --yes supabase@3.2.0 secrets set "AUTH_EMAIL_SITE_URL=https://bukleb.ru" --project-ref="$REF" --yes
+
+          export EDGE_FUNCTIONS_URL="$BASE"
+          export AUTH_EMAIL_HOOK_SECRET="$HOOK"
+          npx --yes tsx scripts/verify-edge-hook-secret.ts
+
+          timeout_opts="--connect-timeout 10 --max-time 30"
+
+          recovery_unsigned="$(curl -sS $timeout_opts -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/recovery?op=status")"
+          echo "recovery_status_without_user_jwt_http: $recovery_unsigned"
+          [ "$recovery_unsigned" = "401" ] || { echo "unexpected_recovery_auth_status"; exit 1; }
+
+          hook_unsigned="$(curl -sS $timeout_opts -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/auth-email-hook")"
+          echo "hook_without_signature_http: $hook_unsigned"
+          [ "$hook_unsigned" = "401" ] || { echo "unexpected_hook_auth_status"; exit 1; }
+
+          mailer_unsigned="$(curl -sS $timeout_opts -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' "$BASE/resend-mailer")"
+          echo "mailer_without_apikey_http: $mailer_unsigned"
+          [ "$mailer_unsigned" = "401" ] || { echo "unexpected_mailer_auth_status"; exit 1; }
