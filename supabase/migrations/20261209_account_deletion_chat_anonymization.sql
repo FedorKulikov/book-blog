@@ -113,6 +113,11 @@ create trigger profiles_anonymize_before_delete
 -- functions are only executable by service_role; callers cannot choose another
 -- user's ID because the route supplies the verified Auth user id.
 create schema if not exists private;
+
+-- The SECURITY DEFINER lock RPCs run as postgres, regardless of the role
+-- applying the migration. Make the private schema and lock table owned by the
+-- same trusted role so their access does not depend on the migration runner.
+alter schema private owner to postgres;
 revoke all on schema private from public, anon, authenticated;
 grant usage on schema private to service_role;
 
@@ -122,6 +127,7 @@ create table if not exists private.account_deletion_locks (
   requested_at timestamptz not null default now()
 );
 
+alter table private.account_deletion_locks owner to postgres;
 alter table private.account_deletion_locks enable row level security;
 revoke all on private.account_deletion_locks from public, anon, authenticated, service_role;
 
@@ -567,6 +573,24 @@ begin
      or has_function_privilege('authenticated', v_function, 'EXECUTE')
      or has_function_privilege('service_role', v_function, 'EXECUTE') then
     raise exception 'profile anonymization trigger function must not be exposed as an RPC';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_namespace n
+    join pg_roles r on r.oid = n.nspowner
+    where n.nspname = 'private'
+      and r.rolname = 'postgres'
+  ) or not exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_roles r on r.oid = c.relowner
+    where n.nspname = 'private'
+      and c.relname = 'account_deletion_locks'
+      and r.rolname = 'postgres'
+  ) then
+    raise exception 'private deletion lock schema and table must be owned by postgres';
   end if;
 
   if has_function_privilege('anon', 'public.begin_account_deletion(uuid, text)', 'EXECUTE')
