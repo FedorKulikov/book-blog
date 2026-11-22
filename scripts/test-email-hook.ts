@@ -116,10 +116,10 @@ function payloadFor(action: string) {
 
 async function main() {
   // ---------------------------------------------------------------- //
-  // 1–4. Подпись и recovery payload validation                    //
+  // 1–4. Подпись и recovery suppression on the Next.js endpoint   //
   // ---------------------------------------------------------------- //
   const valid = await postHook(recoveryPayload(true))
-  check('recovery без user.email отклоняется до отправки', valid.status === 400, `статус ${valid.status}`)
+  check('Next.js endpoint suppresses recovery without exposing tokens', valid.status === 200 && Object.keys(valid.body).length === 0, `статус ${valid.status}`)
 
   const badSig = await postHook(recoveryPayload(true), { signature: 'v1,AAAA' })
   check('невалидная подпись отклоняется', badSig.status === 401, `статус ${badSig.status}`)
@@ -151,7 +151,7 @@ async function main() {
   check('signup с недоставляемым тестовым адресом не блокирует регистрацию', signup.status === 200, `статус ${signup.status}`)
 
   const notification = await postHook(payloadFor('password_changed_notification'))
-  check('неподдерживаемое уведомление — 501', notification.status === 501, `статус ${notification.status}`)
+  check('уведомление подавлено Next.js endpoint', notification.status === 200, `статус ${notification.status}`)
 
   const magic = await postHook(payloadFor('magiclink'))
   check('неподключённая доставка даёт 501, а не ложный успех', magic.status === 501, `статус ${magic.status}`)
