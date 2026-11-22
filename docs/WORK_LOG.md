@@ -460,3 +460,18 @@
 **Что не получилось локально:** в рабочем контейнере нет Supabase CLI и psql; попытка клонировать репозиторий для создания миграции через CLI не прошла из-за недоступности GitHub DNS. Поэтому локальный SQL-прогон не заявляется; его должен выполнить выделенный CI job на чистой PostgreSQL 17.
 
 **Ограничения:** production-миграция не применялась. Этап 1 не меняет приложение и не выдаёт согласие существующим пользователям. Не тронуты таблицы восстановления, Edge Function recovery, Send Email Hook, mailer_autoconfirm и секреты.
+
+
+## 2026-11-23 — B12, этап 1: production rollout
+
+**Продолжение после PR #76:** после слияния миграция `20261209_personal_data_consents.sql` успешно применена к активному production-проекту book-blog (PostgreSQL 17).
+
+**Проверено:** таблица и все заданные поля созданы; FK, RLS и индекс `(user_id, scope)` присутствуют. Обе функции — `SECURITY DEFINER`, owner `postgres`, пустой `search_path`. `EXECUTE` есть только у `service_role`; `anon` и `authenticated` не имеют доступа к private schema, таблице или функциям. Прямых прав на таблицу нет и у `service_role`.
+
+**Данные:** после выката таблица содержит 0 строк. Ни одного production-согласия и никаких пользовательских записей не создавалось/не изменялось.
+
+**История применения:** Supabase migration history содержит `personal_data_consents`. Для штатного workflow `apply-migrations` добавлена запись в `ops.applied_migrations` с SHA-256 файла `92c594c5539429f985c3f52cab51e0eb56d207429caab27f477eeee7787cd7b9` и `applied_by = postgres`, чтобы следующий запуск не применил миграцию повторно.
+
+**Security Advisor:** INFO о таблице private без RLS policies ожидаем и соответствует default-deny плюс отсутствию прямых grants. Предупреждения по существующим view-counter SECURITY DEFINER функциям и настройке leaked password protection не относятся к этой миграции и не изменялись.
+
+**Границы:** восстановление, Edge Function `recovery`, Send Email Hook, `mailer_autoconfirm`, секреты, приложение и политика не изменялись.
