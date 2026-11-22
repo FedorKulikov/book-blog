@@ -156,7 +156,7 @@ export default function ConversationList({
 
       const { data: messagesData } = await supabase
         .from('messages')
-        .select('conversation_id, text, image_url, audio_url, sender_id, created_at, read_at')
+        .select('conversation_id, text, image_url, audio_url, sender_id, sender_label, created_at, read_at')
         .in('conversation_id', convIds)
         .order('created_at', { ascending: false })
 
