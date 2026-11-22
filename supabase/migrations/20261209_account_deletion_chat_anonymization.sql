@@ -109,6 +109,133 @@ create trigger profiles_anonymize_before_delete
 -- Authorization is therefore based on the message-to-conversation relation.
 -- The EXISTS query is also constrained by the public.messages and
 -- public.conversations RLS policies for the current authenticated user.
+-- Lock content writes while a deletion request is running. The service
+-- functions are only executable by service_role; callers cannot choose another
+-- user's ID because the route supplies the verified Auth user id.
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+grant usage on schema private to service_role;
+
+create table if not exists private.account_deletion_locks (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  requested_at timestamptz not null default now()
+);
+
+alter table private.account_deletion_locks enable row level security;
+revoke all on private.account_deletion_locks from public, anon, authenticated, service_role;
+
+create or replace function public.begin_account_deletion(p_user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  insert into private.account_deletion_locks (user_id)
+  values (p_user_id)
+  on conflict (user_id) do nothing;
+  return true;
+end;
+$function$;
+
+create or replace function public.end_account_deletion(p_user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  delete from private.account_deletion_locks
+   where user_id = p_user_id;
+  return true;
+end;
+$function$;
+
+alter function public.begin_account_deletion(uuid) owner to postgres;
+alter function public.end_account_deletion(uuid) owner to postgres;
+revoke all on function public.begin_account_deletion(uuid)
+  from public, anon, authenticated, service_role;
+revoke all on function public.end_account_deletion(uuid)
+  from public, anon, authenticated, service_role;
+grant execute on function public.begin_account_deletion(uuid) to service_role;
+grant execute on function public.end_account_deletion(uuid) to service_role;
+
+-- The trigger checks only writes performed by the user whose Auth UID matches
+-- the row's actor field. Staff updates to another user's ticket/report are not
+-- blocked. SECURITY DEFINER is used only to read the private lock table.
+create or replace function public.prevent_writes_for_deleting_account()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_uid uuid := auth.uid();
+  v_actor_id uuid;
+begin
+  if v_uid is null then
+    return new;
+  end if;
+
+  v_actor_id := coalesce(
+    nullif(to_jsonb(new) ->> 'user_id', '')::uuid,
+    nullif(to_jsonb(new) ->> 'sender_id', '')::uuid,
+    nullif(to_jsonb(new) ->> 'reporter_id', '')::uuid
+  );
+
+  if v_actor_id = v_uid
+     and exists (
+       select 1
+       from private.account_deletion_locks l
+       where l.user_id = v_uid
+     ) then
+    raise exception 'account deletion is in progress'
+      using errcode = '55000';
+  end if;
+
+  return new;
+end;
+$function$;
+
+alter function public.prevent_writes_for_deleting_account() owner to postgres;
+revoke all on function public.prevent_writes_for_deleting_account()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists posts_block_deleting_user_writes on public.posts;
+create trigger posts_block_deleting_user_writes
+  before insert or update on public.posts
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists comments_block_deleting_user_writes on public.comments;
+create trigger comments_block_deleting_user_writes
+  before insert or update on public.comments
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists tickets_block_deleting_user_writes on public.tickets;
+create trigger tickets_block_deleting_user_writes
+  before insert or update on public.tickets
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists ticket_messages_block_deleting_user_writes on public.ticket_messages;
+create trigger ticket_messages_block_deleting_user_writes
+  before insert or update on public.ticket_messages
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists reports_block_deleting_user_writes on public.reports;
+create trigger reports_block_deleting_user_writes
+  before insert or update on public.reports
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists action_log_block_deleting_user_writes on public.action_log;
+create trigger action_log_block_deleting_user_writes
+  before insert or update on public.action_log
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists messages_block_deleting_user_writes on public.messages;
+create trigger messages_block_deleting_user_writes
+  before insert or update on public.messages
+  for each row execute function public.prevent_writes_for_deleting_account();
+
 -- A conversation with a deleted counterpart remains readable as history,
 -- but the surviving member must not be able to continue sending into it.
 drop policy if exists messages_insert_own on public.messages;
@@ -222,6 +349,24 @@ begin
      or has_function_privilege('authenticated', v_function, 'EXECUTE')
      or has_function_privilege('service_role', v_function, 'EXECUTE') then
     raise exception 'profile anonymization trigger function must not be exposed as an RPC';
+  end if;
+
+  if has_function_privilege('anon', 'public.begin_account_deletion(uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.begin_account_deletion(uuid)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.begin_account_deletion(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.end_account_deletion(uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.end_account_deletion(uuid)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.end_account_deletion(uuid)', 'EXECUTE') then
+    raise exception 'account deletion lock RPCs must be restricted to service_role';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.messages'::regclass
+      and tgname = 'messages_block_deleting_user_writes'
+      and not tgisinternal and tgenabled <> 'D'
+  ) then
+    raise exception 'messages write-lock trigger is missing or disabled';
   end if;
 
   if not exists (
