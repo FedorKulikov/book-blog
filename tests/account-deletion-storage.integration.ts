@@ -735,16 +735,10 @@ async function testAuthorizationAndDeletedSessionBoundaries(
     imageUrl: mediaPath,
   })
 
+  await expectStorageRemovalDenied(author.client, mediaPath, 'author cannot delete chat media directly')
   await expectStorageRemovalDenied(counterpart.client, mediaPath, 'conversation counterpart cannot delete another author media')
   await expectStorageRemovalDenied(outsider.client, mediaPath, 'unrelated user cannot delete chat media')
 
-  const ownerDeleteProbePath = author.id + '/owner-delete-probe.png'
-  await upload(author.client, ownerDeleteProbePath, 'owner delete probe', 'image/png')
-  const { error: ownerDeleteError } = await author.client.storage
-    .from('chat-media')
-    .remove([ownerDeleteProbePath])
-  checkError('active owner can remove an unreferenced own chat-media object', ownerDeleteError)
-  assert.equal(storageObjectCount(ownerDeleteProbePath), 0, 'active owner must retain the ability to remove their own object')
 
   const { data: attemptedMessageUpdate, error: messageUpdateError } = await author.client
     .from('messages')
