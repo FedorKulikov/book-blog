@@ -977,6 +977,222 @@ async function testProfileDeletionAnonymizesPreservedRecords(counterpart: TestUs
   console.log('[account-deletion-storage] profile BEFORE DELETE anonymization hook passed')
 }
 
+async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
+  console.log('[account-deletion-storage] testing retention preflight and deletion write lock')
+
+  const author = await createTestUser('preflight-author')
+  const counterpart = await createTestUser('preflight-counterpart')
+  const conversationId = await createConversation(author.id, counterpart.id)
+
+  const initialBlockers = await inspectAccountDeletionBlockers(admin, author.id)
+  assert.deepEqual(initialBlockers, [], 'synthetic account without retained records must pass preflight')
+
+  await beginAccountDeletion(admin, author.id)
+  const blockedInsert = await author.client
+    .from('messages')
+    .insert({
+      conversation_id: conversationId,
+      sender_id: author.id,
+      text: 'This write must be blocked while deletion is in progress',
+    })
+  assert.ok(blockedInsert.error, 'authenticated account writes must stop while deletion lock is active')
+  await endAccountDeletion(admin, author.id)
+
+  const messageId = await createMessage({
+    client: author.client,
+    conversationId,
+    senderId: author.id,
+    senderLabel: 'Preflight Author',
+    text: 'This write succeeds after lock release',
+  })
+  assert.ok(messageId, 'unlocking the account must restore normal writes')
+
+  const { error: postError } = await admin.from('posts').insert({ user_id: author.id })
+  checkError('insert post blocker', postError)
+  const { error: commentError } = await admin.from('comments').insert({ user_id: author.id })
+  checkError('insert comment blocker', commentError)
+  const { error: ticketError } = await admin.from('tickets').insert({ user_id: author.id })
+  checkError('insert ticket blocker', ticketError)
+  const { error: ticketMessageError } = await admin
+    .from('ticket_messages')
+    .insert({ sender_id: author.id })
+  checkError('insert ticket message blocker', ticketMessageError)
+  const { error: reportError } = await admin.from('reports').insert({ reporter_id: author.id })
+  checkError('insert report blocker', reportError)
+  const { error: actionLogError } = await admin.from('action_log').insert({ user_id: author.id })
+  checkError('insert action log blocker', actionLogError)
+  const { error: notificationError } = await admin
+    .from('notifications')
+    .insert({ user_id: counterpart.id, actor_id: author.id })
+  checkError('insert notification actor blocker', notificationError)
+
+  const blockers = await inspectAccountDeletionBlockers(admin, author.id)
+  assert.deepEqual(
+    blockers.map(blocker => blocker.code),
+    [
+      'posts',
+      'comments',
+      'tickets',
+      'ticket_messages',
+      'reports',
+      'action_log',
+      'notifications_as_actor',
+    ],
+    'preflight must identify every unapproved retention-sensitive data category',
+  )
+  assert.ok(blockers.every(blocker => blocker.count === 1), 'preflight must return aggregate counts only')
+
+  for (const [table, column] of [
+    ['posts', 'user_id'],
+    ['comments', 'user_id'],
+    ['tickets', 'user_id'],
+    ['ticket_messages', 'sender_id'],
+    ['reports', 'reporter_id'],
+    ['action_log', 'user_id'],
+    ['notifications', 'actor_id'],
+  ] as const) {
+    const { error } = await admin.from(table).delete().eq(column, author.id)
+    checkError(`clean preflight fixture ${table}`, error)
+  }
+
+  assert.deepEqual(
+    await inspectAccountDeletionBlockers(admin, author.id),
+    [],
+    'preflight must clear after all retention blockers are removed',
+  )
+
+  await admin.from('conversations').delete().eq('id', conversationId)
+  await deleteAuthUser(author.id, 'preflight-author')
+  await deleteAuthUser(counterpart.id, 'preflight-counterpart')
+
+  console.log('[account-deletion-storage] retention preflight and write lock passed')
+}
+
+
+async function testAccountDeletionServicePreserveMode(): Promise<void> {
+  console.log('[account-deletion-storage] testing the complete server-side preserve deletion flow')
+
+  const author = await createTestUser('service-preserve-author')
+  const counterpart = await createTestUser('service-preserve-counterpart')
+  const outsider = await createTestUser('service-preserve-outsider')
+  const conversationId = await createConversation(author.id, counterpart.id)
+
+  const photoPath = `${author.id}/service-preserve-photo.png`
+  const audioPath = `${author.id}/service-preserve-audio.webm`
+  const avatarPath = `${author.id}/avatar.png`
+  const postImagePath = `${author.id}/post-image.png`
+
+  await upload(author.client, photoPath, 'service preserve photo', 'image/png')
+  await upload(author.client, audioPath, 'service preserve audio', 'audio/webm')
+  await uploadToBucket(author.client, 'avatars', avatarPath, 'service preserve avatar', 'image/png')
+  await uploadToBucket(author.client, 'post-images', postImagePath, 'service preserve post image', 'image/png')
+
+  const messageId = await createMessage({
+    client: author.client,
+    conversationId,
+    senderId: author.id,
+    senderLabel: 'Service Preserve Author',
+    text: 'This message and both attachments must remain for the counterpart',
+    imageUrl: photoPath,
+    audioUrl: audioPath,
+  })
+
+  await beginAccountDeletion(admin, author.id)
+  assert.deepEqual(await inspectAccountDeletionBlockers(admin, author.id), [])
+  await executeAccountDeletion(admin, author.id, 'preserve')
+
+  const { data: deletedProfile, error: deletedProfileError } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('id', author.id)
+    .maybeSingle()
+  checkError('verify complete service deletion removed the profile', deletedProfileError)
+  assert.equal(deletedProfile, null, 'service deletion must remove the Auth-linked profile')
+
+  const { data: retainedMessages, error: retainedMessagesError } = await counterpart.client
+    .from('messages')
+    .select('id, sender_id, sender_label, image_url, audio_url')
+    .eq('conversation_id', conversationId)
+  checkError('read message retained by complete service deletion', retainedMessagesError)
+  assert.equal(retainedMessages?.length, 1, 'default deletion must keep the counterpart conversation')
+  assert.equal(retainedMessages?.[0]?.id, messageId)
+  assert.equal(retainedMessages?.[0]?.sender_id, null)
+  assert.equal(retainedMessages?.[0]?.sender_label, 'Удалённый пользователь')
+
+  const retainedPhoto = retainedMessages?.[0]?.image_url as string
+  const retainedAudio = retainedMessages?.[0]?.audio_url as string
+  assert.ok(retainedPhoto.startsWith('retained/'), 'photo must use a neutral path')
+  assert.ok(retainedAudio.startsWith('retained/'), 'audio must use a neutral path')
+  assert.equal(storageOwner(retainedPhoto), '<null>', 'retained photo must not remain owned by the deleted author')
+  assert.equal(storageOwner(retainedAudio), '<null>', 'retained audio must not remain owned by the deleted author')
+
+  assert.equal(storageObjectCount(photoPath), 0, 'original photo must be removed after DB references move')
+  assert.equal(storageObjectCount(audioPath), 0, 'original audio must be removed after DB references move')
+  assert.equal(storageObjectCountInBucket('avatars', avatarPath), 0, 'the deleting account avatar must be removed')
+  assert.equal(storageObjectCountInBucket('post-images', postImagePath), 0, 'UID-prefixed post images must be removed after the retention preflight passes')
+
+  await expectDownload(counterpart.client, retainedPhoto, true, 'counterpart reads neutral retained photo')
+  await expectDownload(counterpart.client, retainedAudio, true, 'counterpart reads neutral retained audio')
+  await expectDownload(outsider.client, retainedPhoto, false, 'outsider cannot read neutral retained photo')
+  await expectDownload(outsider.client, retainedAudio, false, 'outsider cannot read neutral retained audio')
+
+  await deleteAuthUser(counterpart.id, 'service-preserve-counterpart')
+  await deleteAuthUser(outsider.id, 'service-preserve-outsider')
+
+  console.log('[account-deletion-storage] complete server-side preserve deletion flow passed')
+}
+
+
+async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> {
+  console.log('[account-deletion-storage] testing complete server-side own-message deletion mode')
+
+  const author = await createTestUser('service-remove-author')
+  const counterpart = await createTestUser('service-remove-counterpart')
+  const conversationId = await createConversation(author.id, counterpart.id)
+  const sharedPath = `${author.id}/shared-owner-photo.png`
+  await upload(author.client, sharedPath, 'shared synthetic media', 'image/png')
+
+  await createMessage({
+    client: author.client,
+    conversationId,
+    senderId: author.id,
+    senderLabel: 'Service Remove Author',
+    text: 'This author's message must be removed',
+    imageUrl: sharedPath,
+  })
+  await createMessage({
+    client: counterpart.client,
+    conversationId,
+    senderId: counterpart.id,
+    senderLabel: 'Service Remove Counterpart',
+    text: 'This message belongs to the surviving participant',
+    imageUrl: sharedPath,
+  })
+
+  await beginAccountDeletion(admin, author.id)
+  assert.deepEqual(await inspectAccountDeletionBlockers(admin, author.id), [])
+  await executeAccountDeletion(admin, author.id, 'delete_own_messages')
+
+  assert.equal(storageObjectCount(sharedPath), 0, 'the original account-owned shared object must be removed')
+
+  const { data: remainingMessages, error: remainingError } = await counterpart.client
+    .from('messages')
+    .select('sender_id, text, image_url')
+    .eq('conversation_id', conversationId)
+  checkError('read counterpart message after own-message deletion', remainingError)
+  assert.equal(remainingMessages?.length, 1, 'only the counterpart message must remain')
+  assert.equal(remainingMessages?.[0]?.sender_id, counterpart.id)
+  assert.equal(remainingMessages?.[0]?.text, 'This message belongs to the surviving participant')
+  const retainedSharedPath = remainingMessages?.[0]?.image_url as string
+  assert.ok(retainedSharedPath.startsWith('retained/'), 'a shared object referenced by the counterpart must be re-homed')
+  await expectDownload(counterpart.client, retainedSharedPath, true, 'counterpart retains shared file after own-message deletion')
+
+  await deleteAuthUser(counterpart.id, 'service-remove-counterpart')
+
+  console.log('[account-deletion-storage] complete server-side own-message deletion flow passed')
+}
+
+
 async function main(): Promise<void> {
   const bucketIsPrivate = queryDatabase(
     "select public::text from storage.buckets where id = 'chat-media'",
@@ -990,6 +1206,9 @@ async function main(): Promise<void> {
   await testAuthorizationAndDeletedSessionBoundaries(counterpart, outsider)
   await testProfileDeletionAnonymizesPreservedRecords(counterpart)
   await testDeletingBothParticipantsRemovesOrphanConversation()
+  await testAccountDeletionPreflightAndWriteLock()
+  await testAccountDeletionServicePreserveMode()
+  await testAccountDeletionServiceDeleteOwnMessagesMode()
 
   console.log('[account-deletion-storage] all real Auth + Storage integration checks passed')
 }
