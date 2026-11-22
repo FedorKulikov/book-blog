@@ -79,6 +79,7 @@ test('email verification stays disabled unless all server prerequisites are pres
     'NEXT_PUBLIC_ENABLE_EMAIL_RECOVERY',
     'EMAIL_RECOVERY_SECRET',
     'SUPABASE_SECRET_KEY',
+    'SUPABASE_SERVICE_ROLE_KEY',
     'NEXT_PUBLIC_SUPABASE_URL',
     'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   ] as const
