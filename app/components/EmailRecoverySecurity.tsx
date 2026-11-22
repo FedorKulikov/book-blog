@@ -26,7 +26,9 @@ export default function EmailRecoverySecurity() {
       if (!alive) return
 
       if (result === 'verified') {
-        setNotice('Email подтверждён. Теперь его можно использовать для восстановления пароля.')
+        setNotice(
+          'Доступ к почтовому ящику подтверждён. Это подтверждение не включает сброс пароля по email.',
+        )
       } else if (result === 'invalid') {
         setError('Ссылка подтверждения недействительна или срок её действия истёк. Запросите новую.')
       }
@@ -78,7 +80,9 @@ export default function EmailRecoverySecurity() {
         return
       }
 
-      setNotice('Письмо отправлено на адрес аккаунта. Откройте ссылку в письме, чтобы подтвердить email.')
+      setNotice(
+        'Письмо с подтверждением адреса отправлено на email аккаунта. Сброс пароля по email-ссылке не используется.',
+      )
     } catch {
       setError('Сеть недоступна. Попробуйте ещё раз.')
     } finally {
@@ -90,16 +94,16 @@ export default function EmailRecoverySecurity() {
 
   return (
     <section className="rounded-xl border border-emerald-dark/15 p-4">
-      <h2 className="font-semibold text-emerald-dark mb-1">Email для восстановления</h2>
+      <h2 className="font-semibold text-emerald-dark mb-1">Подтверждение адреса электронной почты</h2>
       <p className="text-sm text-brown/70 mb-3">
-        Подтвердите, что у вас есть доступ к почтовому ящику. Ссылка восстановления пароля будет отправляться только на подтверждённый здесь адрес.
+        Подтвердите, что у вас есть доступ к почтовому ящику. Это отдельная проверка владения адресом, а не способ сброса пароля.
       </p>
 
       {status === null && <p className="text-sm text-brown/50">Проверяем…</p>}
 
       {status && !status.configured && (
         <p className="text-sm text-wine">
-          Подтверждение email ещё не настроено на сервере. Резервные коды пока остаются основным способом восстановления.
+          Подтверждение адреса ещё не настроено на сервере. Сброс пароля остаётся доступен по резервным кодам и passkeys.
         </p>
       )}
 
@@ -107,9 +111,9 @@ export default function EmailRecoverySecurity() {
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-sm">
             {status.verified ? (
-              <span className="text-emerald-dark">Email подтверждён для восстановления</span>
+              <span className="text-emerald-dark">Доступ к текущему почтовому ящику подтверждён</span>
             ) : (
-              <span className="text-wine">Email ещё не подтверждён для восстановления</span>
+              <span className="text-wine">Доступ к текущему почтовому ящику ещё не подтверждён</span>
             )}
           </p>
           <button
@@ -118,7 +122,7 @@ export default function EmailRecoverySecurity() {
             disabled={loading}
             className="rounded-full bg-emerald-mid px-4 py-2 text-sm text-cream hover:bg-emerald-dark disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Отправляем…' : status.verified ? 'Подтвердить текущий email ещё раз' : 'Отправить ссылку подтверждения'}
+            {loading ? 'Отправляем…' : status.verified ? 'Повторить подтверждение адреса' : 'Отправить ссылку подтверждения'}
           </button>
         </div>
       )}
@@ -127,7 +131,7 @@ export default function EmailRecoverySecurity() {
       {error && <p role="alert" className="mt-3 text-sm text-wine">{error}</p>}
 
       <p className="mt-3 text-xs text-brown/55">
-        Изменение адреса в аккаунте сбрасывает его статус подтверждения: новый адрес нужно подтвердить заново. Подтверждение действует только для текущего email.
+        Изменение адреса в аккаунте сбрасывает подтверждение: новый адрес нужно подтвердить заново. Для сброса пароля используются резервные коды или passkeys; email-ссылки сброса отключены.
       </p>
     </section>
   )
