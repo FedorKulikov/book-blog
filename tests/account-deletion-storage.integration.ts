@@ -686,6 +686,24 @@ async function fetchSessionProbe(accessToken: string, userId: string, context: s
   return body as Array<{ owner_id: string; marker: string }>
 }
 
+async function uploadWithAccessToken(
+  accessToken: string,
+  bucket: string,
+  path: string,
+): Promise<Response> {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+  return fetch(`${apiUrl}/storage/v1/object/${bucket}/${encodedPath}`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'image/png',
+      'x-upsert': 'false',
+    },
+    body: Buffer.from('stale-token-upload-probe'),
+  })
+}
+
 async function expectStorageRemovalDenied(
   client: SupabaseClient,
   path: string,
@@ -715,7 +733,12 @@ async function testAuthorizationAndDeletedSessionBoundaries(
     imageUrl: mediaPath,
   })
 
-  await expectStorageRemovalDenied(author.client, mediaPath, 'author cannot delete chat media directly')
+  const ownerDeleteProbePath = author.id + '/owner-delete-probe.png'
+  await upload(author.client, ownerDeleteProbePath, 'owner delete probe', 'image/png')
+  const { error: ownerDeleteError } = await author.client.storage.from('chat-media').remove([ownerDeleteProbePath])
+  checkError('active owner may remove an unreferenced own chat-media object', ownerDeleteError)
+  assert.equal(storageObjectCount(ownerDeleteProbePath), 0, 'owner may delete an unreferenced object inside their own folder')
+
   await expectStorageRemovalDenied(counterpart.client, mediaPath, 'conversation counterpart cannot delete another author media')
   await expectStorageRemovalDenied(outsider.client, mediaPath, 'unrelated user cannot delete chat media')
 
@@ -845,12 +868,15 @@ async function testAuthorizationAndDeletedSessionBoundaries(
   await expectDownload(author.client, retainedMediaPath, false, 'deleted user is no longer a conversation participant')
 
   for (const bucket of ['chat-media', 'avatars', 'post-images']) {
-    const staleUpload = await author.client.storage
-      .from(bucket)
-      .upload(`${author.id}/stale-jwt-after-delete.png`, Buffer.from('stale'), {
-        contentType: 'image/png',
-      })
-    assert.ok(staleUpload.error, `${bucket} upload must reject an old JWT after its profile has been deleted`)
+    const staleUploadResponse = await uploadWithAccessToken(
+      session.access_token,
+      bucket,
+      `${author.id}/stale-jwt-after-delete.png`,
+    )
+    assert.ok(
+      staleUploadResponse.status >= 400,
+      `${bucket} upload must reject the explicitly supplied old JWT after its profile has been deleted`,
+    )
   }
   const { data: counterpartMessages, error: counterpartMessagesError } = await counterpart.client
     .from('messages')
