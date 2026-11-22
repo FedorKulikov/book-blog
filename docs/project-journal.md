@@ -329,3 +329,14 @@
 - Локальный запуск Supabase CLI/psql не состоялся: в рабочем контейнере эти CLI отсутствуют, а GitHub clone недоступен из-за DNS. Проверка применения и повторного применения вынесена в отдельный изолированный CI job PostgreSQL 17.
 - Не менялись политика, код приложения, private.recovery_codes, private.recovery_attempts, Edge Function recovery, Hook, mailer_autoconfirm, секреты и существующие таблицы.
 - Не выполнялось применение миграции в production: этот этап готовит и проверяет миграцию через PR; выкатывание схемы не смешивается с подготовкой будущих UI-этапов.
+
+
+### 2026-11-23 — B12, этап 1: применение миграции в production
+
+- После слияния PR #76 (merge commit ecd23a2e9aaebb63179a6269b9f911edd11ccef1) миграция supabase/migrations/20261209_personal_data_consents.sql применена к активному production-проекту book-blog на PostgreSQL 17.
+- Проверено: таблица private.personal_data_consents создана; все семь колонок и FK на auth.users(id) соответствуют миграции; RLS включён; индекс (user_id, scope) присутствует.
+- Обе функции созданы как SECURITY DEFINER с пустым search_path и владельцем postgres. EXECUTE доступен только service_role; anon/authenticated не имеют EXECUTE и USAGE на private. Прямые права SELECT/INSERT/UPDATE/DELETE на таблицу отсутствуют также у service_role.
+- Проверка после применения: в таблице 0 строк — production-пользовательские согласия не создавались и данные пользователей не менялись. Supabase migration history содержит personal_data_consents.
+- Для совместимости с workflow apply-migrations строка ops.applied_migrations заполнена именем файла и SHA-256 92c594c5539429f985c3f52cab51e0eb56d207429caab27f477eeee7787cd7b9; applied_by = postgres.
+- Supabase Security Advisor показал INFO о RLS без policies для private.personal_data_consents: это ожидаемая модель default-deny при отсутствии прямых grants. Существующие предупреждения по increment_book_views/increment_post_views и leaked password protection относятся к другим объектам и не менялись.
+- Не менялись таблицы private.recovery_codes/private.recovery_attempts, Edge Function recovery, Send Email Hook, mailer_autoconfirm, Function Secrets и тексты политики.
