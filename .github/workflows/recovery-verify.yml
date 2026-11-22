@@ -8,6 +8,7 @@ on:
       - 'supabase/functions/**'
       - 'lib/recovery.ts'
       - 'scripts/test-recovery-hash.ts'
+      - 'scripts/test-email-hook.ts'
       - '.github/workflows/recovery-verify.yml'
 
 permissions:
@@ -41,7 +42,7 @@ jobs:
         run: deno test --allow-env supabase/functions/
 
       - name: Deno type check
-        run: deno check supabase/functions/recovery/index.ts supabase/functions/auth-email-hook/index.ts
+        run: deno check supabase/functions/recovery/index.ts supabase/functions/auth-email-hook/index.ts supabase/functions/resend-mailer/index.ts
 
       - name: Node recovery hash regression
         run: npx tsx scripts/test-recovery-hash.ts
