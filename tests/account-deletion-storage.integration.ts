@@ -1035,6 +1035,15 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     .insert({ user_id: counterpart.id, actor_id: author.id })
   checkError('insert notification actor blocker', notificationError)
 
+  const { error: postImageError } = await admin
+    .from('post_images')
+    .insert({ url: `https://storage.example.test/post-images/${author.id}/shared.png` })
+  checkError('insert shared post-image reference blocker', postImageError)
+  const { error: externalCoverError } = await admin
+    .from('external_news')
+    .insert({ cover_url: `https://storage.example.test/post-images/${author.id}/cover.png` })
+  checkError('insert external news cover reference blocker', externalCoverError)
+
   const blockers = await inspectAccountDeletionBlockers(admin, author.id)
   assert.deepEqual(
     blockers.map(blocker => blocker.code),
@@ -1046,6 +1055,8 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
       'reports',
       'action_log',
       'notifications_as_actor',
+      'post_image_references',
+      'external_news_cover_references',
     ],
     'preflight must identify every unapproved retention-sensitive data category',
   )
@@ -1059,6 +1070,8 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     ['reports', 'reporter_id'],
     ['action_log', 'user_id'],
     ['notifications', 'actor_id'],
+    ['post_images', 'url'],
+    ['external_news', 'cover_url'],
   ] as const) {
     const { error } = await admin.from(table).delete().eq(column, author.id)
     checkError(`clean preflight fixture ${table}`, error)
