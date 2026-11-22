@@ -67,7 +67,7 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Read-only preflight: Function Secrets and existing Hook signature
+      - name: "Read-only preflight: Function Secrets and existing Hook signature"
         env:
           PAT: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           HOOK: ${{ secrets.AUTH_EMAIL_HOOK_SECRET }}
