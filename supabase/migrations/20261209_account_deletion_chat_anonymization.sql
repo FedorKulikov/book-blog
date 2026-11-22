@@ -611,10 +611,20 @@ begin
     raise exception 'Storage write guard must be SECURITY DEFINER owned by postgres with empty search_path';
   end if;
 
-  if has_function_privilege('public', 'public.current_user_storage_writes_allowed()', 'EXECUTE')
+  if exists (
+       select 1
+       from pg_proc p
+       cross join lateral aclexplode(
+         coalesce(p.proacl, acldefault('f', p.proowner))
+       ) privilege
+       where p.oid = 'public.current_user_storage_writes_allowed()'::regprocedure
+         and privilege.grantee = 0
+         and privilege.privilege_type = 'EXECUTE'
+     )
      or not has_function_privilege('anon', 'public.current_user_storage_writes_allowed()', 'EXECUTE')
-     or not has_function_privilege('authenticated', 'public.current_user_storage_writes_allowed()', 'EXECUTE') then
-    raise exception 'Storage write guard must be callable only by anonymous/authenticated policy contexts';
+     or not has_function_privilege('authenticated', 'public.current_user_storage_writes_allowed()', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.current_user_storage_writes_allowed()', 'EXECUTE') then
+    raise exception 'Storage write guard must be callable by anon/authenticated only, not PUBLIC or service_role';
   end if;
 
   if (
