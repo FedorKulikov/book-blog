@@ -826,6 +826,47 @@ create policy chat_media_select_conversation_participants
   );
 
 -- Fail the migration if the profile trigger or key schema guarantees are absent.
+-- Recalculate conversation ordering in the same transaction as a bulk
+-- message deletion. A transition table keeps this to one update per affected
+-- conversation, including when a failed request is retried after the delete.
+create or replace function public.refresh_conversation_last_message_after_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  update public.conversations as c
+  set last_message_at = (
+    select max(m.created_at)
+    from public.messages as m
+    where m.conversation_id = c.id
+  )
+  where c.id in (
+    select distinct deleted.conversation_id
+    from deleted_messages as deleted
+  )
+  and exists (
+    select 1
+    from public.messages as remaining
+    where remaining.conversation_id = c.id
+  );
+
+  return null;
+end;
+$function$;
+
+alter function public.refresh_conversation_last_message_after_delete() owner to postgres;
+revoke all on function public.refresh_conversation_last_message_after_delete()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists messages_refresh_conversation_last_message on public.messages;
+create trigger messages_refresh_conversation_last_message
+  after delete on public.messages
+  referencing old table as deleted_messages
+  for each statement
+  execute function public.refresh_conversation_last_message_after_delete();
+
 do $assert$
 declare
   v_function oid := 'public.anonymize_profile_before_delete()'::regprocedure;
@@ -921,6 +962,31 @@ begin
       and not tgisinternal and tgenabled <> 'D'
   ) then
     raise exception 'messages write-lock trigger is missing or disabled';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgrelid = 'public.messages'::regclass
+      and tgname = 'messages_refresh_conversation_last_message'
+      and not tgisinternal
+      and tgenabled <> 'D'
+  ) or not exists (
+    select 1
+    from pg_proc p
+    join pg_roles r on r.oid = p.proowner
+    where p.oid = 'public.refresh_conversation_last_message_after_delete()'::regprocedure
+      and p.prosecdef
+      and r.rolname = 'postgres'
+      and coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=""%'
+  ) then
+    raise exception 'message deletion timestamp maintenance trigger is missing or unsafe';
+  end if;
+
+  if has_function_privilege('anon', 'public.refresh_conversation_last_message_after_delete()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.refresh_conversation_last_message_after_delete()', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.refresh_conversation_last_message_after_delete()', 'EXECUTE') then
+    raise exception 'conversation timestamp trigger function must not be exposed as an RPC';
   end if;
 
   if not exists (
