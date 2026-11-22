@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { passkeysEnabled } from '@/lib/passkeys'
-import EmailRecoveryResetForm from '@/app/components/EmailRecoveryResetForm'
 
 export default function ForgotPasswordPage() {
   return (
@@ -12,13 +11,13 @@ export default function ForgotPasswordPage() {
 
         <div className="rounded-xl border border-emerald-dark/15 bg-cream-warm/30 p-4 mb-6">
           <p className="text-sm text-brown-dark">
-            Сейчас восстановить пароль можно с помощью резервного кода,
-            который вы сохранили при регистрации или создали в настройках профиля.
+            Сбросить пароль можно с помощью резервного кода, который вы сохранили
+            при регистрации или создали в настройках профиля.
           </p>
         </div>
 
         <p className="text-sm text-brown/70 mb-3">
-          Для восстановления понадобятся:
+          Для восстановления по резервному коду понадобятся:
         </p>
         <ul className="text-sm text-brown/70 space-y-1 mb-6 list-disc pl-5">
           <li>имя пользователя;</li>
@@ -41,8 +40,6 @@ export default function ForgotPasswordPage() {
           </Link>
         </div>
 
-        <EmailRecoveryResetForm />
-
         {passkeysEnabled && (
           <p className="mt-6 text-sm text-brown/70">
             Ранее добавляли ключ доступа? На странице входа выберите «Войти с ключом доступа». После входа откройте настройки профиля, смените пароль и создайте новый набор резервных кодов.
@@ -50,7 +47,7 @@ export default function ForgotPasswordPage() {
         )}
 
         <p className="mt-4 text-sm text-brown/60">
-          Email-восстановление доступно только после отдельного подтверждения адреса в настройках профиля. Старые отметки Supabase о подтверждении здесь не учитываются. Если вы потеряли пароль и резервные коды до подтверждения адреса, используйте заранее сохранённый passkey или потребуется ручная проверка.
+          Сброс пароля по ссылке из email отключён. Подтверждение доступа к почтовому ящику в настройках профиля не включает сброс пароля по email. Если вы потеряли пароль и все резервные коды, используйте заранее сохранённый passkey; без него потребуется отдельная ручная проверка.
         </p>
       </div>
     </main>
