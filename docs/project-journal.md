@@ -118,3 +118,6 @@
 - DNS: TXT `resend._domainkey` = `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDExUvBGqr9OyRiduyI/xAWgbv7DSq6YLAzJrhUa7mw1kAYv7DJ+4dQYQgKeSRvfxH9LBOihbCObdmlbNVXcBiHpmvEIXN/WE1KtbY3Iei8nd+7PG/pbVtR5p4yf+unUYSc+EzZCCISeusinhT5n0dpzrYRzIvT1RJWspALAv0mZwIDAQAB` (TTL Auto); MX `send` = `feedback-smtp.us-east-1.amazonses.com` (TTL Auto, priority 10); TXT `send` = `v=spf1 include:amazonses.com ~all` (TTL Auto); CNAME `rsend` = `send.forge.rmta.net` (TTL Auto).
 - Ожидается, что владелец добавит именно четыре новые записи в Selectel, не меняя _layero-verify, apex A, SOA, NS, www CNAME, yandex-verification TXT и корневой SPF. Имена send/resend._domainkey/rsend относятся к соответствующим поддоменам bukleb.ru.
 - Не запускать verify до сообщения владельца о добавлении DNS. Не создавать/менять секреты, Hook или отправку писем до статуса `verified`. Ключ Resend не читался и не раскрывался.
+
+
+- **Уточнение авторизации:** в shell/container `RESEND_API_KEY` отсутствует; значения API key не читались. Resend API вызовы сделаны через connected authenticated Resend integration, а не через требуемую shell env variable. Секрет никуда не выводился и не записывался. Это ограничение способа доступа явно отмечено.
