@@ -33,6 +33,22 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Verify removed recovery-code client paths
+        run: |
+          set -eu
+          if git grep -n -E 'recover-account|CodesReveal' -- app lib proxy.ts next.config.ts; then
+            echo "::error::Retired recovery route or CodesReveal reference remains in application code."
+            exit 1
+          fi
+          if git grep -n -E 'recovery/generate|recovery/status|recovery/redeem' -- app lib scripts tests; then
+            echo "::error::Retired recovery API reference remains in app, lib, scripts, or tests."
+            exit 1
+          fi
+          if grep -Ein 'резервн.{0,25}код|/recover-account|/api/recovery/' README.md; then
+            echo "::error::README still documents recovery codes or retired routes."
+            exit 1
+          fi
+
       - name: Set up Go for actionlint
         uses: actions/setup-go@v5
         with:
