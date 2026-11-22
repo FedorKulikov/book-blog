@@ -269,8 +269,7 @@ begin
   -- the conversation participant is still protected by the deletion lock.
   if tg_table_name = 'conversations'
      and tg_op = 'UPDATE'
-     and (v_new_json - 'last_message_at') = (v_old_json - 'last_message_at')
-     and (v_new_json ->> 'last_message_at') is distinct from (v_old_json ->> 'last_message_at') then
+     and (v_new_json - 'last_message_at') = (v_old_json - 'last_message_at') then
     return new;
   end if;
 
