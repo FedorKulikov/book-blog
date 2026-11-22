@@ -194,7 +194,7 @@ begin
   -- reference to a UID-scoped object after deletion preflight has started.
   if tg_table_name = 'post_images' then
     v_storage_url := to_jsonb(new) ->> 'url';
-  elsif tg_table_name = 'external_news' then
+  elsif tg_table_name = 'books' or tg_table_name = 'external_news' then
     v_storage_url := to_jsonb(new) ->> 'cover_url';
   end if;
 
@@ -225,6 +225,7 @@ begin
         or l.user_id = nullif(to_jsonb(new) ->> 'blocked_id', '')::uuid
         or l.user_id = nullif(to_jsonb(new) ->> 'follower_id', '')::uuid
         or l.user_id = nullif(to_jsonb(new) ->> 'following_id', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'created_by', '')::uuid
       )
   ) then
     raise exception 'account deletion is in progress'
@@ -307,6 +308,11 @@ create trigger post_images_block_deleting_user_references
 drop trigger if exists external_news_block_deleting_user_references on public.external_news;
 create trigger external_news_block_deleting_user_references
   before insert or update on public.external_news
+  for each row execute function public.prevent_writes_for_deleting_account();
+
+drop trigger if exists books_block_deleting_user_references on public.books;
+create trigger books_block_deleting_user_references
+  before insert or update on public.books
   for each row execute function public.prevent_writes_for_deleting_account();
 
 -- A conversation with a deleted counterpart remains readable as history,
