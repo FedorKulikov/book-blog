@@ -1250,6 +1250,20 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
     audioUrl: audioPath,
   })
 
+  // Exercise pagination beyond the default PostgREST row cap. All records
+  // intentionally reference the same owned object so the server can batch
+  // their neutral-path update into a small number of API calls.
+  const bulkMessageRows = Array.from({ length: 1000 }, (_, index) => ({
+    conversation_id: conversationId,
+    sender_id: author.id,
+    text: `Bulk retained message ${index + 1}`,
+    image_url: photoPath,
+  }))
+  const { error: bulkMessageError } = await admin
+    .from('messages')
+    .insert(bulkMessageRows)
+  checkError('insert more than one PostgREST page of synthetic messages', bulkMessageError)
+
   await beginAccountDeletion(admin, author.id, 'preserve')
   assert.deepEqual(await inspectAccountDeletionBlockers(admin, author.id), [])
   await executeAccountDeletion(admin, author.id, 'preserve')
@@ -1267,11 +1281,38 @@ async function testAccountDeletionServicePreserveMode(): Promise<void> {
     .select('id, sender_id, sender_label, image_url, audio_url')
     .eq('conversation_id', conversationId)
   checkError('read message retained by complete service deletion', retainedMessagesError)
-  assert.equal(retainedMessages?.length, 1, 'default deletion must keep the counterpart conversation')
-  assert.equal(retainedMessages?.[0]?.id, messageId)
-  assert.equal(retainedMessages?.[0]?.sender_id, null)
-  assert.equal(retainedMessages?.[0]?.sender_label, 'Удалённый пользователь')
+  const { count: retainedMessageCount, error: retainedMessageCountError } = await counterpart.client
+    .from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId)
+  checkError('count all messages retained across multiple PostgREST pages', retainedMessageCountError)
+  assert.equal(retainedMessageCount, 1001, 'default deletion must keep every counterpart-visible message')
 
+  const { data: lastRetainedPage, error: lastRetainedPageError } = await counterpart.client
+    .from('messages')
+    .select('id, sender_id, sender_label, image_url, audio_url')
+    .eq('conversation_id', conversationId)
+    .order('id', { ascending: true })
+    .range(1000, 1000)
+  checkError('read last page of preserved messages', lastRetainedPageError)
+  assert.equal(lastRetainedPage?.length, 1, 'pagination must retain the final message')
+  assert.notEqual(lastRetainedPage?.[0]?.id, undefined)
+  assert.equal(lastRetainedPage?.[0]?.sender_id, null, 'the last page sender must be anonymized')
+  assert.equal(lastRetainedPage?.[0]?.sender_label, 'Удалённый пользователь')
+  assert.ok(
+    (lastRetainedPage?.[0]?.image_url as string).startsWith('retained/'),
+    'the last page attachment must be updated to its neutral path',
+  )
+
+  const { count: anonymizedCount, error: anonymizedCountError } = await counterpart.client
+    .from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId)
+    .is('sender_id', null)
+    .eq('sender_label', 'Удалённый пользователь')
+  checkError('count anonymized message rows', anonymizedCountError)
+  assert.equal(anonymizedCount, 1001, 'every message beyond the first API page must be anonymized')
+  
   const retainedPhoto = retainedMessages?.[0]?.image_url as string
   const retainedAudio = retainedMessages?.[0]?.audio_url as string
   assert.ok(retainedPhoto.startsWith('retained/'), 'photo must use a neutral path')
