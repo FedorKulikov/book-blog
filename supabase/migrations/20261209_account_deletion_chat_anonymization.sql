@@ -228,6 +228,7 @@ begin
         or l.user_id = nullif(to_jsonb(new) ->> 'follower_id', '')::uuid
         or l.user_id = nullif(to_jsonb(new) ->> 'following_id', '')::uuid
         or l.user_id = nullif(to_jsonb(new) ->> 'created_by', '')::uuid
+        or l.user_id = nullif(to_jsonb(new) ->> 'id', '')::uuid
       )
   ) then
     raise exception 'account deletion is in progress'
