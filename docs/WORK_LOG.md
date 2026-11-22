@@ -163,3 +163,12 @@
 - **Что не делалось:** no main changes, no production deploy, no secret changes, no Hook configuration changes, no SMTP changes, no DNS changes, no test accounts created, no recovery code changes, no password-reset emails sent.
 - **Блокеры запуска (точный список):** (1) CI success on both PRs; (2) owner places `RESEND_API_KEY` into Supabase Function Secrets; (3) owner places new Supabase `SUPABASE_SECRET_KEY` into server-only Layero env; (4) GitHub Actions must hold stable `AUTH_EMAIL_HOOK_SECRET`; existing Supabase Function Secret must match it (ops workflow preflight will verify without revealing values); (5) owner confirms same signing secret is configured in Supabase Auth Send Email Hook; (6) separate explicit release permission to merge/push ops branch and deploy; (7) owner provides/approves a designated test mailbox. Only then can the Hook be switched last and a real verification-only email tested.
 - **Критерий:** B не закрыта. Итог на этой стадии: «домен verified, кодовая подготовка выполнена в отдельных ветках; запуск ждёт перечисленные пункты». C не начиналась.
+
+
+## 2026-11-22 — Task B: Draft PRs открыты, CI initial failures исправляются
+
+- Открыты Draft PR #65 (app, target main) и Draft PR #66 (ops, target ops/supabase-edge-deploy). Оба открыты/не merged, release и production deploy не выполнялись.
+- Начальный Deno CI PR #66 упал на `Deno.serve(handle)` из-за двухпараметрической testable signature; исправлено безопасной wrapper function. Повторный Recovery verification CI запущен, успех ещё не подтверждён.
+- Начальный Chat security CI PR #65 упал на TS2345: тестовый mailer call не содержал required idempotency key. Добавлен test-only idempotency key; новый CI запущен. Web Quality также выполняется. Ни один workflow не объявлен успешным до terminal conclusion.
+- Остаток B: CI success, фактическая проверка наличия `RESEND_API_KEY` в Supabase Function Secrets, `SUPABASE_SECRET_KEY` в server-only Layero env, stable `AUTH_EMAIL_HOOK_SECRET` parity в GitHub и Function Secrets (workflow preflight проверит это без раскрытия), ручное подтверждение совпадения подписи в Auth Hook config, отдельное разрешение на deployment/Hook switch и тестовый mailbox для реальной доставки/SPF/DKIM header verification.
+- DNS/NS, main, production app/Supabase, secrets, Hook config, SMTP, backup codes не изменялись. Recovery reset email flow отключён только в app Draft; release ещё не состоялся. Текущая отправка не задействована.
