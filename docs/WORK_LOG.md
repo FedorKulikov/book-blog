@@ -205,3 +205,18 @@
 **Проверено:** чтением файлов из ветки после коммита проверены вызов resetPasswordForEmail, отсутствие старого feature-flag/API в компоненте, нейтральный текст и ссылка /recover-account. По подтверждению пользователя, Deno suite на коммите 02ecb30: 43 passed, 0 failed, exit 0. UI build/lint и CI для новых изменений ещё не подтверждены.
 
 **Не выполнено / ограничения:** live-сброс через production Auth и получение письма не проверялись. README и docs/email-confirmation-rollout.md пока не обновлялись; это остаётся отдельной документальной частью B8. Настройки Auth, Hook config/secrets, mailer_autoconfirm, RECOVERY_CODE_SECRET и таблица резервных кодов не менялись.
+
+
+## 2026-11-22 — B8 follow-up: signup email delivery soft-fail and deterministic Hook probe
+
+**Требовалось:** убрать зависимость интеграционного теста регистрации от подтверждения/доставки письма; при сбое signup confirmation mail не превращать регистрацию в HTTP 500; сохранить строгую ошибку доставки для recovery и email_change.
+
+**Сделано:**
+- `scripts/test-email-hook.ts` теперь создаёт тестового пользователя через `admin.auth.admin.createUser({ email, password, email_confirm: true })`, затем проверяет вход через password grant. ID записывается для удаления в `finally`; тест больше не ждёт публичный signup session и не зависит от email confirmation.
+- В `auth-email-hook` неуспешная отправка только для `signup` сопровождается общей предупреждающей записью без адреса, token/hash, тела письма или ответа провайдера и завершается `200 {}`.
+- Для `recovery` и `email_change` сохранён прежний `502 email_delivery_failed`.
+- Unit tests дополнены проверкой: signup mailer failure => 200; recovery и email_change mailer failure => 502. Интеграционный probe обновлён под действующий контракт: signup с недоставляемым тестовым адресом, recovery без user.email — 400 до отправки, неизвестные actions — 501.
+
+**Проверено:** изменения внесены в feature branch PR #69; source files перечитаны после коммитов. Локальный `deno test` в этой среде недоступен, если бинарник Deno не установлен; полный CI ожидается после последнего push.
+
+**Не выполнено / ограничения:** полный CI ещё не подтверждён; live signup и доставка писем не запускались. `mailer_autoconfirm`, Supabase Auth Hook settings/secrets, SMTP, `RECOVERY_CODE_SECRET` и таблица резервных кодов не менялись.
