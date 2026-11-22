@@ -196,8 +196,8 @@ create policy ci_messages_read_participant
     )
   );
 
-drop policy if exists ci_messages_insert_own on public.messages;
-create policy ci_messages_insert_own
+drop policy if exists messages_insert_own on public.messages;
+create policy messages_insert_own
   on public.messages
   for insert
   to authenticated
