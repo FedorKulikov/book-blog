@@ -293,8 +293,9 @@ export async function handle(
     return fail(501, 'email_delivery_not_configured')
   }
 
-  const userId = isNonEmptyString(payload.user?.id) ? payload.user!.id.trim() : ''
-  if (!userId) return fail(400, 'invalid_user')
+  const rawUserId = payload.user?.id
+  if (!isNonEmptyString(rawUserId)) return fail(400, 'invalid_user')
+  const userId = rawUserId.trim()
 
   const recipients = recipientsFor(payload, action)
   if (!recipients || recipients.length === 0) return fail(400, 'invalid_email_payload')
