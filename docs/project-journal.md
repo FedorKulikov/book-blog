@@ -271,3 +271,12 @@
 **Не выполнено / ограничения:** PR ещё не слит и production deploy не выполнялся. Поэтому HTTP 404 на production URL `/recover-account` пока не заявляется; production health smoke пропускает этот запрос на PR и выполнит его после push/deploy в main. Сама страница и все её ссылки удалены из кода.
 
 **Безопасность и границы:** Edge Function `recovery`, её tests, таблицы `private.recovery_codes` и `private.recovery_attempts`, Send Email Hook, `mailer_autoconfirm`, Supabase Function Secrets не изменялись. PR #64 и `/privacy` не менялись; правка политики остаётся отдельной задачей в ветке `fac5ecc`.
+
+
+### 2026-11-23 — B11, подзадача 1: серверная защита /welcome
+
+- Требовалось: не отдавать экран онбординга гостям и выполнять проверку авторизации на сервере, поскольку middleware/proxy не гарантированно обрабатывает предсобранные Layero-снимки.
+- Сделано в отдельной ветке fix/welcome-server-auth-guard, основанной на ветке PR #71 remove/recovery-codes-product: маршрут app/welcome/page.tsx стал серверной обёрткой; через createSupabaseServerClient().auth.getUser() проверяет пользователя и вызывает redirect('/login?next=%2Fwelcome') для гостя. Клиентский экран перенесён без функциональных изменений в app/welcome/WelcomeClient.tsx.
+- Сохранены динамический рендеринг (force-dynamic) и метаданные robots: noindex, nofollow.
+- Проверено чтением исходников перед записью и проверкой сформированного server/client разделения. PR #71, PR #64 и main не изменялись; новая ветка основана на B9-коде, чтобы не возвращать удалённый recovery UI.
+- Не выполнено: TypeScript, production build, CI и фактические HTTP-проверки гостя/авторизованного пользователя ещё не запускались. Критерии 307 и 200 не заявляются до проверки.
