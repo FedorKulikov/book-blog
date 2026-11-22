@@ -1101,6 +1101,14 @@ async function testAccountDeletionPreflightAndWriteLock(): Promise<void> {
     .eq('id', counterpart.id)
   assert.ok(blockedAvatarReference.error, 'another profile must not reference an account-owned avatar during deletion')
 
+  const blockedCrossUserNotification = await admin
+    .from('notifications')
+    .insert({ user_id: counterpart.id, actor_id: author.id })
+  assert.ok(
+    blockedCrossUserNotification.error,
+    'another user must not create a notification referencing an account being deleted',
+  )
+
   await endAccountDeletion(admin, author.id)
 
   const messageId = await createMessage({
@@ -1356,6 +1364,17 @@ async function testAccountDeletionServiceDeleteOwnMessagesMode(): Promise<void> 
     text: "This author's message must be removed",
     imageUrl: sharedPath,
   })
+
+  const bulkOwnMessageRows = Array.from({ length: 1000 }, (_, index) => ({
+    conversation_id: conversationId,
+    sender_id: author.id,
+    text: `This author's bulk message ${index + 1} must be removed`,
+    image_url: sharedPath,
+  }))
+  const { error: bulkOwnMessagesError } = await admin
+    .from('messages')
+    .insert(bulkOwnMessageRows)
+  checkError('insert more than one PostgREST page of own messages', bulkOwnMessagesError)
   await createMessage({
     client: counterpart.client,
     conversationId,
