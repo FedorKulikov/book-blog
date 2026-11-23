@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import {
-  DISTRIBUTION_CONSENT_VERSION,
+  PROFILE_PUBLIC_CONSENT_VERSION,
   PROFILE_PUBLIC_CONSENT_CATEGORIES,
 } from '@/lib/distribution-consent'
 
@@ -56,7 +56,7 @@ export async function POST() {
     {
       p_scope: 'profile_public',
       p_data_categories: [...PROFILE_PUBLIC_CONSENT_CATEGORIES],
-      p_document_version: DISTRIBUTION_CONSENT_VERSION,
+      p_document_version: PROFILE_PUBLIC_CONSENT_VERSION,
     },
   )
 
@@ -80,7 +80,7 @@ export async function POST() {
     {
       active: true,
       grantedAt: created?.granted_at ?? new Date().toISOString(),
-      documentVersion: created?.document_version ?? DISTRIBUTION_CONSENT_VERSION,
+      documentVersion: created?.document_version ?? PROFILE_PUBLIC_CONSENT_VERSION,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   )
