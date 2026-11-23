@@ -691,7 +691,7 @@ PR #89 merged as `41948d0154b68b89a99140dc1e7a6539ae54033b`. The production migr
 
 The first post-deploy anonymous RLS read exposed a separate ACL gap: `private.can_read_distribution_profile(uuid)` and `private.can_read_distribution_post(uuid)`, which are invoked directly by public SELECT policies, had EXECUTE only for `postgres`. The attempted verification transaction failed with SQLSTATE `42501` and was rolled back before any counter update or data mutation. The schema already grants `USAGE` on `private`; no broad schema grant is needed.
 
-Prepared follow-up migration `20261215_distribution_read_helper_acl.sql` to revoke `PUBLIC`/service-role access and grant EXECUTE only to `anon` and `authenticated` on those two RLS predicates. Added explicit ACL assertions to the PostgreSQL regression test and an idempotent twice-applied step in Web quality CI. This follow-up is pending PR review/merge and production application; public read restoration is not yet verified. No consent rows or user data were created, updated, or deleted.
+PR #90 merged as `36d3ef8cfcd5e0f12954cfba83f32208b8a6312b`. Production applied `20261215_distribution_read_helper_acl.sql` at 2026-11-23 12:17:26 UTC with checksum `ca983c1082ef0b6b5b77c64396ff70c8093b86e5cd6c2043c537be472807a858`. The two RLS predicates now have EXECUTE only for `anon` and `authenticated`; production anonymous RLS reads return 19 profiles and 9 approved posts. A rollback-only counter call under `anon` was verified. No production consent rows or user data were changed.
 
 
 ## 2026-11-23 — B12-fix2 Stages 2–3: profile-only legacy choice and accurate disclosure
