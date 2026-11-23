@@ -525,3 +525,13 @@
 Найдено после live run: 10 синтетических auth users, 10 соответствующих profiles, 5 тестовых постов, 5 тестовых книг, 3 диалога, 3 тикета, 8 уведомлений и 9 storage objects. Это были артефакты пяти прежних smoke-запусков; consent table была пустой.
 
 Добавлена узкая очистка только по предварительно подтверждённым UUID/путям: storage remove для 9 перечисленных объектов; удаление 5 тестовых posts/books и 10 синтетических profiles (FK cascade удаляет app-записи). Строки `auth.users` не удаляются. Для новых smoke-тестов согласие отзывается перед signOut, профиль и его тестовый контент удаляются. Любая ошибка cleanup теперь помечает smoke красным. Результат нового прогона ожидается.
+
+## 2026-11-23 — B12, этап 2: live production smoke завершён
+
+PR #80 merged: `41acca517d8e1a0a55edee640aac3d405ed11fa6`. На точном head `d226ca0...` Web quality 4/4 и Chat security smoke 1/1 — success.
+
+**Live test (production Supabase Auth/JWT/PostgREST):** B no-consent INSERT → SQLSTATE 42501; A records publication consent (version 1.0, expected categories), reads own row; B reads 0 rows and cannot revoke A's consent; A inserts real post row, moderation trigger sets `pending`. A's test consent is revoked in cleanup, leaving one auditable revoked test row.
+
+**Cleanup verified:** 0 synthetic profiles/posts/books/conversations/tickets/notifications/storage objects; 12 synthetic `auth.users` retained intentionally under the existing no-delete constraint; profiles removed. One revoked synthetic consent row remains as live audit evidence. All earlier 10 synthetic profiles, 5 posts/books and 9 Storage objects from previous interrupted runs were cleaned using exact IDs/paths. Cleanup is now part of smoke and fails the job if cleanup fails.
+
+**Limit:** live HTTP verifier could not access the Layero page endpoints, so browser form → deployed Next.js `/api/posts` was not proven end-to-end. Server handler logic is covered by unit/CI and live Supabase API/DB behavior is verified. `/privacy`, recovery, Hook, mailer_autoconfirm and secrets were not changed.
