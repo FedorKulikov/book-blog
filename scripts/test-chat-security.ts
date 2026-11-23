@@ -369,24 +369,41 @@ async function main() {
       safeError(verifyConversation.error),
     )
   } finally {
-    // Sign out before deleting temporary users. No existing user or row is touched.
+    const cleanupFailures: string[] = []
+    const recordDelete = async (
+      label: string,
+      operation: Promise<{ error: { code?: string; status?: number } | null }>,
+    ) => {
+      const { error } = await operation
+      if (error) cleanupFailures.push(`${label} (${safeError(error)})`)
+    }
+
     for (const client of clients) {
-      await client.auth.signOut().catch(() => undefined)
+      const { error } = await client.auth.signOut()
+      if (error) cleanupFailures.push(`sign out temporary session (${safeError(error)})`)
     }
 
     for (const user of users) {
-      await admin.from('action_log').delete().eq('user_id', user.id)
-      await admin.from('tickets').delete().eq('user_id', user.id)
-      await admin.from('user_blocks').delete().eq('blocker_id', user.id)
-      await admin.from('user_blocks').delete().eq('blocked_id', user.id)
+      await recordDelete('remove temporary action log', admin.from('action_log').delete().eq('user_id', user.id))
+      await recordDelete('remove temporary ticket', admin.from('tickets').delete().eq('user_id', user.id))
+      await recordDelete('remove temporary block as blocker', admin.from('user_blocks').delete().eq('blocker_id', user.id))
+      await recordDelete('remove temporary block as blocked user', admin.from('user_blocks').delete().eq('blocked_id', user.id))
     }
     if (conversationId) {
-      await admin.from('messages').delete().eq('conversation_id', conversationId)
-      await admin.from('conversations').delete().eq('id', conversationId)
+      await recordDelete('remove temporary messages', admin.from('messages').delete().eq('conversation_id', conversationId))
+      await recordDelete('remove temporary conversation', admin.from('conversations').delete().eq('id', conversationId))
     }
     for (const user of users) {
-      await admin.auth.admin.deleteUser(user.id).catch(() => undefined)
+      const { error } = await admin.auth.admin.deleteUser(user.id)
+      if (error) cleanupFailures.push(`delete ${user.email} Auth account (status=${error.status ?? 'unknown'})`)
     }
+
+    if (cleanupFailures.length > 0) {
+      console.error(`CLEANUP FAIL — ${cleanupFailures.join('; ')}`)
+      failed++
+      throw new Error(`chat smoke cleanup failed for ${cleanupFailures.length} operation(s)`)
+    }
+    console.log(`CLEANUP PASS — deleted ${users.length} temporary chat-smoke accounts`)
   }
 
   console.log(`\nChat security checks: ${passed} passed, ${failed} failed`)
