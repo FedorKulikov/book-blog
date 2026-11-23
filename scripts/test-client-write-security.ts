@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import {
   DISTRIBUTION_CONSENT_CATEGORIES,
+  PROFILE_PUBLIC_CONSENT_CATEGORIES,
   DISTRIBUTION_CONSENT_VERSION,
 } from '../lib/distribution-consent'
 
@@ -113,6 +114,17 @@ async function main() {
       check('owner can replace their own avatar with upsert', !avatarReplace, safeError(avatarReplace))
     }
 
+    const bobAvatarWithoutConsent = await uploadProbe(
+      otherClient,
+      'avatars',
+      `${bob.id}/avatar-without-profile-consent-${stamp}.png`,
+    )
+    check(
+      'second user cannot upload a public avatar without profile_public consent',
+      Boolean(bobAvatarWithoutConsent),
+      safeError(bobAvatarWithoutConsent),
+    )
+
     const postImageUpload = await uploadProbe(client, 'post-images', `${alice.id}/storage-smoke-${stamp}.png`)
     check('owner can upload a post image in their own folder', !postImageUpload, safeError(postImageUpload))
 
@@ -154,16 +166,95 @@ async function main() {
     const anonProfile = await anonymous.from('profiles').update({ bio: 'unauthorized' }).eq('id', alice.id)
     check('anon cannot update profiles', Boolean(anonProfile.error), safeError(anonProfile.error))
 
-    // Profile form writes its ordinary editable fields in one request.
+    // Public profile fields must not change before the separate profile_public grant.
     const editedUsername = `data_edit_${stamp}`
+    const profileWithoutConsent = await client.from('profiles')
+      .update({ bio: `blocked-without-consent-${stamp}` })
+      .eq('id', alice.id).select('id')
+    check(
+      'profile owner cannot change a public field without profile_public consent',
+      profileWithoutConsent.error?.code === '42501',
+      safeError(profileWithoutConsent.error),
+    )
+
+    // notifications_muted is a private preference, not a public profile field.
+    const privateProfileEdit = await client.from('profiles')
+      .update({ notifications_muted: true })
+      .eq('id', alice.id)
+      .select('notifications_muted')
+      .single()
+    check(
+      'private notification preference can be saved without profile consent',
+      !privateProfileEdit.error && privateProfileEdit.data?.notifications_muted === true,
+      safeError(privateProfileEdit.error),
+    )
+
+    const bobProfileWithoutConsent = await otherClient.from('profiles')
+      .update({ bio: `bob-blocked-${stamp}` })
+      .eq('id', bob.id).select('id')
+    check(
+      'second user cannot change their public profile field without own consent',
+      bobProfileWithoutConsent.error?.code === '42501',
+      safeError(bobProfileWithoutConsent.error),
+    )
+
+    const profileConsent = await client.rpc('record_my_distribution_consent', {
+      p_scope: 'profile_public',
+      p_data_categories: [...PROFILE_PUBLIC_CONSENT_CATEGORIES],
+      p_document_version: DISTRIBUTION_CONSENT_VERSION,
+    })
+    check(
+      'author can record profile_public consent through the user-scoped RPC',
+      !profileConsent.error && Boolean(profileConsent.data),
+      safeError(profileConsent.error),
+    )
+
+    const aliceProfileConsents = await client.rpc('my_distribution_consents')
+    const aliceProfileGrant = (aliceProfileConsents.data ?? []).find((row: {
+      scope: string
+      document_version: string
+      data_categories: string[]
+      revoked_at: string | null
+    }) => row.scope === 'profile_public' &&
+      row.document_version === DISTRIBUTION_CONSENT_VERSION &&
+      row.revoked_at === null &&
+      JSON.stringify(row.data_categories) === JSON.stringify([...PROFILE_PUBLIC_CONSENT_CATEGORIES]))
+    check(
+      'profile_public consent is stored and visible in the owner own consent history',
+      !aliceProfileConsents.error && Boolean(aliceProfileGrant),
+      safeError(aliceProfileConsents.error),
+    )
+
+    const bobProfileConsents = await otherClient.rpc('my_distribution_consents')
+    check(
+      'another user cannot read profile_public consent history',
+      !bobProfileConsents.error &&
+        !(bobProfileConsents.data ?? []).some((row: { scope: string }) => row.scope === 'profile_public'),
+      safeError(bobProfileConsents.error),
+    )
+
+    const bobRevokeProfile = await otherClient.rpc('revoke_my_distribution_consent', {
+      p_scope: 'profile_public',
+    })
+    const aliceProfileConsentsAfterBobRevoke = await client.rpc('my_distribution_consents')
+    const aliceProfileStillActive = (aliceProfileConsentsAfterBobRevoke.data ?? []).some((row: {
+      scope: string
+      revoked_at: string | null
+    }) => row.scope === 'profile_public' && row.revoked_at === null)
+    check(
+      'another user cannot revoke profile_public consent',
+      !bobRevokeProfile.error &&
+        !aliceProfileConsentsAfterBobRevoke.error &&
+        aliceProfileStillActive,
+      safeError(bobRevokeProfile.error ?? aliceProfileConsentsAfterBobRevoke.error),
+    )
+
     const profileEdit = await client.from('profiles').update({
       username: editedUsername,
       bio: `smoke-${stamp}`,
-      avatar_url: null,
-      notifications_muted: true,
-    }).eq('id', alice.id).select('username, bio, avatar_url, notifications_muted').single()
+    }).eq('id', alice.id).select('username, bio, notifications_muted').single()
     check(
-      'owner can save the editable profile fields used by the profile form',
+      'owner can save public profile fields after profile_public consent',
       !profileEdit.error &&
         profileEdit.data?.username === editedUsername &&
         profileEdit.data?.bio === `smoke-${stamp}` &&
@@ -185,6 +276,29 @@ async function main() {
       'ordinary user cannot ban themselves through the profile API',
       !banAfter.error && banAfter.data?.is_banned === false,
       safeError(banEscalation.error),
+    )
+
+    const revokeProfileConsent = await client.rpc('revoke_my_distribution_consent', {
+      p_scope: 'profile_public',
+    })
+    const publicEditAfterRevoke = await client.from('profiles')
+      .update({ bio: `blocked-after-revoke-${stamp}` })
+      .eq('id', alice.id).select('id')
+    check(
+      'profile owner cannot change public fields after profile consent revocation',
+      !revokeProfileConsent.error && publicEditAfterRevoke.error?.code === '42501',
+      safeError(publicEditAfterRevoke.error ?? revokeProfileConsent.error),
+    )
+
+    const avatarAfterRevoke = await uploadProbe(
+      client,
+      'avatars',
+      `${alice.id}/avatar-after-profile-revoke-${stamp}.png`,
+    )
+    check(
+      'avatar Storage policy blocks uploads after profile consent revocation',
+      Boolean(avatarAfterRevoke),
+      safeError(avatarAfterRevoke),
     )
 
     const profileTimestamp = await client.from('profiles').update({ created_at: '2099-01-01T00:00:00.000Z' }).eq('id', alice.id)
@@ -499,12 +613,14 @@ async function main() {
     for (const client of clients) {
       const { data: current } = await client.auth.getUser()
       if (current.user) {
-        const { error } = await client.rpc('revoke_my_distribution_consent', {
-          p_scope: 'publication',
-        })
-        if (error) {
-          failed++
-          console.error(`CLEANUP FAIL — revoke synthetic consent :: ${error.code ?? 'unknown'}`)
+        for (const scope of ['publication', 'profile_public'] as const) {
+          const { error } = await client.rpc('revoke_my_distribution_consent', {
+            p_scope: scope,
+          })
+          if (error) {
+            failed++
+            console.error(`CLEANUP FAIL — revoke synthetic ${scope} consent :: ${error.code ?? 'unknown'}`)
+          }
         }
       }
       await client.auth.signOut().catch(() => undefined)
