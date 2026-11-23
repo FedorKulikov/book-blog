@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import FollowButton from './FollowButton'
 import UnreadMessagesBadge from './UnreadMessagesBadge'
+import StorageImage from './StorageImage'
 import {
   User,
   BookOpen,
@@ -207,7 +208,7 @@ export default function ChatUserPanel({
       <div className="p-5 border-b border-emerald-dark/10">
         <div className="w-20 h-20 rounded-full bg-emerald-mid text-cream flex items-center justify-center text-2xl font-bold overflow-hidden">
           {profile.avatar_url ? (
-            <img
+            <StorageImage
               src={profile.avatar_url}
               alt=""
               className="w-full h-full object-cover"
