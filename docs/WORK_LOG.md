@@ -632,3 +632,10 @@ Replaced the original user-scoped `revoke_my_distribution_consent(text)` impleme
 StorageImage batches unique paths into one `createSignedUrls` request per bucket and viewer; 20 distinct comment avatars mean up to 20 signed URL values in one Storage batch call. Viewer lookup is shared; in-flight request keys include user ID; signed bearer URLs are not cached across renders or accounts. On an expired image URL the component retries signing once and omits the image if current RLS denies access.
 
 Read-only production grants show `authenticated` cannot update `posts.created_at`, so clients cannot move an old publication past the cutoff. Regression SQL now distinguishes legacy A/B from future C, checks publication consent and future grant after hide, checks all three private marker columns for no direct anon/authenticated SELECT/UPDATE, and tests counters after revoke. Current PR CI remains the deployment gate; migration has not been applied to production.
+
+
+## 2026-11-23 — B12 Stage 4 test correction: conversation-scoped profile access
+
+The PostgreSQL test exposed `profiles = 2` for owner A. This is intentional: A and B share an existing private conversation, so the current profile policy allows both participants to read the counterpart's profile without granting public distribution consent. Unrelated user C remains hidden.
+
+Updated `tests/sql/distribution-consent-withdrawal.test.sql` to assert A's own profile = 1, chat counterpart B = 1, unrelated C = 0, own post = 1, and own post image = 1. No production policy was weakened or changed. A fresh PostgreSQL 17 run on the latest PR head is required; do not merge before green CI.
