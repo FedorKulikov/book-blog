@@ -17,6 +17,7 @@ on:
       - 'next.config.ts'
       - 'tsconfig.json'
       - '.github/workflows/web-quality.yml'
+      - '.github/workflows/apply-migrations.yml'
       - '.github/workflows/layero-one-time-promote.yml'
 
 permissions:
@@ -64,6 +65,7 @@ jobs:
           "$(go env GOPATH)/bin/actionlint" -color \
             .github/workflows/layero-one-time-promote.yml \
             .github/workflows/layero-deploy-main-once.yml \
+            .github/workflows/apply-migrations.yml \
             .github/workflows/web-quality.yml
 
       - name: Set up Node.js
