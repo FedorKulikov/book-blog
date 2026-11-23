@@ -672,3 +672,14 @@ Aggregate live state: 19 profiles, 11 posts, no currently public profiles/posts,
 Code inspection confirms `StorageImage` is wired into comment avatars, post images/author avatars, conversation-list avatars and book covers. It batches signatures by bucket/viewer: 20 unique comment avatars can produce up to 20 signed URL values in one Storage API batch request; duplicate paths share an in-flight signature. Image load error triggers one re-sign attempt; continuing RLS denial leaves a neutral placeholder. `Header.tsx` has no avatar image element; it displays a generic User icon and username.
 
 Browser-level visual verification of the exact five user-requested images remains pending: this execution environment has no authenticated Layero browser session or website screenshot/browser-control capability. HTTP smoke and SQL/RLS checks are not reported as visual proof, and no production test account/content was created. The privacy policy Stage 5 update remains deferred until that visual check is genuinely available.
+
+
+## 2026-11-23 — B12-fix2 Stage 1: legacy content visible until author decision
+
+Added the standalone migration `supabase/migrations/20261214_legacy_distribution_default_visibility.sql`. Only the existing read helpers `private.can_read_distribution_post(uuid)` and `private.can_read_distribution_profile(uuid)` are replaced. Their legacy branch allows public reads only when the content's `created_at < legacy_distribution_cutoff_at` and `legacy_distribution_choice IS NULL`. Active scope consent, owner access, moderator/admin access, and private-chat counterpart profile access are retained.
+
+The migration does not insert, update, or backfill `private.personal_data_consents`. A dedicated SQL test verifies that fact, and simulates a real grant only by calling the authenticated synthetic user's own consent RPCs. It checks pending visibility, the one-time hide decision, consent-based visibility restoration, strict cutoff behavior, and SQLSTATE `42501` for a new post without publication consent. The PostgreSQL 17 CI job runs the migration twice and then runs the dedicated test.
+
+No UI, books, privacy policy, email recovery, Hook, secrets, or production data were changed. The migration is not applied to production by this change.
+
+A full CI run also surfaced a related public counter mismatch: the production `increment_post_views(uuid)` ACL lacked EXECUTE for `anon`/`authenticated`, and the counter condition did not include pending legacy posts. Extended the same migration to replace that function with the same public-distribution predicate, revoke implicit `PUBLIC` execution and explicitly grant `anon` plus `authenticated`. SQL coverage now checks public counter grant, pending legacy increment, hidden legacy no-increment, and increment after a real consent. This is a migration-only fix; it has not been applied to production.
