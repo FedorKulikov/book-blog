@@ -9,7 +9,8 @@ insert into auth.users (id) values
   ('55555555-5555-4555-8555-555555555555'),
   ('66666666-6666-4666-8666-666666666666'),
   ('77777777-7777-4777-8777-777777777777'),
-  ('88888888-8888-4888-8888-888888888888');
+  ('88888888-8888-4888-8888-888888888888'),
+  ('99999999-9999-4999-8999-999999999999');
 
 -- A/B/C are pre-cutoff profiles with no decision. D/E are created exactly at
 -- their cutoff and therefore must not qualify as legacy profiles.
@@ -19,6 +20,7 @@ insert into public.profiles (
   ('44444444-4444-4444-8444-444444444444', 'legacy_pending', now() - interval '10 minutes', now() - interval '5 minutes', 'user'),
   ('55555555-5555-4555-8555-555555555555', 'legacy_hidden', now() - interval '10 minutes', now() - interval '5 minutes', 'user'),
   ('66666666-6666-4666-8666-666666666666', 'legacy_profile_new_post', now() - interval '10 minutes', now() - interval '5 minutes', 'user'),
+  ('99999999-9999-4999-8999-999999999999', 'legacy_profile_only_grant', now() - interval '10 minutes', now() - interval '5 minutes', 'user'),
   ('77777777-7777-4777-8777-777777777777', 'fresh_profile', now(), now(), 'user'),
   ('88888888-8888-4888-8888-888888888888', 'legacy_test_admin', now(), now(), 'admin');
 
@@ -68,7 +70,8 @@ begin
        '55555555-5555-4555-8555-555555555555',
        '66666666-6666-4666-8666-666666666666',
        '77777777-7777-4777-8777-777777777777',
-       '88888888-8888-4888-8888-888888888888'
+       '88888888-8888-4888-8888-888888888888',
+       '99999999-9999-4999-8999-999999999999'
      )
   ) then
     raise exception 'migration/test setup must not fabricate consent records';
@@ -79,6 +82,11 @@ begin
      or not has_function_privilege('anon', 'private.can_read_distribution_post(uuid)', 'EXECUTE')
      or not has_function_privilege('authenticated', 'private.can_read_distribution_post(uuid)', 'EXECUTE') then
     raise exception 'public RLS policy predicates must be executable by anon and authenticated';
+  end if;
+
+  if has_function_privilege('anon', 'public.my_legacy_distribution_prompt_state()', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.my_legacy_distribution_prompt_state()', 'EXECUTE') then
+    raise exception 'legacy prompt state must remain authenticated-only';
   end if;
 
   if not has_function_privilege('anon', 'public.increment_post_views(uuid)', 'EXECUTE')
@@ -98,8 +106,9 @@ begin
   if (select count(*) from public.profiles where id in (
     '44444444-4444-4444-8444-444444444444',
     '55555555-5555-4555-8555-555555555555',
-    '66666666-6666-4666-8666-666666666666'
-  )) <> 3 then
+    '66666666-6666-4666-8666-666666666666',
+    '99999999-9999-4999-8999-999999999999'
+  )) <> 4 then
     raise exception 'pre-cutoff profiles with NULL choice must be visible';
   end if;
 
@@ -120,6 +129,77 @@ begin
   end if;
 end;
 $pending_legacy_visible$;
+
+reset role;
+
+-- Profile-only legacy owners can resolve visibility without approved posts.
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '66666666-6666-4666-8666-666666666666', true);
+
+do $profile_only_legacy_state$
+begin
+  if (select has_legacy_profile from public.my_legacy_distribution_prompt_state()) is not true
+     or (select has_approved_posts from public.my_legacy_distribution_prompt_state()) is not false
+     or (select already_prompted from public.my_legacy_distribution_prompt_state()) is not false then
+    raise exception 'profile-only legacy user must receive a pending profile decision';
+  end if;
+end;
+$profile_only_legacy_state$;
+
+select public.resolve_my_legacy_distribution_prompt('hide_existing');
+
+do $profile_only_hidden$
+begin
+  if (select legacy_choice from public.my_legacy_distribution_prompt_state()) <> 'hidden'
+     or exists (select 1 from public.my_distribution_consents()) then
+    raise exception 'profile-only hide must set the private choice without creating consent records';
+  end if;
+end;
+$profile_only_hidden$;
+
+reset role;
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '99999999-9999-4999-8999-999999999999', true);
+
+do $profile_only_grant_state$
+begin
+  if (select has_legacy_profile from public.my_legacy_distribution_prompt_state()) is not true
+     or (select has_approved_posts from public.my_legacy_distribution_prompt_state()) is not false then
+    raise exception 'profile-only grant user must be identified as legacy profile without legacy posts';
+  end if;
+end;
+$profile_only_grant_state$;
+
+select public.resolve_my_legacy_distribution_prompt('grant_existing');
+
+do $profile_only_grant_scope$
+begin
+  if (select count(*) from public.my_distribution_consents() where revoked_at is null) <> 1
+     or not exists (
+       select 1 from public.my_distribution_consents()
+        where scope = 'profile_public' and revoked_at is null
+     )
+     or exists (
+       select 1 from public.my_distribution_consents()
+        where scope = 'publication' and revoked_at is null
+     ) then
+    raise exception 'profile-only grant must record profile_public only, not publication consent';
+  end if;
+end;
+$profile_only_grant_scope$;
+
+reset role;
+set local role anon;
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
+
+do $profile_only_public_results$
+begin
+  if (select count(*) from public.profiles where id = '66666666-6666-4666-8666-666666666666') <> 0
+     or (select count(*) from public.profiles where id = '99999999-9999-4999-8999-999999999999') <> 1 then
+    raise exception 'profile-only hide/grant decisions must produce the corresponding public visibility';
+  end if;
+end;
+$profile_only_public_results$;
 
 reset role;
 
@@ -308,6 +388,18 @@ begin
        where user_id = '55555555-5555-4555-8555-555555555555'
          and revoked_at is null) <> 2 then
     raise exception 'the only active consent rows must come from B explicit user RPC actions';
+  end if;
+
+  if (select count(*) from private.personal_data_consents
+       where user_id = '99999999-9999-4999-8999-999999999999'
+         and revoked_at is null
+         and scope = 'profile_public') <> 1
+     or exists (
+       select 1 from private.personal_data_consents
+        where user_id = '99999999-9999-4999-8999-999999999999'
+          and scope = 'publication'
+     ) then
+    raise exception 'profile-only grant must create only its explicitly requested profile scope';
   end if;
 end;
 $no_consent_backfill$;
