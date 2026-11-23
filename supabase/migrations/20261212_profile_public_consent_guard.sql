@@ -110,4 +110,56 @@ with check (
   and public.has_my_profile_public_consent()
 );
 
+
+-- notifications_muted is not part of the public profile. A broad table-level
+-- SELECT grant made it queryable by anon despite the UI only using it for the
+-- owner's own notification badge/settings. Regrant every other current column
+-- explicitly and expose this one value through an auth.uid()-scoped RPC.
+
+create or replace function public.my_profile_notification_settings()
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $function$
+declare
+  v_user_id uuid := auth.uid();
+  v_notifications_muted boolean;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication is required to read notification settings'
+      using errcode = '28000';
+  end if;
+
+  select coalesce(p.notifications_muted, false)
+    into v_notifications_muted
+    from public.profiles as p
+   where p.id = v_user_id;
+
+  return coalesce(v_notifications_muted, false);
+end;
+$function$;
+
+comment on function public.my_profile_notification_settings() is
+  'Returns only auth.uid() notification preference; notifications_muted is not selectable through the public profiles table API.';
+
+revoke all on function public.my_profile_notification_settings()
+  from public, anon, authenticated, service_role;
+grant execute on function public.my_profile_notification_settings()
+  to authenticated, service_role;
+
+revoke select on table public.profiles from public, anon, authenticated;
+grant select (
+  id,
+  username,
+  bio,
+  avatar_url,
+  created_at,
+  role,
+  is_banned,
+  banned_until,
+  onboarding_completed_at
+) on public.profiles to anon, authenticated;
+
 commit;
