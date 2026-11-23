@@ -803,3 +803,5 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Workflow:** removed the Management API password-posture step and all `SUPABASE_ACCESS_TOKEN` dependency from this smoke workflow. Production dry-run now runs in the PR workflow with the existing `SUPABASE_SECRET_KEY`; no new secrets are needed.
 
 **Validation:** CI is expected to run TypeScript and the production dry-run after this commit. Dry-run outcome and the per-account inventory are pending; `--delete` remains disabled.
+
+**Dry-run iteration:** Auth Admin, Storage and inventory reads succeeded and printed the matching accounts plus aggregate counts. The relationship guard then failed before completing because the query selected a non-existent `likes.id`; the production table has composite key `(user_id, post_id)`. Corrected the PostgREST projection to select those existing columns. No deletion or other production write occurred; the guard result remains pending rerun.
