@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import { IMAGE_ACCEPT_ATTR, validateImageFile } from '@/app/components/imageValidation'
 import { Upload, X } from '@/app/components/icons'
+import StorageImage from '@/app/components/StorageImage'
 
 function explainInsertError(message: string): string {
   const lower = message.toLowerCase()
@@ -207,7 +208,7 @@ export default function AddBookForm() {
         <div className="flex items-center gap-4">
           <div className="w-16 h-24 rounded-lg overflow-hidden bg-emerald-mid/10 flex items-center justify-center flex-shrink-0">
             {coverUrl ? (
-              <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+              <StorageImage src={coverUrl} alt="" className="w-full h-full object-cover" />
             ) : (
               <span className="text-[10px] text-brown/40 text-center px-1">
                 нет обложки
