@@ -70,4 +70,41 @@ $function$;
 comment on function private.can_read_distribution_post(uuid) is
   'Allows own/staff post reads, approved posts with active publication consent, or approved pre-cutoff legacy posts while legacy_distribution_choice is null.';
 
+
+-- Keep the callable public view counter consistent with the same visibility
+-- predicate. Pending legacy posts are viewable; explicitly hidden posts are not.
+create or replace function public.increment_post_views(post_id_input uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  update public.posts as target
+     set views_count = coalesce(target.views_count, 0) + 1
+   where target.id = post_id_input
+     and target.status = 'approved'
+     and exists (
+       select 1
+         from public.profiles author
+        where author.id = target.user_id
+          and (
+            private.has_active_distribution_consent(author.id, 'publication')
+            or (
+              target.created_at < author.legacy_distribution_cutoff_at
+              and author.legacy_distribution_choice is null
+            )
+          )
+     );
+end;
+$function$;
+
+comment on function public.increment_post_views(uuid) is
+  'Increments views only for approved posts that are publicly distributed through active publication consent or undecided pre-cutoff legacy visibility.';
+
+-- The public counter is intentionally callable by guests and signed-in users.
+-- Default privileges are otherwise restrictive, so retain this grant explicitly.
+revoke all on function public.increment_post_views(uuid) from public;
+grant execute on function public.increment_post_views(uuid) to anon, authenticated;
+
 commit;

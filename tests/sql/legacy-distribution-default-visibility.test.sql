@@ -73,6 +73,11 @@ begin
   ) then
     raise exception 'migration/test setup must not fabricate consent records';
   end if;
+
+  if not has_function_privilege('anon', 'public.increment_post_views(uuid)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.increment_post_views(uuid)', 'EXECUTE') then
+    raise exception 'public post view counter must remain executable by anon and authenticated';
+  end if;
 end;
 $fixture_integrity$;
 
@@ -100,6 +105,11 @@ begin
     '55555555-aaaa-4aaa-8aaa-555555555551'
   )) <> 2 then
     raise exception 'pre-cutoff approved posts with NULL choice must be visible';
+  end if;
+
+  perform public.increment_post_views('44444444-aaaa-4aaa-8aaa-444444444441');
+  if (select views_count from public.posts where id = '44444444-aaaa-4aaa-8aaa-444444444441') <> 1 then
+    raise exception 'pending legacy post must accept an anonymous view increment';
   end if;
 end;
 $pending_legacy_visible$;
@@ -131,6 +141,11 @@ select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 
 do $hidden_legacy_not_public$
 begin
+  perform public.increment_post_views('55555555-aaaa-4aaa-8aaa-555555555551');
+  if (select views_count from public.posts where id = '55555555-aaaa-4aaa-8aaa-555555555551') <> 0 then
+    raise exception 'hidden legacy post must not accept an anonymous view increment';
+  end if;
+
   if (select count(*) from public.posts where id = '44444444-aaaa-4aaa-8aaa-444444444441') <> 1 then
     raise exception 'pending legacy post should remain visible';
   end if;
@@ -195,6 +210,11 @@ select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 
 do $real_consent_restores_visibility$
 begin
+  perform public.increment_post_views('55555555-aaaa-4aaa-8aaa-555555555551');
+  if (select views_count from public.posts where id = '55555555-aaaa-4aaa-8aaa-555555555551') <> 1 then
+    raise exception 'legacy post must accept anonymous view increments after real publication consent';
+  end if;
+
   if (select count(*) from public.posts where id = '55555555-aaaa-4aaa-8aaa-555555555551') <> 1 then
     raise exception 'approved legacy post must be visible after a real publication consent';
   end if;
