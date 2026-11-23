@@ -1,12 +1,13 @@
 /**
- * Central allow-list for disposable Supabase Auth accounts created by production smoke scripts.
- * Keep email prefixes here; SQL match predicates and TypeScript validation derive from this list.
+ * Single source of truth for disposable Supabase Auth accounts created by production smoke scripts.
+ * Keep all smoke email prefixes here; selectors, SQL predicates and generators derive from this map.
  */
-export const SMOKE_ACCOUNT_EMAIL_PREFIXES = [
-  'data-smoke-',
-  'chat-smoke-',
-] as const
+export const SMOKE_ACCOUNT_PREFIX = {
+  data: 'data-smoke-',
+  chat: 'chat-smoke-',
+} as const
 
+export const SMOKE_ACCOUNT_EMAIL_PREFIXES = Object.values(SMOKE_ACCOUNT_PREFIX)
 export const SMOKE_ACCOUNT_EMAIL_SUFFIX = '@example.com'
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
