@@ -775,3 +775,13 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **CI follow-up:** the first PR run stopped at TypeScript because a local `URL` string shadowed the global constructor in the production guard. Changed the guard to use `globalThis.URL`. No smoke test or production cleanup ran in the failed attempt.
 
 **Production dry-run result (PR #94, run 45198479062):** Chat security passed 32/32 and cleanup-secret preflight confirmed that `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `SUPABASE_ACCESS_TOKEN` are configured. The read-only Management API SQL call then returned HTTP 403 before account inventory or the cross-account guard could run. No production data was changed and no `--delete` command was invoked. Current scoped-token documentation specifies `database_read` for this endpoint; the configured `SUPABASE_ACCESS_TOKEN` therefore needs Database → Read permission and access to project `tbqjyaxbymntdqzldrjz`. The service-role/secret key was functional for the chat smoke.
+
+## 2026-11-23 — Remove Management API from smoke cleanup path
+
+**Required:** replace Management API SQL reads with Auth Admin, Storage API and PostgREST/service-role while preserving the cross-account deletion guard.
+
+**Implemented:** `listDataSmokeUsers()` uses paginated Auth Admin listing and the central smoke-prefix matcher. Storage inventory recursively lists bucket roots via Storage API and descends only into exact top-level folders matching the selected Auth UUIDs; cleanup removes only paths beginning with `<selected-user-id>/`. Public related content and cross-account safety checks use paginated PostgREST reads with the service-role client.
+
+**Private consent history:** the existing ACL deliberately denies `service_role` both USAGE on schema `private` and direct table privileges on `private.personal_data_consents`. Added migration `20261217_ops_smoke_consent_inventory.sql` with a read-only SECURITY DEFINER PostgREST RPC. EXECUTE is granted only to `service_role`; direct schema/table grants remain unchanged. Added SQL regression coverage for aggregates and ACLs.
+
+**Workflow:** cleanup CLI no longer accepts or calls the Management API token/endpoint. The Chat security workflow dry-run now requires only `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY`. The unrelated, optional Auth password-posture Management API check remains independent and may skip when its token is absent. No `--delete` command was run.
