@@ -15,6 +15,13 @@ for (const [name, value] of Object.entries({ SUPABASE_URL: URL, NEXT_PUBLIC_SUPA
   if (!value) throw new Error(`missing environment variable: ${name}`)
 }
 
+if (new URL(URL).hostname === 'tbqjyaxbymntdqzldrjz.supabase.co') {
+  throw new Error(
+    'production consent-write smoke is disabled: do not create consent records for synthetic users; ' +
+    'use the isolated PostgreSQL consent regression tests instead',
+  )
+}
+
 function apiKeyOnlyFetch(key: string): typeof fetch {
   return (input, init) => {
     const headers = new Headers(init?.headers)
