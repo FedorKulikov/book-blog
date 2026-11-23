@@ -631,3 +631,7 @@
 - Enabled the production dry-run on PR CI as well as the post-migration workflow. No `--delete` command has been run. Actual dry-run inventory and guard result are pending CI.
 
 - First PR #96 production dry-run successfully enumerated smoke accounts and app/consent/Storage inventory through Auth Admin, Storage and PostgREST. It stopped before guard completion because a likes query selected a non-existent `id` column (the actual key is `user_id, post_id`). Updated the query to use the real composite key columns. No production write/deletion ran; a fresh dry-run is required to establish the safety result.
+
+- Production dry-run succeeded on PR #96 (run `45205225391`): 63 matched Auth accounts — 58 `data-smoke-*` and 5 `chat-smoke-*`. Inventory: 9 profiles, 2 posts, 2 books, 1 report, 10 notifications, 40 consent rows (2 active, 38 revoked), 6 Storage objects, 4 conversations, 2 messages, 1 ticket and 1 ticket message; comments, likes, bookmarks, follows, external news and post images were 0.
+- `assertNoForeignContentWouldBeCascadeDeleted` completed successfully (`CLEANUP SAFETY PASS`); the script ended in dry-run-only mode. No production data was modified or deleted. The run's per-account lines contain each selected email, Auth ID and related-record counts.
+- Chat security smoke and all Web quality jobs completed successfully on the same PR head.
