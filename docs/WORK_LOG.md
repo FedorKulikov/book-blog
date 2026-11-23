@@ -639,3 +639,10 @@ Read-only production grants show `authenticated` cannot update `posts.created_at
 The PostgreSQL test exposed `profiles = 2` for owner A. This is intentional: A and B share an existing private conversation, so the current profile policy allows both participants to read the counterpart's profile without granting public distribution consent. Unrelated user C remains hidden.
 
 Updated `tests/sql/distribution-consent-withdrawal.test.sql` to assert A's own profile = 1, chat counterpart B = 1, unrelated C = 0, own post = 1, and own post image = 1. No production policy was weakened or changed. A fresh PostgreSQL 17 run on the latest PR head is required; do not merge before green CI.
+
+
+## 2026-11-23 — B12 Stage 4 test correction: granted post visibility and user-scoped revoke
+
+The PostgreSQL run exposed an incorrect test expectation: user B was expected not to read A's approved post even after A had explicitly granted active publication consent. That expectation contradicted the consent model; the post is publicly readable while A's publication grant is active.
+
+Updated the scenario: B can read A's approved post while the grant is active; B's `my_distribution_consents()` returns only B's rows; B's revoke-all action affects only B; a subsequent authenticated assertion as A confirms A's publication grant remains active. A's own later revoke continues to test actual public withdrawal. No production policy was weakened; only the SQL regression test changed. A new green PostgreSQL run on the final head is required.
