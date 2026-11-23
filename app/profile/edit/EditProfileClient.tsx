@@ -342,7 +342,7 @@ export default function EditProfilePage() {
           {legacyDecisionPending && legacyPromptState?.has_legacy_profile && !profileConsentActive && (
             <p className="mb-3 text-sm leading-relaxed text-brown/70">
               Публичные поля существующего профиля пока видны посетителям до вашего решения ниже.
-              Для дальнейшего изменения этих полей понадобится отдельное согласие.
+              Для дальнейшего публичного распространения этих полей потребуется отдельное согласие.
             </p>
           )}
 
@@ -458,8 +458,8 @@ export default function EditProfilePage() {
             Распространение публикаций
           </h2>
           <p className="text-sm text-brown-dark">
-            {legacyPromptState?.legacy_choice === 'hidden'
-              ? 'Ранее опубликованные материалы остаются скрытыми по вашему выбору. Новое согласие на будущие публикации не откроет старые записи.'
+            {legacyPromptState?.legacy_choice === 'hidden' && legacyPromptState.has_approved_posts
+              ? 'Ранее одобренные публикации остаются скрытыми по вашему выбору. Новое согласие на будущие публикации не откроет старые записи.'
               : publicationConsentActive
               ? 'Согласие на распространение ваших публикаций действует.'
               : legacyDecisionPending && legacyPromptState?.has_approved_posts
