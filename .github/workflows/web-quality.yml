@@ -740,6 +740,13 @@ jobs:
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261213_distribution_consent_withdrawal.sql
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261213_distribution_consent_withdrawal.sql
 
+      - name: Apply publication author details migration twice
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261214_publication_author_details.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261214_publication_author_details.sql
+
       - name: Verify consent-aware visibility, private media, and legacy prompt
         env:
           PGPASSWORD: postgres
