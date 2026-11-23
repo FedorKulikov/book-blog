@@ -567,3 +567,15 @@ PR #82 merged: `e9fa04b60f3c033c48f5ec0888cda3c58c67de2e`. Migration `20261212_p
 Добавлен production smoke после deployment PR #82. Пользователи A/B проверяют public profile guard и public avatar Storage: без согласия UPDATE/UPLOAD блокируется, приватная `notifications_muted` сохраняется и читается только через owner RPC, после согласия A получает строку scope `profile_public` version 1.1, B не видит/не отзывает её, A обновляет username/bio/avatar и загружает/заменяет avatar, после revoke действия снова блокируются.
 
 Cleanup: `finally` отзывает publication + profile_public для обоих JWT до signOut, удаляет все созданные Storage objects и синтетический app content; дополнительно проверяет отсутствие тестовых profiles/posts/books. `auth.users` rows оставляются намеренно. Результат live CI ожидается.
+
+## 2026-11-23 — B12, этап 3: live production verification завершена
+
+PR #83 merged: `2024275a5078e178f6cc95556d28010a77675046`. Web quality 4/4 jobs и Chat security smoke success. Live production smoke: 77 passed, 0 failed.
+
+**Результаты A/B:** до согласия A и B не смогли обновить публичный профиль (`42501`) или загрузить публичный аватар. Приватная `notifications_muted` у A сохранилась без profile consent через owner RPC. A выдал `profile_public` version 1.1, видел собственную строку; B не видел и не смог отозвать согласие. A после согласия загрузил/заменил avatar и изменил username/bio/avatar_url; после revoke обе операции блокировались.
+
+**Cleanup и production counts:** `CLEANUP PASS`. Отозваны обе consent scopes для временных пользователей, тестовые Storage objects/profiles/app data удалены. После smoke: 0 synthetic profiles/posts/books/conversations/tickets/notifications/storage objects; 0 активных тестовых profile_public/publication согласий; 1 revoked profile_public audit row; 28 synthetic `auth.users` retained намеренно. Реальные аккаунты не тронуты.
+
+**Registry/security:** Stage 3 checksum зарегистрирован в `ops.applied_migrations` (1 строка). `notifications_muted` direct SELECT denied anon/authenticated; profile helper EXECUTE denied anon, enabled authenticated; trigger present.
+
+**Оговорка:** live smoke использует настоящие Supabase Auth/JWT/PostgREST для проверки DB/Storage/RLS/trigger; Next.js PATCH/service helper покрыт unit/CI, но отдельный ручной браузерный проход Layero UI не выполнялся.
