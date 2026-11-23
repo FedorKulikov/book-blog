@@ -172,8 +172,7 @@ $grant_assertions$;
 
 reset role;
 
--- Guests can now see A, but not B; the old public URLs are served only via
--- signed-URL authorization while their underlying Storage rows are visible.
+-- Guests can now see A, but not B; book covers remain public catalog assets.
 set local role anon;
 select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 do $anonymous_with_consent$
@@ -261,19 +260,17 @@ set local role anon;
 select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 do $anonymous_after_revoke$
 begin
-  if (select count(*) from public.profiles) <> 1 then
-    raise exception 'only user C should remain publicly visible after A revoke';
-  end if;
-  if (select count(*) from public.posts) <> 1
-     or (select count(*) from public.comments) <> 1
-     or (select count(*) from public.likes) <> 1
-     or (select count(*) from public.post_images) <> 1
-     or (select count(*) from public.post_tags) <> 1 then
+  if (select count(*) from public.profiles) <> 0
+     or (select count(*) from public.posts) <> 0
+     or (select count(*) from public.comments) <> 0
+     or (select count(*) from public.likes) <> 0
+     or (select count(*) from public.post_images) <> 0
+     or (select count(*) from public.post_tags) <> 0 then
     raise exception 'A or B publication-related rows remain visible after revoke';
   end if;
-  if (select count(*) from storage.objects where bucket_id='avatars') <> 1
-     or (select count(*) from storage.objects where bucket_id='post-images') <> 2 then
-    raise exception 'A or B media remains available after revoke';
+  if (select count(*) from storage.objects where bucket_id='avatars') <> 0
+     or (select count(*) from storage.objects where bucket_id='post-images') <> 1 then
+    raise exception 'A or B media remains available after revoke (only public book cover should remain)';
   end if;
 end;
 $anonymous_after_revoke$;
