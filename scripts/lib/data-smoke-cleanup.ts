@@ -23,7 +23,7 @@ type NotificationRow = {
 type ConversationRow = { id: string; user1_id: string; user2_id: string }
 type MessageRow = { id: string; sender_id: string; conversation_id: string }
 type CommentRow = { id: string; user_id: string; post_id: string }
-type LikeRow = { id: string; user_id: string; post_id: string }
+type LikeRow = { user_id: string; post_id: string }
 type BookmarkRow = { id: string; user_id: string; post_id: string }
 type FollowRow = { follower_id: string; following_id: string }
 type TicketRow = { id: string; user_id: string }
@@ -322,7 +322,7 @@ export async function getDataSmokeInventory(
     selectByEitherId<ConversationRow>(admin, 'conversations', 'id,user1_id,user2_id', 'user1_id', 'user2_id', ids),
     selectByIds<MessageRow>(admin, 'messages', 'id,sender_id,conversation_id', 'sender_id', ids),
     selectByIds<CommentRow>(admin, 'comments', 'id,user_id,post_id', 'user_id', ids),
-    selectByIds<LikeRow>(admin, 'likes', 'id,user_id,post_id', 'user_id', ids),
+    selectByIds<LikeRow>(admin, 'likes', 'user_id,post_id', 'user_id', ids),
     selectByIds<BookmarkRow>(admin, 'bookmarks', 'id,user_id,post_id', 'user_id', ids),
     selectByIds<FollowRow>(admin, 'follows', 'follower_id,following_id', 'follower_id', ids),
     selectByIds<FollowRow>(admin, 'follows', 'follower_id,following_id', 'following_id', ids),
