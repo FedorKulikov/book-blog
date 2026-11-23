@@ -445,6 +445,7 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
   ])
 
   const smokeIdSet = new Set(ids)
+  const smokeTicketIdSet = new Set(ticketIds)
   const mixedConversations = smokeConversations.filter(row =>
     (smokeIdSet.has(row.user1_id) && !smokeIdSet.has(row.user2_id)) ||
     (smokeIdSet.has(row.user2_id) && !smokeIdSet.has(row.user1_id)),
@@ -463,7 +464,7 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     foreign_notifications_on_smoke_messages: notificationsOnMessages.filter(row => !smokeIdSet.has(row.user_id)).length,
     foreign_recipients_of_smoke_actor_notifications: notificationsByActor.filter(row => !smokeIdSet.has(row.user_id)).length,
     foreign_ticket_messages: ticketMessages.filter(row => !smokeIdSet.has(row.sender_id)).length,
-    smoke_authored_messages_in_foreign_tickets: ticketMessagesBySmokeSender.filter(row => !new Set(ticketIds).has(row.ticket_id)).length,
+    smoke_authored_messages_in_foreign_tickets: ticketMessagesBySmokeSender.filter(row => !smokeTicketIdSet.has(row.ticket_id)).length,
     foreign_posts_referencing_smoke_books: postsOnSmokeBooks.filter(row => !smokeIdSet.has(row.user_id)).length,
   }
 
