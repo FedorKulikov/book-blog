@@ -491,9 +491,10 @@ begin
   if (select count(*) from public.profiles where id=auth.uid()) <> 1
      or (select count(*) from public.profiles where id='22222222-2222-4222-8222-222222222222') <> 1
      or (select count(*) from public.profiles where id='33333333-3333-4333-8333-333333333333') <> 0
-     or (select count(*) from public.posts) <> 1
-     or (select count(*) from public.post_images) <> 1 then
-    raise exception 'revocation removed own data or exposed an unrelated profile';
+     or (select count(*) from public.posts) <> 2
+     or (select count(*) from public.posts where id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2') <> 0
+     or (select count(*) from public.post_images) <> 2 then
+    raise exception 'revocation removed own data, hid new C, or exposed legacy B';
   end if;
   if exists (
     select 1 from public.my_distribution_consents()
