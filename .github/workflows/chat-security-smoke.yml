@@ -22,6 +22,13 @@ on:
       - 'app/welcome/**'
       - 'app/auth/reset/page.tsx'
       - 'lib/errors.ts'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/cleanup-data-smoke-users.ts'
+      - 'scripts/lib/**'
+      - '.github/workflows/chat-security-smoke.yml'
   workflow_run:
     workflows:
       - Apply DB migrations
@@ -111,120 +118,3 @@ jobs:
           SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: npx tsx scripts/cleanup-data-smoke-users.ts --delete
-
-lib/**'
-      - '.github/workflows/chat-security-smoke.yml'
-      - 'supabase/migrations/**'
-      - 'app/signup/page.tsx'
-      - 'supabase/functions/**'
-      - 'supabase/config.toml'
-      - 'app/auth/confirm/**'
-      - 'app/welcome/**'
-      - 'app/auth/reset/page.tsx'
-      - 'lib/errors.ts'
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/cleanup-data-smoke-users.ts'
-      - 'scripts/lib/**'
-      - '.github/workflows/chat-security-smoke.yml'
-  workflow_run:
-    workflows:
-      - Apply DB migrations
-    types:
-      - completed
-    branches:
-      - main
-
-permissions:
-  contents: read
-
-concurrency:
-  group: chat-security-smoke-${{ github.event.pull_request.number || github.event.workflow_run.id || github.run_id }}
-  cancel-in-progress: true
-
-jobs:
-  smoke:
-    if: >-
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript check
-        run: npx tsc --noEmit
-
-      - name: Read-only Auth password posture
-        continue-on-error: true
-        env:
-          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          PROJECT_REF: tbqjyaxbymntdqzldrjz
-        run: |
-          set -euo pipefail
-          set +x
-          if [ -z "${TOKEN:-}" ]; then
-            echo "Auth config: Management API token is not configured" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          umask 077
-          tmp=$(mktemp)
-          trap 'rm -f "$tmp"' EXIT
-          status=$(curl -sS --connect-timeout 10 --max-time 30 \
-            -o "$tmp" -w '%{http_code}' \
-            -H "Authorization: Bearer $TOKEN" \
-            "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth")
-
-          if [ "$status" != "200" ]; then
-            echo "Auth config read returned HTTP $status; no settings were changed." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          echo "### Supabase Auth password posture (read-only)" >> "$GITHUB_STEP_SUMMARY"
-          jq '{password_min_length, password_required_characters, password_hibp_enabled}' "$tmp" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: Verify temporary chat access-control scenarios
-        env:
-          SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: npx tsx scripts/test-chat-security.ts
-
-      # Consent-write scenarios are covered by disposable PostgreSQL fixtures.
-      # This workflow must never create production consent records for test users.
-
-      - name: Require production smoke-cleanup credentials
-        if: github.event_name != 'pull_request'
-        env:
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-        run: |
-          set -euo pipefail
-          missing=()
-          [[ -n "${SUPABASE_SECRET_KEY:-}" ]] || missing+=("SUPABASE_SECRET_KEY")
-          [[ -n "${SUPABASE_PUBLISHABLE_KEY:-}" ]] || missing+=("SUPABASE_PUBLISHABLE_KEY")
-          if (( ${#missing[@]} > 0 )); then
-            printf 'Missing required GitHub Actions secrets: %s\\n' "${missing[*]}" >&2
-            exit 1
-          fi
-          echo "Required service-role/publishable credentials are configured (values were not printed)."
-
-      - name: Production smoke-account cleanup dry-run
-        if: github.event_name != 'pull_request'
-        env:
-          SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: npx tsx scripts/cleanup-data-smoke-users.ts --dry-run
