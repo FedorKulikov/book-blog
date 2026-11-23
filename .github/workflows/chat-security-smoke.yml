@@ -58,7 +58,6 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        if: github.event_name == 'pull_request'
         run: npm ci
 
       - name: TypeScript check
