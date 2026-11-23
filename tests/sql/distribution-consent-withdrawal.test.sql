@@ -163,12 +163,33 @@ reset role;
 set local role authenticated;
 select pg_catalog.set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
 do $new_user_no_legacy_prompt$
+declare
+  v_state record;
 begin
-  if (select has_approved_posts from public.my_legacy_distribution_prompt_state()) is not false then
+  select * into v_state from public.my_legacy_distribution_prompt_state();
+  if v_state.has_approved_posts is not false
+     or v_state.already_prompted
+     or v_state.legacy_choice is not null then
     raise exception 'post created after profile cutoff was misclassified as legacy';
   end if;
 end;
 $new_user_no_legacy_prompt$;
+
+-- A new publication consent can expose the post created after the cutoff.
+select public.record_my_distribution_consent(
+  'publication',
+  array[
+    'author_username',
+    'author_avatar',
+    'publication_title',
+    'publication_text',
+    'publication_images',
+    'publication_tags',
+    'linked_book',
+    'news_metadata'
+  ]::text[],
+  '1.0'
+);
 
 reset role;
 set local role authenticated;
@@ -232,17 +253,21 @@ begin
   end if;
 
   if (select count(*) from public.profiles) <> 1
-     or (select count(*) from public.posts) <> 1
-     or (select count(*) from public.comments) <> 1
-     or (select count(*) from public.likes) <> 1
-     or (select count(*) from public.post_images) <> 1
-     or (select count(*) from public.post_tags) <> 1 then
-    raise exception 'guest can see hidden rows or cannot see consented A rows';
+     or (select count(*) from public.posts) <> 2
+     or (select count(*) from public.comments) <> 2
+     or (select count(*) from public.likes) <> 2
+     or (select count(*) from public.post_images) <> 2
+     or (select count(*) from public.post_tags) <> 2 then
+    raise exception 'guest can see hidden rows or cannot see consented A/new C rows';
   end if;
 
   if (select count(*) from storage.objects where bucket_id = 'avatars') <> 1
-     or (select count(*) from storage.objects where bucket_id = 'post-images') <> 2 then
-    raise exception 'guest Storage visibility did not follow consent (post-images includes public book cover)';
+     or (select count(*) from storage.objects where bucket_id = 'post-images') <> 3 then
+    raise exception 'guest Storage visibility did not follow consent (post-images includes A, new C, and public book cover)';
+  end if;
+
+  if (select count(*) from public.posts where id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2') <> 0 then
+    raise exception 'legacy B post is visible without a legacy grant';
   end if;
 end;
 $anonymous_with_consent$;
@@ -280,8 +305,43 @@ begin
   ) then
     raise exception 'a second legacy prompt decision changed an already-handled choice';
   end if;
+
+  -- A later grant for new posts must not change the one-time legacy choice.
+  perform public.record_my_distribution_consent(
+    'publication',
+    array[
+      'author_username',
+      'author_avatar',
+      'publication_title',
+      'publication_text',
+      'publication_images',
+      'publication_tags',
+      'linked_book',
+      'news_metadata'
+    ]::text[],
+    '1.0'
+  );
+
+  if (select legacy_choice from public.my_legacy_distribution_prompt_state()) <> 'hidden'
+     or (select publication_active from public.my_legacy_distribution_prompt_state()) is not true then
+    raise exception 'later publication consent overwrote the hidden legacy decision';
+  end if;
 end;
 $hide_and_repeat$;
+
+reset role;
+set local role anon;
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
+do $user_b_legacy_stays_hidden$
+begin
+  if (select count(*) from public.posts where id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2') <> 0
+     or (select count(*) from public.comments where post_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2') <> 0
+     or (select count(*) from public.post_images where post_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2') <> 0
+     or (select count(*) from storage.objects where bucket_id='post-images' and name='22222222-2222-4222-8222-222222222222/b.jpg') <> 0 then
+    raise exception 'future publication consent re-published B legacy material after hide choice';
+  end if;
+end;
+$user_b_legacy_stays_hidden$;
 
 reset role;
 
@@ -290,6 +350,22 @@ reset role;
 set local role authenticated;
 select pg_catalog.set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 select public.revoke_my_all_distribution_consents();
+
+-- A later publication-only grant must not re-publish the pre-cutoff post.
+select public.record_my_distribution_consent(
+  'publication',
+  array[
+    'author_username',
+    'author_avatar',
+    'publication_title',
+    'publication_text',
+    'publication_images',
+    'publication_tags',
+    'linked_book',
+    'news_metadata'
+  ]::text[],
+  '1.0'
+);
 
 do $owner_after_revoke$
 begin
@@ -305,10 +381,20 @@ begin
   end if;
   if exists (
     select 1 from public.my_distribution_consents()
-     where scope in ('profile_public','publication')
+     where scope = 'profile_public'
        and revoked_at is null
   ) then
-    raise exception 'revoke-all wrapper left an active distribution scope';
+    raise exception 'revoke-all wrapper left profile_public active';
+  end if;
+
+  if (select legacy_choice from public.my_legacy_distribution_prompt_state()) <> 'hidden'
+     or (select publication_active from public.my_legacy_distribution_prompt_state()) is not true then
+    raise exception 'later publication grant changed the legacy hide decision';
+  end if;
+
+  perform public.increment_post_views('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1');
+  if (select views_count from public.posts where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') <> 1 then
+    raise exception 'a new publication grant exposed or counted the hidden legacy post';
   end if;
 end;
 $owner_after_revoke$;
@@ -319,16 +405,16 @@ select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 do $anonymous_after_revoke$
 begin
   if (select count(*) from public.profiles) <> 0
-     or (select count(*) from public.posts) <> 0
-     or (select count(*) from public.comments) <> 0
-     or (select count(*) from public.likes) <> 0
-     or (select count(*) from public.post_images) <> 0
-     or (select count(*) from public.post_tags) <> 0 then
-    raise exception 'A or B publication-related rows remain visible after revoke';
+     or (select count(*) from public.posts) <> 1
+     or (select count(*) from public.comments) <> 1
+     or (select count(*) from public.likes) <> 1
+     or (select count(*) from public.post_images) <> 1
+     or (select count(*) from public.post_tags) <> 1 then
+    raise exception 'A and B legacy rows must stay hidden while new C remains visible';
   end if;
   if (select count(*) from storage.objects where bucket_id='avatars') <> 0
-     or (select count(*) from storage.objects where bucket_id='post-images') <> 1 then
-    raise exception 'A or B media remains available after revoke (only public book cover should remain)';
+     or (select count(*) from storage.objects where bucket_id='post-images') <> 2 then
+    raise exception 'A/B media remains available after revoke (only new C image and public book cover should remain)';
   end if;
 end;
 $anonymous_after_revoke$;
