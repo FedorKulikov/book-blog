@@ -576,7 +576,8 @@ jobs:
             title text NOT NULL,
             type text NOT NULL,
             status text NOT NULL DEFAULT 'approved',
-            views_count integer NOT NULL DEFAULT 0
+            views_count integer NOT NULL DEFAULT 0,
+            created_at timestamptz NOT NULL DEFAULT now()
           );
           ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
           GRANT SELECT, INSERT ON public.posts TO anon, authenticated;
