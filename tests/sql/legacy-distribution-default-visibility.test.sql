@@ -12,8 +12,8 @@ insert into auth.users (id) values
   ('88888888-8888-4888-8888-888888888888'),
   ('99999999-9999-4999-8999-999999999999');
 
--- A/B/C/F are pre-cutoff profiles with no decision. D/E are created exactly
--- at their cutoff and therefore must not qualify as legacy profiles.
+-- A/B/C/F are pre-cutoff profiles with no decision. D is created after its
+-- cutoff and E exactly at its cutoff; neither qualifies as a legacy profile.
 insert into public.profiles (
   id, username, created_at, legacy_distribution_cutoff_at, role
 ) values
