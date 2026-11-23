@@ -1,0 +1,281 @@
+-- Consent-aware public visibility, private media, one-time legacy decision and revocation.
+-- Synthetic users and storage metadata only; the transaction is rolled back.
+
+begin;
+
+insert into auth.users (id) values
+  ('11111111-1111-4111-8111-111111111111'),
+  ('22222222-2222-4222-8222-222222222222'),
+  ('33333333-3333-4333-8333-333333333333');
+
+insert into public.profiles (id, username, avatar_url)
+values
+  ('11111111-1111-4111-8111-111111111111', 'visibility_a', 'https://project.supabase.co/storage/v1/object/public/avatars/11111111-1111-4111-8111-111111111111/avatar.jpg'),
+  ('22222222-2222-4222-8222-222222222222', 'visibility_b', 'https://project.supabase.co/storage/v1/object/public/avatars/22222222-2222-4222-8222-222222222222/avatar.jpg'),
+  ('33333333-3333-4333-8333-333333333333', 'visibility_c', 'https://project.supabase.co/storage/v1/object/public/avatars/33333333-3333-4333-8333-333333333333/avatar.jpg');
+
+insert into public.posts (id, user_id, title, type, status) values
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '11111111-1111-4111-8111-111111111111', 'Legacy A', 'creative', 'approved'),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '22222222-2222-4222-8222-222222222222', 'Legacy B', 'creative', 'approved'),
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc3', '33333333-3333-4333-8333-333333333333', 'Legacy C', 'creative', 'approved');
+
+insert into public.comments (id, post_id, user_id, text) values
+  ('aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '11111111-1111-4111-8111-111111111111', 'A comment'),
+  ('bbbbbbbb-0000-4000-8000-000000000002', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '22222222-2222-4222-8222-222222222222', 'B comment'),
+  ('cccccccc-0000-4000-8000-000000000003', 'cccccccc-cccc-4ccc-8ccc-ccccccccccc3', '33333333-3333-4333-8333-333333333333', 'C comment');
+
+insert into public.likes (id, post_id, user_id) values
+  ('aaaaaaaa-0000-4000-8000-000000000011', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '11111111-1111-4111-8111-111111111111'),
+  ('bbbbbbbb-0000-4000-8000-000000000022', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '22222222-2222-4222-8222-222222222222'),
+  ('cccccccc-0000-4000-8000-000000000033', 'cccccccc-cccc-4ccc-8ccc-ccccccccccc3', '33333333-3333-4333-8333-333333333333');
+
+insert into public.post_images (id, post_id, url) values
+  ('aaaaaaaa-0000-4000-8000-000000000101', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', 'https://project.supabase.co/storage/v1/object/public/post-images/11111111-1111-4111-8111-111111111111/a.jpg'),
+  ('bbbbbbbb-0000-4000-8000-000000000202', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', 'https://project.supabase.co/storage/v1/object/public/post-images/22222222-2222-4222-8222-222222222222/b.jpg'),
+  ('cccccccc-0000-4000-8000-000000000303', 'cccccccc-cccc-4ccc-8ccc-ccccccccccc3', 'https://project.supabase.co/storage/v1/object/public/post-images/33333333-3333-4333-8333-333333333333/c.jpg');
+
+insert into public.post_tags (id, post_id) values
+  ('aaaaaaaa-0000-4000-8000-000000000111', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'),
+  ('bbbbbbbb-0000-4000-8000-000000000222', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2'),
+  ('cccccccc-0000-4000-8000-000000000333', 'cccccccc-cccc-4ccc-8ccc-ccccccccccc3');
+
+insert into public.books (id, title, cover_url) values
+  ('dddddddd-dddd-4ddd-8ddd-ddddddddddd4', 'Public cover', 'https://project.supabase.co/storage/v1/object/public/post-images/11111111-1111-4111-8111-111111111111/book-cover.jpg');
+
+insert into storage.objects (bucket_id, name) values
+  ('avatars', '11111111-1111-4111-8111-111111111111/avatar.jpg'),
+  ('avatars', '22222222-2222-4222-8222-222222222222/avatar.jpg'),
+  ('avatars', '33333333-3333-4333-8333-333333333333/avatar.jpg'),
+  ('post-images', '11111111-1111-4111-8111-111111111111/a.jpg'),
+  ('post-images', '22222222-2222-4222-8222-222222222222/b.jpg'),
+  ('post-images', '33333333-3333-4333-8333-333333333333/c.jpg'),
+  ('post-images', '11111111-1111-4111-8111-111111111111/book-cover.jpg');
+
+insert into public.conversations (id, user1_id, user2_id) values
+  ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee5', '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222');
+
+do $column_and_bucket_privileges$
+begin
+  if has_column_privilege('anon', 'public.profiles', 'legacy_distribution_prompted_at', 'SELECT')
+     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_prompted_at', 'SELECT')
+     or has_column_privilege('anon', 'public.profiles', 'legacy_distribution_prompted_at', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_prompted_at', 'UPDATE') then
+    raise exception 'legacy prompt timestamp must not be directly selectable or updatable';
+  end if;
+
+  if (select public from storage.buckets where id = 'avatars')
+     or (select public from storage.buckets where id = 'post-images') then
+    raise exception 'avatars and post-images buckets must be private';
+  end if;
+
+  if has_schema_privilege('anon', 'private', 'USAGE') = false
+     or has_table_privilege('anon', 'private.personal_data_consents', 'SELECT') then
+    raise exception 'private helpers require schema usage but consent table must remain unreadable';
+  end if;
+
+  if has_function_privilege('anon', 'public.resolve_my_legacy_distribution_prompt(text)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.resolve_my_legacy_distribution_prompt(text)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.revoke_my_all_distribution_consents()', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.revoke_my_all_distribution_consents()', 'EXECUTE') then
+    raise exception 'user-scoped consent decision RPC grants are incorrect';
+  end if;
+end;
+$column_and_bucket_privileges$;
+
+-- No consent: guests see none of A or B, including child rows and storage media.
+set local role anon;
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
+do $anonymous_without_consent$
+declare
+  v_profiles integer;
+  v_posts integer;
+  v_comments integer;
+  v_likes integer;
+  v_images integer;
+  v_tags integer;
+  v_avatar_objects integer;
+  v_post_objects integer;
+  v_book_covers integer;
+begin
+  select count(*) into v_profiles from public.profiles;
+  select count(*) into v_posts from public.posts;
+  select count(*) into v_comments from public.comments;
+  select count(*) into v_likes from public.likes;
+  select count(*) into v_images from public.post_images;
+  select count(*) into v_tags from public.post_tags;
+  select count(*) into v_avatar_objects from storage.objects where bucket_id = 'avatars';
+  select count(*) into v_post_objects from storage.objects where bucket_id = 'post-images';
+  select count(*) into v_book_covers
+    from storage.objects o
+   where o.bucket_id = 'post-images'
+     and o.name = '11111111-1111-4111-8111-111111111111/book-cover.jpg';
+
+  if v_profiles <> 0 or v_posts <> 0 or v_comments <> 0 or v_likes <> 0
+     or v_images <> 0 or v_tags <> 0 or v_avatar_objects <> 0 or v_post_objects <> 1
+     or v_book_covers <> 1 then
+    raise exception 'no-consent guest visibility mismatch: profiles %, posts %, comments %, likes %, images %, tags %, avatars %, post objects %, book covers %',
+      v_profiles, v_posts, v_comments, v_likes, v_images, v_tags, v_avatar_objects, v_post_objects, v_book_covers;
+  end if;
+end;
+$anonymous_without_consent$;
+
+reset role;
+
+-- User A remains able to see their own profile and draft/hidden material.
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+do $owner_access$
+begin
+  if (select count(*) from public.profiles) <> 1
+     or (select count(*) from public.posts) <> 1
+     or (select count(*) from public.post_images) <> 1 then
+    raise exception 'owner lost access to their own hidden material';
+  end if;
+
+  if (select has_approved_posts from public.my_legacy_distribution_prompt_state()) is not true
+     or (select already_prompted from public.my_legacy_distribution_prompt_state()) is not false then
+    raise exception 'legacy prompt state is incorrect for an existing owner';
+  end if;
+end;
+$owner_access$;
+
+-- User A grants both scopes for existing content through the one-time RPC.
+select public.resolve_my_legacy_distribution_prompt('grant_existing');
+
+do $grant_assertions$
+declare
+  v_state record;
+begin
+  select * into v_state from public.my_legacy_distribution_prompt_state();
+  if not v_state.already_prompted
+     or not v_state.profile_public_active
+     or not v_state.publication_active then
+    raise exception 'legacy grant did not activate both scopes and mark the prompt';
+  end if;
+  if not exists (
+    select 1 from private.personal_data_consents
+     where user_id = auth.uid()
+       and scope = 'profile_public'
+       and document_version = '1.1'
+       and revoked_at is null
+  ) or not exists (
+    select 1 from private.personal_data_consents
+     where user_id = auth.uid()
+       and scope = 'publication'
+       and document_version = '1.0'
+       and revoked_at is null
+  ) then
+    raise exception 'legacy grant did not write both correctly versioned consent rows';
+  end if;
+end;
+$grant_assertions$;
+
+reset role;
+
+-- Guests can now see A, but not B; the old public URLs are served only via
+-- signed-URL authorization while their underlying Storage rows are visible.
+set local role anon;
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
+do $anonymous_with_consent$
+begin
+  if (select count(*) from public.profiles) <> 1
+     or (select count(*) from public.posts) <> 1
+     or (select count(*) from public.comments) <> 1
+     or (select count(*) from public.likes) <> 1
+     or (select count(*) from public.post_images) <> 1
+     or (select count(*) from public.post_tags) <> 1 then
+    raise exception 'guest can see hidden rows or cannot see consented A rows';
+  end if;
+
+  if (select count(*) from storage.objects where bucket_id = 'avatars') <> 1
+     or (select count(*) from storage.objects where bucket_id = 'post-images') <> 2 then
+    raise exception 'guest Storage visibility did not follow consent (post-images includes public book cover)';
+  end if;
+end;
+$anonymous_with_consent$;
+
+reset role;
+
+-- User B can still see A's profile only in their shared private conversation,
+-- not A's posts or publication-related child/media rows.
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+do $conversation_boundary$
+begin
+  if (select count(*) from public.profiles where id='11111111-1111-4111-8111-111111111111') <> 1 then
+    raise exception 'private chat participant lost access to the other chat profile';
+  end if;
+  if (select count(*) from public.posts where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') <> 0 then
+    raise exception 'user B can read A post without being its owner or consented guest';
+  end if;
+end;
+$conversation_boundary$;
+
+-- User B chooses "hide my materials". It must be one-time and must not create grants.
+select public.resolve_my_legacy_distribution_prompt('hide_existing');
+do $hide_and_repeat$
+begin
+  if (select already_prompted from public.my_legacy_distribution_prompt_state()) is not true then
+    raise exception 'hide decision did not record the one-time prompt state';
+  end if;
+
+  perform public.resolve_my_legacy_distribution_prompt('grant_existing');
+
+  if exists (
+    select 1 from private.personal_data_consents
+     where user_id=auth.uid() and revoked_at is null
+  ) then
+    raise exception 'a second legacy prompt decision changed an already-handled choice';
+  end if;
+end;
+$hide_and_repeat$;
+
+reset role;
+
+-- User A revokes all active scopes; rows remain in the database for audit and
+-- owner access, while anonymous access to their posts/profile/storage ends.
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+select public.revoke_my_all_distribution_consents();
+
+do $owner_after_revoke$
+begin
+  if (select count(*) from public.profiles) <> 1
+     or (select count(*) from public.posts) <> 1
+     or (select count(*) from public.post_images) <> 1 then
+    raise exception 'revocation removed the owners own data';
+  end if;
+  if exists (
+    select 1 from private.personal_data_consents
+     where user_id=auth.uid()
+       and scope in ('profile_public','publication')
+       and revoked_at is null
+  ) then
+    raise exception 'revoke-all wrapper left an active distribution scope';
+  end if;
+end;
+$owner_after_revoke$;
+
+reset role;
+set local role anon;
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
+do $anonymous_after_revoke$
+begin
+  if (select count(*) from public.profiles) <> 1 then
+    raise exception 'only user C should remain publicly visible after A revoke';
+  end if;
+  if (select count(*) from public.posts) <> 1
+     or (select count(*) from public.comments) <> 1
+     or (select count(*) from public.likes) <> 1
+     or (select count(*) from public.post_images) <> 1
+     or (select count(*) from public.post_tags) <> 1 then
+    raise exception 'A or B publication-related rows remain visible after revoke';
+  end if;
+  if (select count(*) from storage.objects where bucket_id='avatars') <> 1
+     or (select count(*) from storage.objects where bucket_id='post-images') <> 2 then
+    raise exception 'A or B media remains available after revoke';
+  end if;
+end;
+$anonymous_after_revoke$;
+
+rollback;
