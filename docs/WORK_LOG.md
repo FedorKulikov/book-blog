@@ -509,3 +509,13 @@
 **Исправлено:** отдельный consent checkbox расположен выше ImageUploader; загрузка разрешена только после установки флажка. На время загрузки блокируются checkbox и Submit. Пока публичные изображения прикреплены, снятие согласия блокируется до удаления каждого объекта из Storage. Удаление проверяет ошибку Storage; общий лимит — пять файлов на публикацию; при частичном сбое выполняется попытка cleanup, неубранные пути остаются доступны пользователю для удаления.
 
 **Smoke:** проверка триггера была преждевременно включена в live pre-deployment smoke, запускаемый до применения migration к production. Этот assertion убран из live smoke; то же поведение и изоляция A/B проверяются изолированным PostgreSQL 17 job. Сам production не модифицировался. Новый CI после последней правки ожидается.
+
+## 2026-11-23 — B12, этап 2: production rollout
+
+**Слияние:** PR #79 прошёл все проверки и слит: merge commit bdc316d2badb2ab5e885faa4727225d8eda9d27f. До деплоя production precheck подтвердил отсутствие триггера и функции; таблица согласий содержала 0 строк.
+
+**Миграция:** 20261211_distribution_consent_post_guard.sql применена к production book-blog / PostgreSQL 17. Trigger `posts_require_distribution_consent` установлен на `public.posts`. Функция `enforce_post_distribution_consent` — `SECURITY DEFINER`, owner postgres, пустой `search_path`; API-ролям прямой EXECUTE запрещён. SHA-256: 7be151e93227f54dd3791aa1a34737e1b681c2dab6246fcc35566da7138adaba; запись подтверждена в `ops.applied_migrations` и migration history.
+
+**Проверки после rollout:** trigger и функция присутствуют; прямое чтение private.personal_data_consents не выдано; согласия в production пока 0. Security Advisor не выявил нового предупреждения по trigger-функции; известные INFO/WARN перечислены в project-journal.
+
+**Live smoke:** подготовлен отдельный production прогон с двумя временными пользователями. Он проверит запрет поста без согласия, отсутствие чтения/отзыва чужого согласия, успешную запись своего согласия и успешное создание поста. Тест удаляет пост, тестовые файлы и временные аккаунты; результат CI ещё ожидается.
