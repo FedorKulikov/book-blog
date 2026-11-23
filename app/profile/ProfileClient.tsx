@@ -32,6 +32,7 @@ export default function ProfileClient({ initialUserId }: { initialUserId: string
   const [posts, setPosts] = useState<PostCardData[]>([])
   const [stats, setStats] = useState({ posts: 0, likes: 0, comments: 0 })
   const [loading, setLoading] = useState(true)
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null)
 
   const [userId, setUserId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('posts')
@@ -43,12 +44,20 @@ export default function ProfileClient({ initialUserId }: { initialUserId: string
     async function load() {
       setUserId(initialUserId)
 
-      const { data: p } = await supabase
+      const { data: p, error: profileError } = await supabase
         .from('profiles')
         .select('id, username, avatar_url, bio, role, created_at')
         .eq('id', initialUserId)
         .single()
-      setProfile(p as unknown as Profile | null)
+
+      if (profileError || !p) {
+        console.error('[profile] failed to load current profile:', profileError?.message ?? 'profile row not found')
+        setProfileLoadError('Не удалось загрузить данные профиля. Обновите страницу и попробуйте ещё раз.')
+        setLoading(false)
+        return
+      }
+
+      setProfile(p as unknown as Profile)
 
       const { data: postsData } = await supabase
         .from('posts')
@@ -137,6 +146,21 @@ export default function ProfileClient({ initialUserId }: { initialUserId: string
 
   if (loading) {
     return <main className="p-4 md:p-8 max-w-7xl mx-auto">Загрузка…</main>
+  }
+
+  if (profileLoadError) {
+    return (
+      <main className="p-4 md:p-8 max-w-7xl mx-auto">
+        <p role="alert" className="text-sm text-wine">{profileLoadError}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-3 rounded-full bg-emerald-mid px-4 py-2 text-sm text-cream hover:bg-emerald-dark"
+        >
+          Повторить
+        </button>
+      </main>
+    )
   }
 
   const initial = (profile?.username || '?')[0].toUpperCase()
