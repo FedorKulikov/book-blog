@@ -369,18 +369,32 @@ select pg_catalog.set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-2
 -- User B chooses "hide my materials". It must be one-time and must not create grants.
 select public.resolve_my_legacy_distribution_prompt('hide_existing');
 do $hide_and_repeat$
+declare
+  v_state record;
+  v_active_count integer;
+  v_active_scopes text;
 begin
-  if (select already_prompted from public.my_legacy_distribution_prompt_state()) is not true then
-    raise exception 'hide decision did not record the one-time prompt state';
+  select * into v_state from public.my_legacy_distribution_prompt_state();
+  if v_state.already_prompted is not true or v_state.legacy_choice is distinct from 'hidden' then
+    raise exception 'hide decision did not record the one-time legacy choice: uid %, prompted %, choice %',
+      auth.uid(), v_state.already_prompted, v_state.legacy_choice;
   end if;
 
   perform public.resolve_my_legacy_distribution_prompt('grant_existing');
 
-  if exists (
-    select 1 from public.my_distribution_consents()
-     where revoked_at is null
-  ) then
-    raise exception 'a second legacy prompt decision changed an already-handled choice';
+  select count(*), pg_catalog.string_agg(scope, ', ' order by scope)
+    into v_active_count, v_active_scopes
+    from public.my_distribution_consents()
+   where revoked_at is null;
+
+  select * into v_state from public.my_legacy_distribution_prompt_state();
+
+  if v_active_count <> 0
+     or v_state.legacy_choice is distinct from 'hidden'
+     or v_state.already_prompted is not true then
+    raise exception 'repeat legacy decision changed B state: uid %, active count %, scopes %, prompted %, choice %, profile active %, publication active %',
+      auth.uid(), v_active_count, v_active_scopes, v_state.already_prompted,
+      v_state.legacy_choice, v_state.profile_public_active, v_state.publication_active;
   end if;
 
   -- A later grant for new posts must not change the one-time legacy choice.
