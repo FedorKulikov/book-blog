@@ -14,6 +14,7 @@ import LikeButton from '@/app/components/LikeButton'
 import BookmarkButton from '@/app/components/BookmarkButton'
 import ReportButton from '@/app/components/ReportButton'
 import ViewCounter from '@/app/components/ViewCounter'
+import StorageImage from '@/app/components/StorageImage'
 import {
   ChevronLeft,
   Pencil,
@@ -128,7 +129,7 @@ export default function PostView({ post }: { post: PostDetail }) {
       <article className="bg-cream-warm/30 border border-emerald-dark/10 rounded-2xl overflow-hidden">
         {cover && (
           <div className="relative w-full aspect-[16/10] overflow-hidden">
-            <img
+            <StorageImage
               src={cover.url}
               alt={post.title}
               className="absolute inset-0 w-full h-full object-cover object-top"
@@ -240,7 +241,7 @@ export default function PostView({ post }: { post: PostDetail }) {
               className="flex items-center gap-3 hover:text-wine transition-colors"
             >
               {post.profiles?.avatar_url ? (
-                <img
+                <StorageImage
                   src={post.profiles.avatar_url}
                   alt=""
                   className="w-8 h-8 rounded-full object-cover"
@@ -277,7 +278,7 @@ export default function PostView({ post }: { post: PostDetail }) {
           {extraImages.length > 0 && (
             <div className="flex flex-col gap-4 mt-6">
               {extraImages.map((img) => (
-                <img
+                <StorageImage
                   key={img.url}
                   src={img.url}
                   alt=""
