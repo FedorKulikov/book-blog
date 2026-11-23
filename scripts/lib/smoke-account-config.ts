@@ -9,18 +9,18 @@ export const SMOKE_ACCOUNT_EMAIL_PREFIXES = [
 
 export const SMOKE_ACCOUNT_EMAIL_SUFFIX = '@example.com'
 
-const escapedPrefixes = SMOKE_ACCOUNT_EMAIL_PREFIXES.map(prefix =>
-  prefix.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&'),
-)
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const escapedPrefixes = SMOKE_ACCOUNT_EMAIL_PREFIXES.map(escapeRegex)
+const escapedSuffix = escapeRegex(SMOKE_ACCOUNT_EMAIL_SUFFIX)
 
 export const SMOKE_ACCOUNT_EMAIL_REGEX = new RegExp(
-  `^(?:${escapedPrefixes.join('|')})[^@\\s]+${SMOKE_ACCOUNT_EMAIL_SUFFIX.replace('.', '\\.')} $`.replace(' $', '$'),
+  `^(?:${escapedPrefixes.join('|')})[^@\\s]+${escapedSuffix}$`,
   'i',
 )
 
 export function smokeAccountEmailLikeSql(column = 'lower(email)'): string {
   const patterns = SMOKE_ACCOUNT_EMAIL_PREFIXES
-    .map(prefix => `'${(prefix + '%'+SMOKE_ACCOUNT_EMAIL_SUFFIX).replace(/'/g, "''").toLowerCase()}'`)
+    .map(prefix => `'${(prefix + '%' + SMOKE_ACCOUNT_EMAIL_SUFFIX).replace(/'/g, "''").toLowerCase()}'`)
     .join(', ')
   return `${column} like any(array[${patterns}]::text[])`
 }
