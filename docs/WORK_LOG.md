@@ -749,3 +749,45 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Validation:** documentation-only review; references point to OpenAI Help Center, OpenAI Status RCA, public OpenAI Codex issue, and community reports. No application code, migrations, production data, or secrets changed.
 
 **Limitations:** exact ChatGPT stream failure mechanism is not publicly established; no claim is made that long logs, CI waits, or long final messages are proven root causes.
+
+## 2026-11-23 — Data-smoke cleanup engine (stage 1)
+
+**Required:** prepare a strictly scoped cleanup for accumulated `data-smoke-*@example.com` production test accounts, including Storage and full consent history, without touching other accounts.
+
+**Implemented:** added `scripts/lib/data-smoke-cleanup.ts` for exact account discovery, per-account inventory, Storage-owner lookup/removal through the Storage API, deletion of books and external-news rows that use `ON DELETE SET NULL`, Auth-user deletion, and final residual-count verification including `private.personal_data_consents`. Auth deletion relies on the existing FK cascade to remove profiles, posts, reports, notifications and both active/revoked consent rows. Added `scripts/cleanup-data-smoke-users.ts`: it always prints the dry-run inventory first; `--dry-run` makes no writes and `--delete` explicitly proceeds.
+
+**Safety:** the selector is restricted to `data-smoke-*@example.com`; user IDs are UUID-validated. Before deleting, a read-only guard blocks cleanup if deleting a smoke profile/post/ticket would cascade-delete non-smoke conversations, comments, likes, bookmarks, reports, notifications or support replies. No consent is inserted or revoked by the cleanup.
+
+**Validation:** checked production FK delete rules and existing Storage ownership layout; TypeScript/CI execution is pending in the next stage. No production writes or deletes were run in this stage.
+
+## 2026-11-23 — Smoke account prefix unification and production dry-run workflow
+
+**Required:** include both `data-smoke-*` and `chat-smoke-*` fixtures in one explicit allow-list; print a complete production dry-run and prove cleanup safety before enabling deletion.
+
+**Implemented:** `scripts/lib/smoke-account-config.ts` is now the single source for the two email prefixes, TypeScript matching and generated test-account emails. Inventory includes Auth users, active/revoked consents, profiles, posts, books, reports, notifications, Storage, external news, conversations, messages, comments, likes, bookmarks, follows, tickets, ticket messages and post images. The pre-delete guard also blocks foreign comments/likes/bookmarks/reports/notifications/support replies, mixed-user conversations, foreign posts linked to smoke-created books, and notifications delivered to non-smoke users.
+
+**Cleanup behavior:** Storage is removed through the Storage API; books and authored external news are explicitly removed where FKs use `SET NULL`; deleting the exact matched Auth accounts cascades profile-owned content and the entire consent history, including revoked rows. All deletion errors are fatal. The client-write smoke now deletes the temporary Auth accounts in `finally` and blocks production execution because its test scenario records consent; consent scenarios remain in isolated PostgreSQL fixtures. Chat smoke cleanup errors are no longer swallowed.
+
+**Workflow:** `.github/workflows/chat-security-smoke.yml` no longer executes the production consent-write smoke. It requires `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` and `SUPABASE_ACCESS_TOKEN` without printing values, then runs only `scripts/cleanup-data-smoke-users.ts --dry-run` after chat smoke. No `--delete` action is enabled in this stage.
+
+**Validation:** production deletion has not been run. CI dry-run is pending PR execution; the first production inventory and cross-account guard result must be inspected before any deletion stage.
+
+**CI follow-up:** the first PR run stopped at TypeScript because a local `URL` string shadowed the global constructor in the production guard. Changed the guard to use `globalThis.URL`. No smoke test or production cleanup ran in the failed attempt.
+
+**Production dry-run result (PR #94, run 45198479062):** Chat security passed 32/32 and cleanup-secret preflight confirmed that `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `SUPABASE_ACCESS_TOKEN` are configured. The read-only Management API SQL call then returned HTTP 403 before account inventory or the cross-account guard could run. No production data was changed and no `--delete` command was invoked. Current scoped-token documentation specifies `database_read` for this endpoint; the configured `SUPABASE_ACCESS_TOKEN` therefore needs Database → Read permission and access to project `tbqjyaxbymntdqzldrjz`. The service-role/secret key was functional for the chat smoke.
+
+## 2026-11-23 — Remove Management API from smoke cleanup path
+
+**Required:** replace Management API SQL reads with Auth Admin, Storage API and PostgREST/service-role while preserving the cross-account deletion guard.
+
+**Implemented:** `listDataSmokeUsers()` uses paginated Auth Admin listing and the central smoke-prefix matcher. Storage inventory recursively lists bucket roots via Storage API and descends only into exact top-level folders matching the selected Auth UUIDs; cleanup removes only paths beginning with `<selected-user-id>/`. Public related content and cross-account safety checks use paginated PostgREST reads with the service-role client.
+
+**Private consent history:** the existing ACL deliberately denies `service_role` both USAGE on schema `private` and direct table privileges on `private.personal_data_consents`. Added migration `20261217_ops_smoke_consent_inventory.sql` with a read-only SECURITY DEFINER PostgREST RPC. EXECUTE is granted only to `service_role`; direct schema/table grants remain unchanged. Added SQL regression coverage for aggregates and ACLs.
+
+**Workflow:** cleanup CLI no longer accepts or calls the Management API token/endpoint. The Chat security workflow dry-run now requires only `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY`. The unrelated, optional Auth password-posture Management API check remains independent and may skip when its token is absent. No `--delete` command was run.
+
+**CI correction:** the first TypeScript run found that the typed PostgREST query builder was too narrow for the generic pagination helper and one post-image query omitted its filter-column argument. The helper now awaits the SDK thenable through a normalized result shape and the image query filters by `post_id`. The failed run stopped before any smoke or production request.
+
+**Production schema correction:** the first PostgREST dry-run read exposed that `public.likes` has composite primary key `(user_id, post_id)` and no `id` column. Updated inventory/guard selects to match the live schema. The failed attempt was read-only; no data changed.
+
+**Deployment ordering:** the production dry-run step now runs only from a successful `workflow_run` of `Apply DB migrations` on `main`. Pull-request CI still tests Auth/cleanup code but skips production inventory until the consent-inventory RPC is deployed. This avoids a predictable pre-migration PostgREST missing-function failure.
