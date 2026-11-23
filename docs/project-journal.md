@@ -642,3 +642,6 @@
 - Added a manifest mode that requires exactly 63 unique entries and verifies each email/ID pair against live Auth Admin before inventory, guard or deletion. It cannot widen selection to other prefix-matching accounts. The script prints the complete audit target list before any deletion.
 - CI for PR #96 is configured to delete only this manifest. Future successful production smoke workflow runs execute guarded prefix cleanup after smoke to avoid accumulating test accounts.
 - At journal update time the exact production deletion is pending CI; no deletion is claimed yet.
+
+- First manifest execution stopped before cleanup: Auth Admin returned 404 for `data-smoke-a-mwsm717y`; no deletion occurred in that attempt.
+- Updated exact-manifest mode to verify each fixed UUID individually: confirmed-absent IDs remain in the targeted inventory and residue cleanup, existing IDs must retain the exact snapshot email, and other Auth errors abort. The deletion helper repeats the identity check and skips only confirmed 404 accounts.
