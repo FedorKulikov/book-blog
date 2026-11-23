@@ -14,7 +14,8 @@
     "test:account-deletion-storage": "tsx tests/account-deletion-storage.integration.ts",
     "test:distribution-consent": "tsx --test tests/distribution-consent.test.ts",
     "test:profile-public-consent": "tsx --test tests/profile-public-consent.test.ts",
-    "check:profile-selects": "node scripts/check-profile-selects.mjs"
+    "check:profile-selects": "node scripts/check-profile-selects.mjs",
+    "test:tags": "tsx --test tests/tag-utils.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
