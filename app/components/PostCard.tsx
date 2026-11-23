@@ -5,6 +5,7 @@ import Link from 'next/link'
 import LikeButton from './LikeButton'
 import BookmarkButton from './BookmarkButton'
 import AvatarLightbox from './AvatarLightbox'
+import StorageImage from './StorageImage'
 import { MessageCircle, Hash, BookOpen, Eye } from './icons'
 import { toPlainText } from '@/lib/text'
 
@@ -68,7 +69,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
           // картинка тянется на всю высоту карточки, под ней не остаётся полосы.
           className="relative block w-24 shrink-0 self-stretch min-h-32 overflow-hidden bg-emerald-mid/10 sm:w-32 sm:min-h-40 md:w-64 md:min-h-56"
         >
-          <img
+          <StorageImage
             src={cover}
             alt={post.title}
             className="absolute inset-0 w-full h-full object-cover object-center group-hover:opacity-95 transition-opacity"
@@ -173,7 +174,7 @@ export default function PostCard({ post }: { post: PostCardData }) {
                 aria-label={`Увеличить фото ${post.profiles?.username || 'автора'}`}
                 title="Открыть фото"
               >
-                <img
+                <StorageImage
                   src={post.profiles.avatar_url}
                   alt=""
                   className="w-5 h-5 rounded-full object-cover"
