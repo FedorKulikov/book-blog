@@ -605,3 +605,13 @@
 
 - PR #94 dry-run attempt: chat security tests passed 32/32 and all three required CI secret variables were present. The Management API read-only query returned HTTP 403 before inventory/safety evaluation. Supabase's current endpoint documentation requires the scoped PAT permission `database_read` (Dashboard: Database → Read) and access to the target project. The service-role/secret key was working; no production deletes or consent writes occurred.
 - Next gate: replace only the GitHub `SUPABASE_ACCESS_TOKEN` secret with a token that has Database → Read for project `tbqjyaxbymntdqzldrjz`, then rerun the dry-run. Do not enable `--delete` until the complete inventory and safety guard are visible and reviewed.
+
+## 2026-11-23 — Management API removed from smoke cleanup
+
+- Replaced Auth inventory with paginated Supabase Auth Admin `listUsers`; matching is performed client-side using the central `data-smoke-` / `chat-smoke-` prefix allow-list.
+- Replaced Storage metadata SQL with Storage API bucket listing and recursive object listing. Only directories exactly matching selected Auth UUIDs are traversed; deletion accepts only object paths starting with that exact UUID plus `/`.
+- Replaced public-content SQL with paginated PostgREST reads using the service-role client. The existing cross-account cascade guard is preserved and expanded to mixed conversations, foreign messages/comments/likes/bookmarks/reports/notifications/ticket replies, and foreign posts linked to smoke-created books.
+- The consent table intentionally denies service_role direct access and private-schema USAGE. Added `public.ops_smoke_consent_inventory(uuid[])`, a read-only PostgREST RPC that returns only aggregate history counts. It is postgres-owned SECURITY DEFINER with an empty search_path; EXECUTE is service_role-only. Existing direct private-table ACLs remain unchanged.
+- Added PostgreSQL 17 regression test for the new RPC and wired migration/test into Web quality CI.
+- Removed Management API token and endpoint requirements from the cleanup CLI and dry-run step. The separate optional Auth password-posture check in the workflow remains independent.
+- Production `--delete` has not been run. Next validation gates are SQL migration/ACL regression CI, TypeScript + smoke CI, migration rollout to production, then a read-only production dry-run.
