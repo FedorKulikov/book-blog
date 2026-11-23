@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { BookOpen } from './icons'
+import StorageImage from './StorageImage'
 
 type Author = {
   id: string
@@ -82,7 +83,7 @@ export default function TopAuthors({ type }: { type?: PostType }) {
               className="group flex items-center gap-3 transition-colors"
             >
               {a.avatar_url ? (
-                <img
+                <StorageImage
                   src={a.avatar_url}
                   alt=""
                   className="w-8 h-8 rounded-full object-cover flex-shrink-0"
