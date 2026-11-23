@@ -53,7 +53,7 @@ function isProfilesQueryReceiver(node) {
 function selectsAllColumns(value) {
   // A top-level wildcard expands profiles.*, including restricted columns.
   // Ignore nested relation selectors such as "posts(*)" on another table.
-  return /(^|,)\s*\\*(?=\s*(,|$))/.test(value.trim())
+  return /(^|,)\s*\*(?=\s*(,|$))/.test(value.trim())
 }
 
 const existingEntries = new Set(readdirSync('.'))
