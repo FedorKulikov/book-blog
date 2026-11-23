@@ -789,3 +789,5 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **CI correction:** the first TypeScript run found that the typed PostgREST query builder was too narrow for the generic pagination helper and one post-image query omitted its filter-column argument. The helper now awaits the SDK thenable through a normalized result shape and the image query filters by `post_id`. The failed run stopped before any smoke or production request.
 
 **Production schema correction:** the first PostgREST dry-run read exposed that `public.likes` has composite primary key `(user_id, post_id)` and no `id` column. Updated inventory/guard selects to match the live schema. The failed attempt was read-only; no data changed.
+
+**Deployment ordering:** the production dry-run step now runs only from a successful `workflow_run` of `Apply DB migrations` on `main`. Pull-request CI still tests Auth/cleanup code but skips production inventory until the consent-inventory RPC is deployed. This avoids a predictable pre-migration PostgREST missing-function failure.
