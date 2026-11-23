@@ -59,6 +59,7 @@ jobs:
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           REQUESTED_FILES: ${{ inputs.files }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
           if [ -z "${DB_URL:-}" ]; then
@@ -68,15 +69,15 @@ jobs:
 
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             # Auto-apply only new files. Editing/deleting a released migration is forbidden.
-            changes="$(git diff --name-status "${GITHUB_EVENT_BEFORE}" "${GITHUB_SHA}" -- 'supabase/migrations/*.sql')"
+            changes="$(git diff --name-status "${BEFORE_SHA}" "${GITHUB_SHA}" -- 'supabase/migrations/*.sql')"
             if [[ -n "${changes}" ]] && grep -Ev '^A[[:space:]]' <<< "${changes}"; then
               echo "::error::Production migrations are append-only; only newly added SQL files can be auto-applied."
               exit 1
             fi
 
-            new_files="$(git diff --diff-filter=A --name-only "${GITHUB_EVENT_BEFORE}" "${GITHUB_SHA}" -- 'supabase/migrations/*.sql')"
+            new_files="$(git diff --diff-filter=A --name-only "${BEFORE_SHA}" "${GITHUB_SHA}" -- 'supabase/migrations/*.sql')"
             marker_path=".github/ops/apply-migrations-once.marker"
-            if git diff --name-only "${GITHUB_EVENT_BEFORE}" "${GITHUB_SHA}" -- "${marker_path}" | grep -Fxq "${marker_path}"; then
+            if git diff --name-only "${BEFORE_SHA}" "${GITHUB_SHA}" -- "${marker_path}" | grep -Fxq "${marker_path}"; then
               marker_file="$(tr -d '\r\n' < "${marker_path}")"
               if [[ ! "${marker_file}" =~ ^supabase/migrations/[A-Za-z0-9_.-]+\.sql$ || ! -f "${marker_file}" ]]; then
                 echo "::error::The one-time migration marker must contain one existing migration path."
