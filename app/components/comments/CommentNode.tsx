@@ -3,6 +3,7 @@
 import ReportButton from '../ReportButton'
 import { Send, Trash2 } from '../icons'
 import { formatInlineText } from '@/lib/format'
+import StorageImage from '../StorageImage'
 
 export type CommentRow = {
   id: string
@@ -46,7 +47,7 @@ function Avatar({
 }) {
   if (url) {
     return (
-      <img
+      <StorageImage
         src={url}
         alt=""
         style={{ width: size, height: size }}
