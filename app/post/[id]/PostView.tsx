@@ -232,29 +232,44 @@ export default function PostView({ post }: { post: PostDetail }) {
           </h1>
 
           <div className="flex items-center gap-3 text-sm text-brown/60 mb-6 pb-6 border-b border-emerald-dark/10 flex-wrap">
-            <Link
-              href={
-                post.profiles?.username
-                  ? `/profile/${post.profiles.username}`
-                  : '#'
-              }
-              className="flex items-center gap-3 hover:text-wine transition-colors"
-            >
-              {post.profiles?.avatar_url ? (
-                <StorageImage
-                  src={post.profiles.avatar_url}
-                  alt=""
-                  className="w-8 h-8 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-emerald-mid text-cream flex items-center justify-center text-sm font-bold">
-                  {(post.profiles?.username || '?')[0].toUpperCase()}
-                </div>
-              )}
-              <span className="font-medium text-brown-dark">
-                {post.profiles?.username || 'Аноним'}
-              </span>
-            </Link>
+            {post.profiles?.can_read_profile && post.profiles.username ? (
+              <Link
+                href={`/profile/${post.profiles.username}`}
+                className="flex items-center gap-3 hover:text-wine transition-colors"
+              >
+                {post.profiles?.avatar_url ? (
+                  <StorageImage
+                    src={post.profiles.avatar_url}
+                    alt=""
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-emerald-mid text-cream flex items-center justify-center text-sm font-bold">
+                    {(post.profiles?.username || '?')[0].toUpperCase()}
+                  </div>
+                )}
+                <span className="font-medium text-brown-dark">
+                  {post.profiles?.username || 'Аноним'}
+                </span>
+              </Link>
+            ) : (
+              <div className="flex items-center gap-3">
+                {post.profiles?.avatar_url ? (
+                  <StorageImage
+                    src={post.profiles.avatar_url}
+                    alt=""
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-emerald-mid text-cream flex items-center justify-center text-sm font-bold">
+                    {(post.profiles?.username || '?')[0].toUpperCase()}
+                  </div>
+                )}
+                <span className="font-medium text-brown-dark">
+                  {post.profiles?.username || 'Аноним'}
+                </span>
+              </div>
+            )}
 
             <span className="text-brown/30">·</span>
             <span>{createdAtLabel}</span>
