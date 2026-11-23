@@ -36,7 +36,6 @@ begin
 
   if has_function_privilege('anon', v_function, 'EXECUTE')
      or has_function_privilege('authenticated', v_function, 'EXECUTE')
-     or has_function_privilege('public', v_function, 'EXECUTE')
      or not has_function_privilege('service_role', v_function, 'EXECUTE') then
     raise exception 'smoke consent inventory EXECUTE grants are incorrect';
   end if;
