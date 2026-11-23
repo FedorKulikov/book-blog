@@ -571,7 +571,8 @@ jobs:
             user_id uuid NOT NULL REFERENCES auth.users(id),
             title text NOT NULL,
             type text NOT NULL,
-            status text NOT NULL DEFAULT 'approved'
+            status text NOT NULL DEFAULT 'approved',
+            views_count integer NOT NULL DEFAULT 0
           );
           ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
           GRANT SELECT, INSERT ON public.posts TO anon, authenticated;
