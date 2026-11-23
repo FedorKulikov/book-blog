@@ -89,13 +89,6 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: npx tsx scripts/cleanup-data-smoke-users.ts --dry-run
 
-      - name: Delete only the reviewed 63-account snapshot
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 96
-        env:
-          SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: npx tsx scripts/cleanup-data-smoke-users.ts --delete --manifest scripts/cleanup-data-smoke-users-2026-11-23.json
-
       - name: Clean residual smoke accounts after regular production smoke
         if: github.event_name == 'workflow_run'
         env:
