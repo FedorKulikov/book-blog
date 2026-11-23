@@ -759,3 +759,14 @@ smoke cleanup runs after success and failure
 - Геометрия проверяется для viewport 1440 и 1920 px при desktop sidebar 256 px, main padding 32 px, max-width 1280 px, grid gap 32 px, sidebar track 300 px: на 1440 внутренняя ширина 1120 px (content 788 px + gap 32 px + sidebar 300 px); на 1920 max-width ограничивает внутреннюю ширину 1216 px (content 884 px + gap 32 px + sidebar 300 px). Незаполненного правого трека нет; карточки и заголовок имеют общий левый край.
 - Проверка фактических скриншотов в браузере не выполнена: репозиторий не удалось клонировать из-за отсутствия DNS-доступа к github.com в локальной среде. Проверка CI/сборки будет выполнена для PR.
 - Файлы: `app/HomeClient.tsx`, `app/components/Header.tsx`, `app/globals.css`; журналы обновлены. Серверная логика, данные, RLS/grants и production не менялись.
+
+
+### 2026-11-23 — Workflow гостевого UX-аудита
+- Создан .github/workflows/ux-audit.yml, запускаемый через workflow_dispatch и pull_request в main.
+- В едином массиве заданы 10 публичных маршрутов и три динамических селектора; post/book/profile URL берутся из sitemap.xml, а не зашиваются в workflow.
+- Playwright управляет системным Chromium, который определяется через google-chrome / chromium / chromium-browser; пакет устанавливается только во временный каталог Actions, package.json проекта не изменён.
+- По каждой открытой странице workflow логирует HTTP-статус и конечный URL с цепочкой редиректов, title, видимый текст до 1500 символов, ссылки /post/, /book/, /profile/, пустые состояния и console/page errors.
+- Для каждой открытой страницы предусмотрены full-page screenshots 1440×900 и 390×844; артефакт ux-audit-screenshots хранится 7 дней. Ошибка открытия одной страницы не останавливает остальные.
+- /signup только инспектируется: считываются метаданные видимых полей, кнопок и ссылок на /rules и /privacy; значения полей не читаются, отправки/клики не выполняются.
+- Существующий production-health-smoke.yml не изменялся; он использует CDP напрямую, а новый workflow использует Playwright с тем же обнаружением системного Chromium.
+- На момент создания PR результаты CI ещё не получены; фактические страницы и скриншоты будут подтверждены только самим Actions-run. Код приложения, база, policies, secrets и production не изменялись.
