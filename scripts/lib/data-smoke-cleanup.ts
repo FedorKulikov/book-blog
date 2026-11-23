@@ -258,7 +258,7 @@ export async function getAuthUsersByIds(
   admin: AdminClient,
   targetIds: string[],
 ): Promise<Map<string, DataSmokeUser>> {
-  const targets = new Set(targetIds)
+  const targets = new Set(targetIds.map(id => id.toLowerCase()))
   const found = new Map<string, DataSmokeUser>()
   if (targets.size === 0) return found
 
@@ -273,8 +273,9 @@ export async function getAuthUsersByIds(
     }
 
     for (const user of data.users) {
-      if (targets.has(user.id)) {
-        found.set(user.id, { id: user.id, email: user.email ?? '' })
+      const normalizedId = user.id.toLowerCase()
+      if (targets.has(normalizedId)) {
+        found.set(normalizedId, { id: user.id, email: user.email ?? '' })
       }
     }
 
@@ -557,7 +558,7 @@ export async function cleanupSmokeUsers(
   // consent history (active and revoked). No consent is inserted or revoked here.
   const authUsersById = await getAuthUsersByIds(admin, ids)
   for (const user of users) {
-    const current = authUsersById.get(user.id)
+    const current = authUsersById.get(user.id.toLowerCase())
     if (!current) continue
     if (current.email.toLowerCase() !== user.email.toLowerCase()) {
       throw new Error('Auth email changed for manifest ID ' + user.id + '; refusing deletion')
