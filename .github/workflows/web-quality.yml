@@ -591,6 +591,9 @@ jobs:
             FOR UPDATE TO authenticated
             USING ((SELECT auth.uid()) = id)
             WITH CHECK ((SELECT auth.uid()) = id);
+          CREATE POLICY profiles_read_own_test ON public.profiles
+            FOR SELECT TO authenticated
+            USING ((SELECT auth.uid()) = id);
 
           CREATE SCHEMA storage;
           CREATE TABLE storage.objects (
@@ -601,6 +604,9 @@ jobs:
           ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
           GRANT USAGE ON SCHEMA storage TO authenticated;
           GRANT SELECT, INSERT, UPDATE ON storage.objects TO authenticated;
+          CREATE POLICY avatars_public_read_test ON storage.objects
+            FOR SELECT TO anon, authenticated
+            USING (bucket_id = 'avatars');
 
           CREATE FUNCTION storage.foldername(name text)
           RETURNS text[]
