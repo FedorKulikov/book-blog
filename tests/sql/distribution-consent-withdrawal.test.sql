@@ -110,6 +110,8 @@ begin
    where o.bucket_id = 'post-images'
      and o.name = '11111111-1111-4111-8111-111111111111/book-cover.jpg';
 
+  perform public.increment_post_views('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1');
+
   if v_profiles <> 0 or v_posts <> 0 or v_comments <> 0 or v_likes <> 0
      or v_images <> 0 or v_tags <> 0 or v_avatar_objects <> 0 or v_post_objects <> 1
      or v_book_covers <> 1 then
@@ -191,6 +193,11 @@ set local role anon;
 select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 do $anonymous_with_consent$
 begin
+  perform public.increment_post_views('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1');
+  if (select views_count from public.posts where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') <> 1 then
+    raise exception 'consented approved post view counter did not increment';
+  end if;
+
   if (select count(*) from public.profiles) <> 1
      or (select count(*) from public.posts) <> 1
      or (select count(*) from public.comments) <> 1
@@ -273,6 +280,11 @@ set local role anon;
 select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 do $anonymous_after_revoke$
 begin
+  perform public.increment_post_views('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1');
+  if (select views_count from public.posts where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') <> 1 then
+    raise exception 'hidden post view counter changed after consent withdrawal';
+  end if;
+
   if (select count(*) from public.profiles) <> 0
      or (select count(*) from public.posts) <> 0
      or (select count(*) from public.comments) <> 0
