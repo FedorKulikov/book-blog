@@ -231,8 +231,29 @@ async function main() {
     })
     check('post status and created_at cannot be supplied on INSERT', Boolean(forgedPost.error), safeError(forgedPost.error))
 
-    // The database guard is exercised by the isolated PostgreSQL 17 migration test.
-    // This smoke also runs against production before the stage-2 migration is deployed.
+    // Production rollout smoke: a second authenticated user has no grant and
+    // must not create a post or read Alice's consent history.
+    const bobConsentsBefore = await otherClient.rpc('my_distribution_consents')
+    check(
+      'new authenticated user starts with no distribution consent rows',
+      !bobConsentsBefore.error && (bobConsentsBefore.data?.length ?? 0) === 0,
+      safeError(bobConsentsBefore.error),
+    )
+
+    const bobWithoutConsent = await otherClient.from('posts').insert({
+      user_id: bob.id,
+      title: `post-without-consent-${stamp}`,
+      content: 'This post must be rejected by the production database guard.',
+      type: 'creative',
+    }).select('id').single()
+    check(
+      'another authenticated user cannot create a post without their own consent',
+      Boolean(bobWithoutConsent.error),
+      safeError(bobWithoutConsent.error),
+    )
+    if (bobWithoutConsent.data?.id) {
+      await admin.from('posts').delete().eq('id', bobWithoutConsent.data.id)
+    }
 
     const publicationConsent = await client.rpc('record_my_distribution_consent', {
       p_scope: 'publication',
@@ -240,6 +261,46 @@ async function main() {
       p_document_version: DISTRIBUTION_CONSENT_VERSION,
     })
     check('author can record their own publication consent', !publicationConsent.error && Boolean(publicationConsent.data), safeError(publicationConsent.error))
+
+    const aliceConsents = await client.rpc('my_distribution_consents')
+    const ownPublicationConsent = (aliceConsents.data ?? []).find((row: {
+      scope: string
+      document_version: string
+      data_categories: string[]
+      revoked_at: string | null
+    }) => row.scope === 'publication' &&
+      row.document_version === DISTRIBUTION_CONSENT_VERSION &&
+      row.revoked_at === null &&
+      JSON.stringify(row.data_categories) === JSON.stringify([...DISTRIBUTION_CONSENT_CATEGORIES]))
+    check(
+      'publication consent is stored and visible in author own consent history',
+      !aliceConsents.error && Boolean(ownPublicationConsent),
+      safeError(aliceConsents.error),
+    )
+
+    const bobConsentsAfterAliceGrant = await otherClient.rpc('my_distribution_consents')
+    check(
+      'another user cannot read the author own consent history',
+      !bobConsentsAfterAliceGrant.error && (bobConsentsAfterAliceGrant.data?.length ?? 0) === 0,
+      safeError(bobConsentsAfterAliceGrant.error),
+    )
+
+    const bobRevokeAlice = await otherClient.rpc('revoke_my_distribution_consent', {
+      p_scope: 'publication',
+    })
+    const aliceConsentsAfterBobRevoke = await client.rpc('my_distribution_consents')
+    const aliceConsentStillActive = (aliceConsentsAfterBobRevoke.data ?? []).some((row: {
+      scope: string
+      document_version: string
+      revoked_at: string | null
+    }) => row.scope === 'publication' &&
+      row.document_version === DISTRIBUTION_CONSENT_VERSION &&
+      row.revoked_at === null)
+    check(
+      'another user cannot revoke the author own consent',
+      !bobRevokeAlice.error && !aliceConsentsAfterBobRevoke.error && aliceConsentStillActive,
+      safeError(bobRevokeAlice.error ?? aliceConsentsAfterBobRevoke.error),
+    )
 
     const post = await client.from('posts').insert({
       user_id: alice.id, title: `Data security smoke ${stamp}`,
