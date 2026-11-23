@@ -554,3 +554,14 @@
 - Updated the profile-edit and public consent-page wording so it no longer claims undecided legacy material is hidden. Added a PostgreSQL regression test for profile-only hide/grant and configured CI to apply the new migration twice.
 - The production client-write smoke step is skipped for B12-fix2 because it writes consent history for generated production test accounts; equivalent SQL scenarios run on disposable PostgreSQL fixtures with final rollback.
 - Browser verification under a signed-in session for `/profile`, `/profile/edit`, and `/admin` remains outstanding pending local `.env.local` session credentials. Production health smoke run `45172846625` also failed its independent homepage SEO-marker assertion despite HTTP 200 from both domains; investigate separately.
+
+
+## 2026-11-23 — B12-fix2 Stage 3/4: PR #91 deployed and verified
+
+- PR #91 merged as c3a24db053e35930158c75f957e1906bebb156c0; head 8e1c1e9737a9f712d741e95d9a43774ab983f14b.
+- All Web quality jobs passed (including PostgreSQL 17 and isolated local Supabase Auth/Storage); Chat security smoke passed 32/32. Its production client-write/consent-history step was skipped as required for B12-fix2.
+- Production apply workflow 45176986018 passed all stages, including schema and Stage 4 privacy verification. Migration 20261216_legacy_profile_only_choice.sql applied at 12:43:38.188302 UTC by postgres; checksum ab5697591f760be22ecbea0f903c2b47710cbfab178c0c12792903cebaabc9a7.
+- Read-only verification: 19 profiles (all 19 undecided); 9 approved pre-cutoff posts visible pending author choice. anon sees 19 profiles and 9 approved posts. RLS helper/counter grants are available to anon/authenticated; PUBLIC/service_role remain denied on the post predicate; prompt-state and resolver RPCs remain authenticated-only.
+- Consent history stayed at 40 total / 2 active. Both active records remain associated with the two existing data-smoke-a-* accounts. No production consent rows were inserted, backfilled, updated, or revoked.
+- Disposable PostgreSQL 17 regression suite exercised explicit legacy grant, profile-only grant/hide, separate future-publication consent, hidden-old-post persistence, new-post visibility, counter alignment, and owner/staff access; the suite ended in ROLLBACK.
+- Still outstanding: signed-in browser checks for /profile, /profile/edit, /admin pending local .env.local session. Separate production health smoke 45172846625 returned HTTP 200 for both domains but failed the expected homepage SEO-marker assertion; track independently.
