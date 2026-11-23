@@ -165,6 +165,22 @@ jobs:
             lib/chat-media-path.ts \
             app/messages/'[id]'/page.tsx \
             app/components/MessageBubble.tsx \
+            app/components/StorageImage.tsx \
+            app/components/PostCard.tsx \
+            app/components/AvatarLightbox.tsx \
+            app/components/TopAuthors.tsx \
+            app/components/ChatUserPanel.tsx \
+            app/components/comments/CommentNode.tsx \
+            app/profile/'[username]'/ProfileView.tsx \
+            app/profile/'[username]'/page.tsx \
+            app/post/'[id]'/PostView.tsx \
+            app/post/'[id]'/layout.tsx \
+            app/books/BooksClient.tsx \
+            app/books/add/AddBookForm.tsx \
+            app/book/'[id]'/BookView.tsx \
+            app/search/page.tsx \
+            app/components/NotificationBell.tsx \
+            app/messages/'[id]'/page.tsx \
             proxy.ts \
             next.config.ts
       - name: Production build
