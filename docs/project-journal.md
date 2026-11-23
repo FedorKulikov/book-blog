@@ -487,3 +487,10 @@
 - Обновлён scope-specific RPC revoke_my_distribution_consent(text): отзыв publication также фиксирует legacy choice=hidden. revoke_my_all_distribution_consents делает то же для общего отзыва. Пользовательские функции по-прежнему получают владельца только из auth.uid().
 - StorageImage объединяет batch подписи по bucket и viewer. Для 20 уникальных аватаров комментариев создаётся до 20 signed URL в одном batch-вызове Storage; общий session lookup разделён, подписанные URL не кешируются между компонентами/аккаунтами. Истёкший URL обновляется один раз; если текущая RLS-проверка запрещает доступ, изображение скрывается.
 - Production read-only проверка подтвердила, что authenticated не имеет UPDATE-права на posts.created_at. PostgreSQL 17 regression fixture проверяет новые/legacy публикации, выбор hide, последующий grant, общий и scope-specific отзыв, а также отсутствие прямых прав на служебные поля. CI на текущем head ожидается; production migration ещё не применялась.
+
+
+## 2026-11-23 — B12 Stage 4 test correction: conversation-scoped profile access
+
+- PostgreSQL 17 test log показал `profiles = 2` для владельца A. Это корректное поведение: A и B состоят в существующем личном диалоге, поэтому `private.can_read_distribution_profile()` разрешает обоим видеть профиль собеседника, даже без публичного согласия. Доступ постороннего пользователя C остаётся закрытым.
+- Исправлен `tests/sql/distribution-consent-withdrawal.test.sql`: вместо общего ожидания одной строки profiles отдельно проверяются own profile = 1, профиль собеседника в общем диалоге = 1, unrelated profile C = 0, own post = 1 и own post image = 1. Производственная политика не ослаблялась и не менялась.
+- Нужен повторный PostgreSQL 17 прогон на текущем head; PR не сливать до зелёного CI.
