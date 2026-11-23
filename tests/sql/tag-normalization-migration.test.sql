@@ -1,5 +1,5 @@
 do $tag_normalization_assertions$
-declare post_id uuid;
+declare v_post_id uuid;
 begin
   if exists (select 1 from public.tags where slug in (
     'писатель-писательство-творчество',
@@ -21,13 +21,13 @@ begin
     raise exception 'missing standalone гаррипоттер tag was not created';
   end if;
 
-  foreach post_id in array array[
+  foreach v_post_id in array array[
     '20000000-0000-0000-0000-000000000001'::uuid,
     '20000000-0000-0000-0000-000000000002'::uuid,
     '20000000-0000-0000-0000-000000000003'::uuid
   ] loop
-    if (select count(*) from public.post_tags where post_tags.post_id=post_id) <> 3 then
-      raise exception 'former compound tag did not become exactly 3 links for post %', post_id;
+    if (select count(*) from public.post_tags where post_tags.post_id=v_post_id) <> 3 then
+      raise exception 'former compound tag did not become exactly 3 links for post %', v_post_id;
     end if;
   end loop;
 
