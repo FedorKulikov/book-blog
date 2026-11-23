@@ -19,6 +19,7 @@ type ConsentRow = {
 
 type LegacyPromptState = {
   has_approved_posts: boolean
+  has_legacy_profile: boolean
   already_prompted: boolean
   profile_public_active: boolean
   publication_active: boolean
@@ -312,6 +313,12 @@ export default function EditProfilePage() {
     )
   }
 
+  const legacyDecisionPending = Boolean(
+    legacyPromptState &&
+    !legacyPromptState.already_prompted &&
+    (legacyPromptState.has_legacy_profile || legacyPromptState.has_approved_posts),
+  )
+
   return (
     <main className="p-4 md:p-8 max-w-2xl mx-auto">
       <Link
@@ -331,6 +338,13 @@ export default function EditProfilePage() {
           <h2 className="font-semibold text-emerald-dark mb-2">
             Распространение публичных полей профиля
           </h2>
+
+          {legacyDecisionPending && legacyPromptState?.has_legacy_profile && !profileConsentActive && (
+            <p className="mb-3 text-sm leading-relaxed text-brown/70">
+              Публичные поля существующего профиля пока видны посетителям до вашего решения ниже.
+              Для дальнейшего публичного распространения этих полей потребуется отдельное согласие.
+            </p>
+          )}
 
           {profileConsentActive && profileConsentGrantedAt ? (
             <p className="text-sm leading-relaxed text-brown-dark">
@@ -389,16 +403,26 @@ export default function EditProfilePage() {
           )}
         </section>
 
-        {legacyPromptState?.has_approved_posts && !legacyPromptState.already_prompted && (
+        {legacyDecisionPending && legacyPromptState && (
           <section className="rounded-xl border border-wine/25 bg-wine/5 p-4">
             <h2 className="font-semibold text-emerald-dark mb-2">
-              Ранее опубликованные материалы
+              Ранее созданные данные
             </h2>
             <p className="text-sm leading-relaxed text-brown-dark mb-3">
-              У вас есть публикации, созданные до введения отдельного согласия.
-              Сейчас они скрыты от посетителей. Подтвердите распространение этих
-              материалов или оставьте их скрытыми. Записи и файлы не удаляются.
+              {legacyPromptState.has_legacy_profile && legacyPromptState.has_approved_posts
+                ? 'Публичные поля профиля и ранее одобренные публикации пока видны посетителям.'
+                : legacyPromptState.has_legacy_profile
+                  ? 'Публичные поля существующего профиля пока видны посетителям.'
+                  : 'Ранее одобренные публикации пока видны посетителям.'}
+              {' '}Подтвердите их дальнейшее распространение или скройте. При скрытии записи и файлы
+              останутся в аккаунте и не будут удалены.
             </p>
+            {legacyPromptState.publication_active && (
+              <p className="mb-3 text-sm leading-relaxed text-brown-dark">
+                Отдельное согласие на новые публикации останется действовать. Этот выбор касается
+                только материалов до даты перехода; согласие на будущие публикации можно отозвать отдельно.
+              </p>
+            )}
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 type="button"
@@ -406,7 +430,11 @@ export default function EditProfilePage() {
                 onClick={() => void resolveLegacyPrompt('grant_existing')}
                 className="rounded-full bg-emerald-mid px-4 py-2 text-sm text-cream hover:bg-emerald-dark disabled:opacity-50"
               >
-                {legacyPromptBusy ? 'Сохраняем…' : 'Подтвердить распространение'}
+                {legacyPromptBusy
+                  ? 'Сохраняем…'
+                  : legacyPromptState.has_legacy_profile && !legacyPromptState.has_approved_posts
+                    ? 'Оставить профиль публичным'
+                    : 'Подтвердить распространение'}
               </button>
               <button
                 type="button"
@@ -414,7 +442,11 @@ export default function EditProfilePage() {
                 onClick={() => void resolveLegacyPrompt('hide_existing')}
                 className="rounded-full border border-emerald-dark/20 px-4 py-2 text-sm text-brown-dark hover:bg-cream-warm disabled:opacity-50"
               >
-                Скрыть мои материалы
+                {legacyPromptState.has_legacy_profile && legacyPromptState.has_approved_posts
+                  ? 'Скрыть профиль и публикации'
+                  : legacyPromptState.has_legacy_profile
+                    ? 'Скрыть профиль'
+                    : 'Скрыть публикации'}
               </button>
             </div>
             {legacyPromptError && (
@@ -432,11 +464,15 @@ export default function EditProfilePage() {
             Распространение публикаций
           </h2>
           <p className="text-sm text-brown-dark">
-            {legacyPromptState?.legacy_choice === 'hidden'
-              ? 'Ранее опубликованные материалы остаются скрытыми по вашему выбору. Новое согласие на будущие публикации не откроет старые записи.'
+            {legacyPromptState?.legacy_choice === 'hidden' && legacyPromptState.has_approved_posts
+              ? publicationConsentActive
+                ? 'Ранее одобренные публикации остаются скрытыми. Действующее согласие распространяется на новые публикации после даты перехода.'
+                : 'Ранее одобренные публикации остаются скрытыми по вашему выбору. Новое согласие на будущие публикации не откроет старые записи.'
               : publicationConsentActive
               ? 'Согласие на распространение ваших публикаций действует.'
-              : 'Согласие на распространение публикаций не действует. Старые публикации скрыты от посетителей; новые публикации отдельно запросят согласие.'}
+              : legacyDecisionPending && legacyPromptState?.has_approved_posts
+                ? 'Старые публикации остаются видимыми до вашего решения. Новые публикации отдельно требуют согласия.'
+                : 'Согласие на распространение публикаций не действует. Скрытые старые публикации не видны посетителям; новые публикации отдельно запросят согласие.'}
           </p>
         </section>
 

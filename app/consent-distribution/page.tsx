@@ -54,6 +54,18 @@ export default function ConsentDistributionPage() {
         </section>
 
         <section className="space-y-2">
+          <h2 className="font-semibold text-emerald-dark">Ранее созданные данные</h2>
+          <p className="leading-relaxed text-brown-dark">
+            Публичные поля профиля и одобренные публикации, созданные до введения
+            отдельного механизма согласия, остаются видимыми посетителям, пока
+            автор не сделает выбор в настройках профиля. Автор может подтвердить
+            их дальнейшее распространение или скрыть их. При скрытии записи и
+            файлы остаются в аккаунте и не удаляются. Новые публикации требуют
+            отдельного согласия.
+          </p>
+        </section>
+
+        <section className="space-y-2">
           <h2 className="font-semibold text-emerald-dark">Кому доступны данные</h2>
           <p className="leading-relaxed text-brown-dark">
             Эти данные доступны всем посетителям сайта, а не только

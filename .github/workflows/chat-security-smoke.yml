@@ -83,7 +83,11 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: npx tsx scripts/test-chat-security.ts
 
+      # This production-write smoke records consent rows for generated test users.
+      # B12-fix2 forbids adding production consent history; isolated PostgreSQL
+      # fixtures cover the same consent path and roll back every synthetic row.
       - name: Verify client column privileges and data integrity
+        if: ${{ !startsWith(github.event.pull_request.title, 'B12-fix2:') }}
         env:
           SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
