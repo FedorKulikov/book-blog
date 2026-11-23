@@ -110,6 +110,11 @@ begin
      or not has_function_privilege('authenticated', 'public.increment_post_views(uuid)', 'EXECUTE') then
     raise exception 'public post view counter must remain executable by anon and authenticated';
   end if;
+  if not has_function_privilege('service_role', 'public.restore_hidden_legacy_distribution(uuid)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.restore_hidden_legacy_distribution(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.restore_hidden_legacy_distribution(uuid)', 'EXECUTE') then
+    raise exception 'legacy restore RPC must be service_role-only';
+  end if;
 end;
 $fixture_integrity$;
 
@@ -459,7 +464,9 @@ begin
 end;
 $restore_starts_hidden_without_consent$;
 
-select public.restore_my_hidden_legacy_distribution();
+reset role;
+set local role service_role;
+select public.restore_hidden_legacy_distribution('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 
 do $restore_records_real_consent$
 begin

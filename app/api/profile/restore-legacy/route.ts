@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getAdminClient } from '@/lib/supabase/admin'
 
 type ConsentRow = {
   scope: string
@@ -33,11 +34,19 @@ export async function POST() {
     )
   }
 
-  // No body, user ID, consent scope, categories or choice is accepted from the client.
-  // The database RPC derives auth.uid(), verifies choice=hidden and records the
-  // required scopes in the same transaction as the visibility decision.
-  const { data: restored, error: restoreError } = await supabase.rpc(
-    'restore_my_hidden_legacy_distribution',
+  // No body or user ID is accepted from the client. The identity comes from
+  // auth.getUser(); only the server-side service-role RPC can perform the write.
+  const admin = getAdminClient()
+  if (!admin) {
+    return NextResponse.json(
+      { error: 'Серверная операция временно недоступна. Попробуйте позже.' },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    )
+  }
+
+  const { data: restored, error: restoreError } = await admin.rpc(
+    'restore_hidden_legacy_distribution',
+    { p_user_id: data.user.id },
   )
 
   if (restoreError || !restored || restored.restored !== true) {
