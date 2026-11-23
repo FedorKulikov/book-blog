@@ -825,3 +825,13 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Final exact-snapshot verification — 2026-11-23:** all 63 original manifest Auth IDs are absent (`target_auth_users_remaining=0`) and all related rows/objects are zero: consents 0, profiles 0, posts 0, books 0, reports 0, notifications 0, Storage 0, conversations 0, messages 0, comments/likes/bookmarks/follows/tickets/ticket_messages/post_images 0. The cleanup deleted 62 Auth accounts; the remaining original ID was already absent when deletion began. Verification was performed through paginated Supabase Auth Admin ID listing, service-role PostgREST inventory, the service-role-only consent RPC and Storage API. The verification job passed (Chat security run 45210625721).
 
 **Out-of-manifest exception:** one account with the same email as a manifest entry now exists under a different Auth UUID (`data-smoke-a-mwsm717y@example.com`, ID `ce277934-bdfb-4c56-88f0-03d2d554b4f76`) and has one revoked consent; all its other inventoried relations are zero. It is not one of the 63 approved IDs and was deliberately not deleted. Therefore global prefix smoke account count is 1, while the exact 63-ID snapshot and its related content are fully clear. The regular production smoke workflow now performs guarded prefix cleanup after successful smoke runs; PR runs remain read-only apart from the fixed one-time cleanup already completed.
+
+
+## 2026-11-23 — Автоочистка после health smoke и неуспешных прогонов
+
+- **Что требовалось:** устранить накопление тестовых аккаунтов после production health smoke и после упавших smoke/migration workflow.
+- **Что сделано:** workflow cleanup подписан на `Apply DB migrations` и `Production health smoke`; job запускается для завершившихся `success` и `failure`, но не `cancelled`. PR-only проверки отделены от workflow_run; production cleanup выполняется с `always()`.
+- **Как сделано:** используется прежний guarded CLI `--delete` с явными smoke-префиксами; pull_request deletion не запускается. Очистка остаётся fail-closed: ненулевые остатки приводят к ошибке команды и красному job.
+- **Проверки:** статически проверены workflow trigger, conclusion filter и условия шагов. CI/actionlint после commit ожидается; runtime-тест события failure/cancelled ещё не проводился.
+- **Что не получилось / осталось:** фактический production workflow_run после health smoke/failure ещё не наблюдался; PR не объединён.
+- **Публикация:** commit отправлен в рабочую ветку PR #96; production и данные пользователей не менялись.

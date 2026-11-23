@@ -25,6 +25,7 @@ on:
   workflow_run:
     workflows:
       - Apply DB migrations
+      - Production health smoke
     types:
       - completed
     branches:
@@ -40,8 +41,12 @@ concurrency:
 jobs:
   smoke:
     if: >-
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      always() &&
+      (
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+        (github.event_name == 'workflow_run' &&
+          contains(fromJSON('["success", "failure"]'), github.event.workflow_run.conclusion))
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -53,12 +58,15 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
+        if: github.event_name == 'pull_request'
         run: npm ci
 
       - name: TypeScript check
+        if: github.event_name == 'pull_request'
         run: npx tsc --noEmit
 
       - name: Verify temporary chat access-control scenarios
+        if: github.event_name == 'pull_request'
         env:
           SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
@@ -84,19 +92,21 @@ jobs:
           echo "Required service-role/publishable credentials are configured (values were not printed)."
 
       - name: Production smoke-account cleanup dry-run
+        if: github.event_name == 'pull_request'
         env:
           SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: npx tsx scripts/cleanup-data-smoke-users.ts --dry-run
 
       - name: Verify exact reviewed 63-account snapshot (read-only)
+        if: github.event_name == 'pull_request'
         env:
           SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: npx tsx scripts/cleanup-data-smoke-users.ts --verify-manifest --manifest scripts/cleanup-data-smoke-users-2026-11-23.json
 
       - name: Clean residual smoke accounts after regular production smoke
-        if: github.event_name == 'workflow_run'
+        if: always() && github.event_name == 'workflow_run'
         env:
           SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}

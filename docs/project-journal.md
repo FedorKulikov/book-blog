@@ -658,3 +658,13 @@
 - Verification: Supabase Auth Admin paginated ID listing (`target_auth_users_remaining=0`); service-role PostgREST inventory and consent RPC; Storage API. Target residual counts are all zero: consents, profiles, posts, books, reports, notifications, Storage objects, conversations, messages, comments, likes, bookmarks, follows, tickets, ticket messages and post images.
 - One account with the same email as a manifest entry but a different Auth UUID exists outside the approved snapshot: `data-smoke-a-mwsm717y@example.com`, UUID `ce277934-bdfb-4c56-88f0-03d2d554b4f76`, with one revoked consent and zero other related records. It was not deleted because the user authorized only the original 63 UUIDs. Global prefix smoke count is therefore 1, but all 63 authorized UUIDs and their content are gone.
 - The workflow includes guarded prefix cleanup after future successful production smoke runs; pull-request runs only dry-run and exact-manifest verification. Chat smoke and exact-manifest verification passed in run `45210625721`.
+
+
+## 2026-11-23 — Production smoke cleanup runs after success and failure
+
+- **Что требовалось:** запускать guarded cleanup после завершения DB migration и production health smoke, в том числе если исходный workflow завершился failure; не запускать production deletion на pull_request.
+- **Что сделано:** в `.github/workflows/chat-security-smoke.yml` добавлен источник `Production health smoke`; job принимает только conclusion `success` или `failure` (cancelled исключён). Production cleanup шага имеет `always()`, поэтому не зависит от результата диагностических шагов; PR-only typecheck/chat checks/dry-run/manifest verification ограничены pull_request.
+- **Как сделано:** удаление по-прежнему выполняется существующим `scripts/cleanup-data-smoke-users.ts --delete`, который использует явный allow-list префиксов smoke-аккаунтов и защиту от затрагивания чужого контента. Команда не изменялась; PR-trigger не получает delete-шаг.
+- **Проверки:** исходники workflow и список источников проверены статически; CI для нового commit ожидается. Проверка реального запуска после failure/cancelled и следующего health smoke ещё не выполнена.
+- **Что не получилось / осталось:** до CI нельзя заявлять успешную проверку GitHub Actions expression/actionlint. Условие исключает cancelled source workflow; cleanup запускается после completed success/failure.
+- **Публикация:** изменения отправлены в рабочую ветку PR #96; merge и production deployment не выполнялись.
