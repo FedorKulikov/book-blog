@@ -621,3 +621,11 @@
 - Production PostgREST dry-run initially stopped on `public.likes` with SQLSTATE 42703. Verified the live schema: likes uses composite primary key `(user_id, post_id)` and has no `id`; corrected the select and row type accordingly. No delete/write step ran.
 
 - Moved the production dry-run gate to a successful `Apply DB migrations` workflow completion on `main`. The PR-triggered chat security job still validates TypeScript and chat cleanup but skips production inventory; after merge and successful migration rollout, the workflow-run event executes the production dry-run with the new RPC available.
+
+## 2026-11-23 — Smoke cleanup uses Auth Admin, Storage and PostgREST only
+
+- Replaced the Management API SQL read path with paginated Supabase Auth Admin user listing, client-side prefix filtering, recursive Storage API listing restricted to each matched UUID root folder, and service-role PostgREST reads for application tables.
+- The private consent table is not exposed through PostgREST and service_role has no direct SELECT grant. Its inventory remains available through the already-existing `public.ops_smoke_consent_inventory(uuid[])` PostgREST RPC, owned by postgres and executable only by `service_role`; anonymous and authenticated execution are denied.
+- Preserved the pre-delete relationship guard and added a check for smoke-authored support messages inside tickets owned by non-smoke users.
+- Removed the Management API Auth-config diagnostic and `SUPABASE_ACCESS_TOKEN` reference from this cleanup workflow. Only the existing `SUPABASE_SECRET_KEY` is required for the admin/Storage/PostgREST dry-run; no new secret was requested.
+- Enabled the production dry-run on PR CI as well as the post-migration workflow. No `--delete` command has been run. Actual dry-run inventory and guard result are pending CI.
