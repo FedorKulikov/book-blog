@@ -17,6 +17,7 @@ do $permissions$
 declare
   v_guard oid := 'public.enforce_profile_public_consent()'::regprocedure;
   v_has_consent oid := 'public.has_my_profile_public_consent()'::regprocedure;
+  v_notifications_fn oid := 'public.my_profile_notification_settings()'::regprocedure;
   v_is_definer boolean;
   v_empty_path boolean;
   v_owner_postgres boolean;
@@ -32,6 +33,22 @@ begin
      or not has_function_privilege('authenticated', v_has_consent, 'EXECUTE')
      or not has_function_privilege('service_role', v_has_consent, 'EXECUTE') then
     raise exception 'has_my_profile_public_consent grants are incorrect';
+  end if;
+
+  if has_function_privilege('anon', v_notifications_fn, 'EXECUTE')
+     or not has_function_privilege('authenticated', v_notifications_fn, 'EXECUTE')
+     or not has_function_privilege('service_role', v_notifications_fn, 'EXECUTE') then
+    raise exception 'my_profile_notification_settings grants are incorrect';
+  end if;
+
+  if has_column_privilege('anon', 'public.profiles', 'notifications_muted', 'SELECT')
+     or has_column_privilege('authenticated', 'public.profiles', 'notifications_muted', 'SELECT') then
+    raise exception 'notifications_muted remains directly selectable through public.profiles';
+  end if;
+
+  if not has_column_privilege('anon', 'public.profiles', 'username', 'SELECT')
+     or not has_column_privilege('authenticated', 'public.profiles', 'username', 'SELECT') then
+    raise exception 'public profile fields lost their SELECT grants';
   end if;
 
   if has_function_privilege('anon', v_notifications_fn, 'EXECUTE')
@@ -115,6 +132,13 @@ begin
   if public.has_my_profile_public_consent() then
     raise exception 'no-session helper unexpectedly reported an active consent';
   end if;
+
+  begin
+    perform public.my_profile_notification_settings();
+    raise exception 'notification settings RPC accepted a missing session';
+  exception
+    when sqlstate '28000' then null;
+  end;
 end;
 $no_session$;
 
@@ -137,6 +161,19 @@ begin
   if v_count <> 1 then
     raise exception 'private notifications setting update did not succeed';
   end if;
+
+  if public.my_profile_notification_settings() is not true then
+    raise exception 'owner-only notification RPC did not return the updated private setting';
+  end if;
+
+  begin
+    perform notifications_muted
+      from public.profiles
+     where id = '22222222-2222-4222-8222-222222222222';
+    raise exception 'authenticated user directly selected notifications_muted';
+  exception
+    when insufficient_privilege then null;
+  end;
 
   if public.my_profile_notification_settings() is not true then
     raise exception 'owner-only notification RPC did not return the updated private setting';
@@ -225,6 +262,10 @@ begin
 
   if v_seen <> 0 then
     raise exception 'user B can see user A profile consent';
+  end if;
+
+  if public.my_profile_notification_settings() is not false then
+    raise exception 'user B notification RPC returned user A private setting';
   end if;
 
   perform public.revoke_my_distribution_consent('profile_public');
