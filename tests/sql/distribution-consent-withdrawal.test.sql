@@ -76,7 +76,11 @@ begin
      or has_column_privilege('anon', 'public.profiles', 'legacy_distribution_cutoff_at', 'SELECT')
      or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_cutoff_at', 'SELECT')
      or has_column_privilege('anon', 'public.profiles', 'legacy_distribution_cutoff_at', 'UPDATE')
-     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_cutoff_at', 'UPDATE') then
+     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_cutoff_at', 'UPDATE')
+     or has_column_privilege('anon', 'public.profiles', 'legacy_distribution_choice', 'SELECT')
+     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_choice', 'SELECT')
+     or has_column_privilege('anon', 'public.profiles', 'legacy_distribution_choice', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_choice', 'UPDATE') then
     raise exception 'legacy prompt timestamp must not be directly selectable or updatable';
   end if;
 
