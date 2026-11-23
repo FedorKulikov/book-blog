@@ -139,6 +139,22 @@ begin
 end;
 $owner_access$;
 
+-- NULL is not a valid prompt choice and must not fall through to "hide".
+do $null_decision$
+begin
+  begin
+    perform public.resolve_my_legacy_distribution_prompt(null);
+    raise exception 'null legacy decision unexpectedly succeeded';
+  exception
+    when sqlstate '22023' then null;
+  end;
+
+  if (select already_prompted from public.my_legacy_distribution_prompt_state()) then
+    raise exception 'invalid legacy decision marked the prompt as handled';
+  end if;
+end;
+$null_decision$;
+
 -- User A grants both scopes for existing content through the one-time RPC.
 select public.resolve_my_legacy_distribution_prompt('grant_existing');
 
