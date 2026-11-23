@@ -430,7 +430,7 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     postsOnSmokeBooks,
   ] = await Promise.all([
     selectByIds<CommentRow>(admin, 'comments', 'id,user_id,post_id', 'post_id', postIds),
-    selectByIds<LikeRow>(admin, 'likes', 'id,user_id,post_id', 'post_id', postIds),
+    selectByIds<LikeRow>(admin, 'likes', 'user_id,post_id', 'post_id', postIds),
     selectByIds<BookmarkRow>(admin, 'bookmarks', 'id,user_id,post_id', 'post_id', postIds),
     selectByIds<ReportRow>(admin, 'reports', 'id,reporter_id,post_id,comment_id', 'post_id', postIds),
     selectByIds<ReportRow>(admin, 'reports', 'id,reporter_id,post_id,comment_id', 'comment_id', commentIds),
