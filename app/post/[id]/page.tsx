@@ -65,7 +65,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: metaTitle,
       description,
       publishedTime: post.created_at,
-      authors: post.profiles?.username
+      authors: post.profiles?.can_read_profile && post.profiles.username
         ? [`${SITE_URL}/profile/${encodeURIComponent(post.profiles.username)}`]
         : undefined,
       images: images.length ? images : [{ url: '/og-default.jpg', width: 1200, height: 630 }],
