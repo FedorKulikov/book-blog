@@ -10,7 +10,8 @@ insert into auth.users (id) values
   ('66666666-6666-4666-8666-666666666666'),
   ('77777777-7777-4777-8777-777777777777'),
   ('88888888-8888-4888-8888-888888888888'),
-  ('99999999-9999-4999-8999-999999999999');
+  ('99999999-9999-4999-8999-999999999999'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 
 -- A/B/C/F are pre-cutoff profiles with no decision. D is created after its
 -- cutoff and E exactly at its cutoff; neither qualifies as a legacy profile.
@@ -24,7 +25,8 @@ insert into public.profiles (
   -- This profile was created after its migration cutoff; post defaults now()
   -- are therefore strictly post-cutoff and must pass the publication guard.
   ('77777777-7777-4777-8777-777777777777', 'fresh_profile', now(), now() - interval '1 second', 'user'),
-  ('88888888-8888-4888-8888-888888888888', 'legacy_test_admin', now(), now(), 'admin');
+  ('88888888-8888-4888-8888-888888888888', 'legacy_test_admin', now(), now(), 'admin'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'legacy_restore_user', now() - interval '10 minutes', now() - interval '5 minutes', 'user');
 
 -- Seed A/B legacy posts and C's post-cutoff publication before the guard.
 -- D's later new-post attempt without consent must be rejected with SQLSTATE 42501.
@@ -33,7 +35,8 @@ alter table public.posts disable trigger posts_require_distribution_consent;
 insert into public.posts (id, user_id, title, type, status, created_at) values
   ('44444444-aaaa-4aaa-8aaa-444444444441', '44444444-4444-4444-8444-444444444444', 'Pending legacy post', 'creative', 'approved', now() - interval '10 minutes'),
   ('55555555-aaaa-4aaa-8aaa-555555555551', '55555555-5555-4555-8555-555555555555', 'Hidden legacy post', 'creative', 'approved', now() - interval '10 minutes'),
-  ('66666666-aaaa-4aaa-8aaa-666666666662', '66666666-6666-4666-8666-666666666666', 'Future publication C', 'creative', 'approved', now());
+  ('66666666-aaaa-4aaa-8aaa-666666666662', '66666666-6666-4666-8666-666666666666', 'Future publication C', 'creative', 'approved', now()),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Restorable legacy post', 'creative', 'approved', now() - interval '10 minutes');
 
 alter table public.posts enable trigger posts_require_distribution_consent;
 
@@ -84,7 +87,8 @@ begin
        '66666666-6666-4666-8666-666666666666',
        '77777777-7777-4777-8777-777777777777',
        '88888888-8888-4888-8888-888888888888',
-       '99999999-9999-4999-8999-999999999999'
+       '99999999-9999-4999-8999-999999999999',
+       'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
      )
   ) then
     raise exception 'migration/test setup must not fabricate consent records';
@@ -105,6 +109,11 @@ begin
   if not has_function_privilege('anon', 'public.increment_post_views(uuid)', 'EXECUTE')
      or not has_function_privilege('authenticated', 'public.increment_post_views(uuid)', 'EXECUTE') then
     raise exception 'public post view counter must remain executable by anon and authenticated';
+  end if;
+  if not has_function_privilege('authenticated', 'public.restore_my_hidden_legacy_distribution()', 'EXECUTE')
+     or has_function_privilege('anon', 'public.restore_my_hidden_legacy_distribution()', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.restore_my_hidden_legacy_distribution()', 'EXECUTE') then
+    raise exception 'legacy restore RPC must be service_role-only';
   end if;
 end;
 $fixture_integrity$;
@@ -437,6 +446,61 @@ begin
   end if;
 end;
 $new_post_requires_consent$;
+
+reset role;
+
+
+-- A separate owner explicitly restores their hidden legacy materials.
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', true);
+select public.resolve_my_legacy_distribution_prompt('hide_existing');
+
+do $restore_starts_hidden_without_consent$
+begin
+  if (select legacy_choice from public.my_legacy_distribution_prompt_state()) <> 'hidden'
+     or exists (select 1 from public.my_distribution_consents()) then
+    raise exception 'the explicit hide decision must not fabricate consent rows';
+  end if;
+end;
+$restore_starts_hidden_without_consent$;
+
+select public.restore_my_hidden_legacy_distribution();
+
+do $restore_records_real_consent$
+begin
+  if (select legacy_choice from public.my_legacy_distribution_prompt_state()) <> 'granted'
+     or (select count(*) from public.my_distribution_consents() where revoked_at is null) <> 2
+     or not exists (
+       select 1 from public.my_distribution_consents()
+        where scope = 'publication' and revoked_at is null
+          and granted_at is not null and document_version = '1.0'
+     )
+     or not exists (
+       select 1 from public.my_distribution_consents()
+        where scope = 'profile_public' and revoked_at is null
+          and granted_at is not null and document_version = '1.1'
+     ) then
+    raise exception 'restore must record timestamped publication and profile_public consent and set granted';
+  end if;
+
+  if (select already_prompted from public.my_legacy_distribution_prompt_state()) is not true then
+    raise exception 'restore must preserve the recorded legacy decision marker';
+  end if;
+end;
+$restore_records_real_consent$;
+
+reset role;
+set local role anon;
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
+
+do $restored_legacy_visible_to_guest$
+begin
+  if (select count(*) from public.posts where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab') <> 1
+     or (select count(*) from public.profiles where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') <> 1 then
+    raise exception 'restored legacy publication and profile must be visible to a guest';
+  end if;
+end;
+$restored_legacy_visible_to_guest$;
 
 reset role;
 

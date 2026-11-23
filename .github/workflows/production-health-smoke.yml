@@ -147,6 +147,17 @@ jobs:
           check_guest_login_redirect "/news/new" "%2Fnews%2Fnew"
           check_guest_login_redirect "/welcome" "%2Fwelcome"
 
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" && "$SITE_URL" == "https://bukleb.ru" ]]; then
+            restore_guest_status="$(curl --silent --show-error --max-time 25 --request POST --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/api/profile/restore-legacy" || true)"
+            if [[ "$restore_guest_status" != "401" ]]; then
+              echo "::error::Guest legacy-restore request must be rejected with HTTP 401 (received $restore_guest_status)."
+              exit 1
+            fi
+            echo "Guest legacy-restore request is rejected with HTTP 401."
+          else
+            echo "Skip restore-endpoint production check on PR or Layero alias; it runs against the custom domain after deployment."
+          fi
+
           for public_route in "/login" "/signup" "/forgot-password" "/support"; do
             public_status="$(curl --silent --show-error --location --max-time 25 --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${public_route}" || true)"
             if [[ "$public_status" != "200" ]]; then
