@@ -4,7 +4,8 @@
 begin;
 
 alter table public.profiles
-  add column if not exists legacy_distribution_prompted_at timestamptz;
+  add column if not exists legacy_distribution_prompted_at timestamptz,
+  add column if not exists legacy_distribution_cutoff_at timestamptz not null default pg_catalog.now();
 
 create schema if not exists private;
 
@@ -267,6 +268,7 @@ begin
       select 1 from public.posts p
        where p.user_id = v_user_id
          and p.status = 'approved'
+         and p.created_at <= p.legacy_distribution_cutoff_at
     ),
     p.legacy_distribution_prompted_at is not null,
     private.has_active_distribution_consent(v_user_id, 'profile_public'),
@@ -295,6 +297,7 @@ as $function$
 declare
   v_user_id uuid := auth.uid();
   v_prompted_at timestamptz;
+  v_cutoff_at timestamptz;
 begin
   if v_user_id is null then
     raise exception 'Authentication is required to resolve the legacy distribution prompt'
@@ -306,8 +309,8 @@ begin
       using errcode = '22023';
   end if;
 
-  select p.legacy_distribution_prompted_at
-    into v_prompted_at
+  select p.legacy_distribution_prompted_at, p.legacy_distribution_cutoff_at
+    into v_prompted_at, v_cutoff_at
     from public.profiles p
    where p.id = v_user_id
    for update;
@@ -325,6 +328,7 @@ begin
     select 1 from public.posts p
      where p.user_id = v_user_id
        and p.status = 'approved'
+       and p.created_at <= v_cutoff_at
   ) then
     raise exception 'There are no approved legacy publications to resolve'
       using errcode = '22023';
