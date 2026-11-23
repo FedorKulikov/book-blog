@@ -450,15 +450,24 @@ security definer
 set search_path = ''
 as $function$
 begin
-  update public.posts
-     set views_count = coalesce(views_count, 0) + 1
-   where id = post_id_input
-     and status = 'approved'
-     and private.has_active_distribution_consent(user_id, 'publication');
+  update public.posts as target
+     set views_count = coalesce(target.views_count, 0) + 1
+   where target.id = post_id_input
+     and target.status = 'approved'
+     and exists (
+       select 1
+         from public.profiles author
+        where author.id = target.user_id
+          and private.has_active_distribution_consent(author.id, 'publication')
+          and (
+            target.created_at > author.legacy_distribution_cutoff_at
+            or author.legacy_distribution_choice = 'granted'
+          )
+     );
 end;
 $function$;
 
 comment on function public.increment_post_views(uuid) is
-  'Increments views only for approved posts whose author has an active publication distribution consent.';
+  'Increments views only for approved posts currently eligible for public distribution under both the publication consent and the stored legacy-content decision.';
 
 commit;
