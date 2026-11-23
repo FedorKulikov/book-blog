@@ -658,3 +658,12 @@
 - Verification: Supabase Auth Admin paginated ID listing (`target_auth_users_remaining=0`); service-role PostgREST inventory and consent RPC; Storage API. Target residual counts are all zero: consents, profiles, posts, books, reports, notifications, Storage objects, conversations, messages, comments, likes, bookmarks, follows, tickets, ticket messages and post images.
 - One account with the same email as a manifest entry but a different Auth UUID exists outside the approved snapshot: `data-smoke-a-mwsm717y@example.com`, UUID `ce277934-bdfb-4c56-88f0-03d2d554b4f76`, with one revoked consent and zero other related records. It was not deleted because the user authorized only the original 63 UUIDs. Global prefix smoke count is therefore 1, but all 63 authorized UUIDs and their content are gone.
 - The workflow includes guarded prefix cleanup after future successful production smoke runs; pull-request runs only dry-run and exact-manifest verification. Chat smoke and exact-manifest verification passed in run `45210625721`.
+
+
+## 2026-11-23 — Восстановление ранее скрытых legacy-материалов
+
+- **Требовалось:** дать владельцу возможность вернуть legacy-публикации после явного выбора «скрыть», не создавая фиктивные согласия и не меняя поведение пользователей с ещё не принятым решением.
+- **Изменено:** добавлены серверный маршрут `POST /api/profile/restore-legacy`, кнопка «Вернуть материалы» в настройках профиля (только при `legacy_choice = hidden`) и миграция `20261218_restore_hidden_legacy_distribution.sql`.
+- **Как работает:** RPC не принимает UUID, scope, категории или флаг от клиента; использует `auth.uid()`, блокирует профиль на время операции, проверяет `hidden`, вызывает существующий `record_my_distribution_consent` для publication и/или profile_public только при наличии соответствующего legacy-контента и отсутствии активного согласия. Затем меняет только `legacy_distribution_choice` на `granted`; исходная дата решения сохраняется.
+- **Проверки добавлены:** SQL-сценарий скрытия и последующего восстановления проверяет настоящие consent rows с `granted_at`, гостевую видимость legacy-профиля и публикации, сохранение старой даты решения и прежний отказ новой публикации без consent. Миграция запускается дважды в Web quality CI; production health smoke проверяет, что гость получает 401 на restore endpoint.
+- **Границы:** политика конфиденциальности, Edge Functions, Hook, секреты и production-данные не меняются.
