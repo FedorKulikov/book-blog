@@ -478,3 +478,12 @@
 - При разборе функции `my_legacy_distribution_prompt_state()` обнаружена отдельная ошибка alias: сравнение даты post ошибочно ссылалось на поле cutoff у posts вместо profile. RPC исправлен на `post.created_at <= profile.legacy_distribution_cutoff_at`.
 - Сохранены более строгие проверки `legacy_distribution_choice`: после `hide_existing` повторная выдача согласия на новые публикации не открывает старый контент; после общего отзыва последующий publication grant также не публикует legacy-строки. Новый пост после cutoff с активным согласием остаётся видимым. Проверки уже включены в `tests/sql/distribution-consent-withdrawal.test.sql`.
 - Исправления ещё не подтверждены зелёным CI на текущем head; production migration не применялась.
+
+
+## 2026-11-23 — Stage 4 hardening: persistent legacy decision and signed-media batching
+
+- Уточнена миграционная граница: profiles.legacy_distribution_cutoff_at фиксирует момент включения отдельного согласия. Legacy prompt учитывает только approved posts, созданные не позже cutoff; новые публикации после cutoff не попадают в одноразовое предложение.
+- Добавлено закрытое поле profiles.legacy_distribution_choice (granted/hidden). Публичный RLS, Storage-доступ к изображениям и счётчик просмотров согласуются с этим выбором. При hide_existing или отзыве publication scope старые публикации остаются скрытыми даже после последующего согласия для новых публикаций; owner/staff доступ не меняется. Никакие прямые grants на prompted_at, cutoff_at и choice не выдаются.
+- Обновлён scope-specific RPC revoke_my_distribution_consent(text): отзыв publication также фиксирует legacy choice=hidden. revoke_my_all_distribution_consents делает то же для общего отзыва. Пользовательские функции по-прежнему получают владельца только из auth.uid().
+- StorageImage объединяет batch подписи по bucket и viewer. Для 20 уникальных аватаров комментариев создаётся до 20 signed URL в одном batch-вызове Storage; общий session lookup разделён, подписанные URL не кешируются между компонентами/аккаунтами. Истёкший URL обновляется один раз; если текущая RLS-проверка запрещает доступ, изображение скрывается.
+- Production read-only проверка подтвердила, что authenticated не имеет UPDATE-права на posts.created_at. PostgreSQL 17 regression fixture проверяет новые/legacy публикации, выбор hide, последующий grant, общий и scope-specific отзыв, а также отсутствие прямых прав на служебные поля. CI на текущем head ожидается; production migration ещё не применялась.
