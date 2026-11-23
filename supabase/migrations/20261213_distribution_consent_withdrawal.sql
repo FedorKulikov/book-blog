@@ -403,6 +403,54 @@ revoke all on function public.resolve_my_legacy_distribution_prompt(text)
 grant execute on function public.resolve_my_legacy_distribution_prompt(text)
   to authenticated, service_role;
 
+-- Replacing the original user-scoped revoke RPC ensures a later grant for
+-- new publications cannot revive pre-cutoff rows after publication consent
+-- has been withdrawn through this narrower endpoint.
+create or replace function public.revoke_my_distribution_consent(p_scope text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is null then
+    raise exception 'Authentication is required to revoke distribution consent'
+      using errcode = '28000';
+  end if;
+
+  if p_scope is null or p_scope not in ('profile_public', 'publication') then
+    raise exception 'Unsupported distribution consent scope'
+      using errcode = '22023';
+  end if;
+
+  update private.personal_data_consents
+     set revoked_at = pg_catalog.now()
+   where user_id = v_user_id
+     and scope = p_scope
+     and revoked_at is null;
+
+  if p_scope = 'publication' then
+    update public.profiles
+       set legacy_distribution_prompted_at = coalesce(
+             legacy_distribution_prompted_at,
+             pg_catalog.now()
+           ),
+           legacy_distribution_choice = 'hidden'
+     where id = v_user_id;
+  end if;
+end;
+$function$;
+
+comment on function public.revoke_my_distribution_consent(text) is
+  'Revokes the selected scope for auth.uid() only. Publication revocation also makes the one-time legacy decision hidden so a later grant applies only to post-cutoff publications.';
+
+revoke all on function public.revoke_my_distribution_consent(text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.revoke_my_distribution_consent(text)
+  to authenticated, service_role;
+
 create or replace function public.revoke_my_all_distribution_consents()
 returns void
 language plpgsql
