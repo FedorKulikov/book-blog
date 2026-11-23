@@ -16,6 +16,7 @@ type QueuedRequest = {
 }
 
 const inFlight = new Map<string, Promise<string | null>>()
+let viewerLookup: Promise<string> | null = null
 const pending = new Map<string, QueuedRequest>()
 let flushScheduled = false
 
@@ -28,6 +29,22 @@ function storageKey(viewerKey: string, bucket: PrivateBucket, path: string) {
  * per bucket and viewer. Duplicate paths share a single signature. The cache
  * is only in-flight: bearer URLs are never reused after the batch completes.
  */
+function getViewerKey(): Promise<string> {
+  if (!viewerLookup) {
+    const lookup = supabase.auth
+      .getSession()
+      .then(({ data }) => data.session?.user.id ?? 'anon')
+      .catch(() => 'anon')
+
+    viewerLookup = lookup
+    void lookup.finally(() => {
+      if (viewerLookup === lookup) viewerLookup = null
+    })
+  }
+
+  return viewerLookup
+}
+
 async function getSignedStorageUrl(
   bucket: PrivateBucket,
   path: string,
@@ -35,8 +52,7 @@ async function getSignedStorageUrl(
   let viewerKey: string
 
   try {
-    const { data: { session } } = await supabase.auth.getSession()
-    viewerKey = session?.user.id ?? 'anon'
+    viewerKey = await getViewerKey()
   } catch {
     return null
   }
