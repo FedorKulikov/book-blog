@@ -112,17 +112,16 @@ function increment(map: CountMap, id: string | null | undefined): void {
 }
 
 async function fetchAllRows<T>(
-  queryForRange: (from: number, to: number) => PromiseLike<{
-    data: T[] | null
-    error: { code?: string; message?: string } | null
-  }>,
+  queryForRange: (from: number, to: number) => PromiseLike<any>,
   label: string,
 ): Promise<T[]> {
   const rows: T[] = []
   let offset = 0
 
   while (true) {
-    const { data, error } = await queryForRange(offset, offset + PAGE_SIZE - 1)
+    const result = await queryForRange(offset, offset + PAGE_SIZE - 1)
+    const data = result.data as T[] | null
+    const error = result.error as { code?: string; message?: string } | null
     if (error) {
       throw new Error('PostgREST read failed for ' + label + ' (' + (error.code ?? 'unknown') + ')')
     }
@@ -338,7 +337,7 @@ export async function getDataSmokeInventory(
   const [reportsByPost, ticketMessagesByTicket, postImages] = await Promise.all([
     selectByIds<ReportRow>(admin, 'reports', 'id,reporter_id,post_id,comment_id', 'post_id', postIds),
     selectByIds<TicketMessageRow>(admin, 'ticket_messages', 'id,sender_id,ticket_id', 'ticket_id', ticketIds),
-    selectByIds<PostImageRow>(admin, 'post_images', 'id,post_id', postIds),
+    selectByIds<PostImageRow>(admin, 'post_images', 'id,post_id', 'post_id', postIds),
   ])
 
   const reportRows = uniqueRows([...reportsByReporter, ...reportsByPost])
