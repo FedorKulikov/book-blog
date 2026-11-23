@@ -21,7 +21,7 @@ export type PostCardData = {
   news_category?: string | null
   deadline_at?: string | null
   source_url?: string | null
-  profiles?: { username: string; avatar_url?: string | null } | null
+  profiles?: { username: string | null; avatar_url?: string | null; can_read_profile?: boolean } | null
   post_images?: { url: string }[] | null
   comments?: { count: number }[] | null
   post_tags?: { tags: { name: string; slug: string } | null }[] | null
@@ -185,17 +185,19 @@ export default function PostCard({ post }: { post: PostCardData }) {
                 {(post.profiles?.username || '?')[0].toUpperCase()}
               </div>
             )}
-            <Link
-              href={
-                post.profiles?.username
-                  ? `/profile/${post.profiles.username}`
-                  : '#'
-              }
-              className="font-medium text-brown-dark text-[11px] truncate hover:text-wine transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {post.profiles?.username || 'Аноним'}
-            </Link>
+            {post.profiles?.can_read_profile && post.profiles.username ? (
+              <Link
+                href={`/profile/${post.profiles.username}`}
+                className="font-medium text-brown-dark text-[11px] truncate hover:text-wine transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {post.profiles.username}
+              </Link>
+            ) : (
+              <span className="font-medium text-brown-dark text-[11px] truncate">
+                {post.profiles?.username || 'Аноним'}
+              </span>
+            )}
           </div>
           <span className="text-brown/20">·</span>
           <span className="text-[11px] whitespace-nowrap">
