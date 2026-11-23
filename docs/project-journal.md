@@ -565,3 +565,11 @@
 - Consent history stayed at 40 total / 2 active. Both active records remain associated with the two existing data-smoke-a-* accounts. No production consent rows were inserted, backfilled, updated, or revoked.
 - Disposable PostgreSQL 17 regression suite exercised explicit legacy grant, profile-only grant/hide, separate future-publication consent, hidden-old-post persistence, new-post visibility, counter alignment, and owner/staff access; the suite ended in ROLLBACK.
 - Still outstanding: signed-in browser checks for /profile, /profile/edit, /admin pending local .env.local session. Separate production health smoke 45172846625 returned HTTP 200 for both domains but failed the expected homepage SEO-marker assertion; track independently.
+
+
+## 2026-11-23 — B12-fix2 Stage 2 UI: legacy decision on /welcome
+
+- Added a small pending-legacy card to authenticated `/welcome`. It calls only `my_legacy_distribution_prompt_state()` when the page loads, and shows the pending legacy state for profile-only, publication-only or combined accounts.
+- Two explicit buttons call `resolve_my_legacy_distribution_prompt()` only after a user click. The text says old rows/files are retained, and makes clear that future-publication consent is a separate scope. A previously saved `granted` or `hidden` decision is reflected on later visits.
+- Added fallback links to `/profile/edit` and `/consent-distribution` if state lookup fails or the user wants full settings.
+- No migration, consent insertion/backfill, production data write or service-role path was added. Existing SQL regression coverage for the resolver remains the DB test; this PR requires normal Web CI. Authenticated browser QA for /welcome remains pending because .env.local session credentials are not available here.
