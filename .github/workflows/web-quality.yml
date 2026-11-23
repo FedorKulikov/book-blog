@@ -489,6 +489,17 @@ jobs:
             SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
           $function$;
 
+          CREATE OR REPLACE FUNCTION auth.role()
+          RETURNS text
+          LANGUAGE sql
+          STABLE
+          AS $function$
+            SELECT CASE
+              WHEN NULLIF(current_setting('request.jwt.claim.sub', true), '') IS NULL THEN 'anon'
+              ELSE 'authenticated'
+            END
+          $function$;
+
           GRANT USAGE ON SCHEMA auth, public TO anon, authenticated, service_role;
           GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
           GRANT EXECUTE ON FUNCTION auth.role() TO anon, authenticated, service_role;
