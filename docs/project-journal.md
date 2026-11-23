@@ -460,3 +460,13 @@
 - В EditProfileClient добавлены одноразовое предложение по существующим одобренным публикациям, отображение статуса двух scopes и подтверждающий диалог Скрыть всё / Отозвать позже. На клиенте обновление изображений переведено на StorageImage, которая запрашивает краткоживущие signed URL через Storage RLS; metadata/JSON-LD больше не выдают private object URLs.
 - Добавлены PostgreSQL regression tests для отсутствия доступа без согласия, доступа владельца и участника чата, grant/hide одноразового выбора, отзыва без удаления контента, приватности Storage buckets и публичных обложек книг. CI fixture и шаг повторного применения миграции добавлены. Stage 5 (/privacy v1.2) не менялся до production deployment и проверки Stage 4.
 - Миграция ещё не применена в production; тесты и CI ожидаются в PR. Никакие production rows/objects не менялись и не удалялись. Auth Hook, mailer_autoconfirm, recovery, секреты и миграции 20261209–20261212 не редактировались.
+
+
+## 2026-11-23 — B12 Stage 4 follow-up: CI trigger, legacy cutoff and signed image behavior
+
+- По запросу владельца в PR #86 добавлен и отправлен пустой коммит `chore(ci): trigger checks` с неизменённым tree; после последующих изменений branch head также получил отдельные Web quality и Chat security workflow runs.
+- PR не разделён на два: миграция отзыва и приватизация бакетов должны попасть в production вместе. Иначе публичные object URLs продолжат обходить RLS после отзыва либо изображения перестанут работать до внедрения signed URL consumers. В PR body добавлены самостоятельные разделы о рисках signed URLs и причинах единого PR.
+- Добавлен `legacy_distribution_cutoff_at` со значением default now(): RPC предлагает legacy-решение только для approved posts, созданных не позднее cutoff профиля; новые профили и новые posts не классифицируются как старый контент. Прямого SELECT/UPDATE grants на cutoff нет. SQL-тест проверяет свежую публикацию за cutoff.
+- `StorageImage` теперь кэширует одинаковый объект в памяти на срок меньше TTL, разделяя cache по user id; разные пользователи не переиспользуют одну cache entry. При ошибке/истечении signed URL отображается нейтральный placeholder; страница остаётся доступной. Cache не записывается в localStorage.
+- В PR body зафиксированы расчёт до 20 уникальных аватаров для 20 корневых комментариев (видимые ответы и остальные уникальные изображения добавляют дополнительные объекты), metadata fallback `/og-default.jpg`, отсутствие image URL в sitemap и окно действительности уже выданной signed URL до 60 секунд.
+- Проверка после merge и визуальный production smoke ещё не выполнены; merge запрещён до зелёного CI.
