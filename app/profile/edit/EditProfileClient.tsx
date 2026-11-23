@@ -17,6 +17,13 @@ type ConsentRow = {
   document_version: string
 }
 
+type LegacyPromptState = {
+  has_approved_posts: boolean
+  already_prompted: boolean
+  profile_public_active: boolean
+  publication_active: boolean
+}
+
 function formatGrantedAt(value: string): string {
   return new Intl.DateTimeFormat('ru-RU', {
     dateStyle: 'long',
@@ -34,6 +41,11 @@ export default function EditProfilePage() {
   const [profileConsentActive, setProfileConsentActive] = useState(false)
   const [profileConsentGrantedAt, setProfileConsentGrantedAt] = useState<string | null>(null)
   const [profileConsentChecked, setProfileConsentChecked] = useState(false)
+  const [publicationConsentActive, setPublicationConsentActive] = useState(false)
+  const [legacyPromptState, setLegacyPromptState] = useState<LegacyPromptState | null>(null)
+  const [legacyPromptBusy, setLegacyPromptBusy] = useState(false)
+  const [legacyPromptError, setLegacyPromptError] = useState<string | null>(null)
+  const [showRevokeDialog, setShowRevokeDialog] = useState(false)
   const [consentLoading, setConsentLoading] = useState(false)
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [consentError, setConsentError] = useState<string | null>(null)
@@ -53,7 +65,12 @@ export default function EditProfilePage() {
         return
       }
 
-      const [{ data: profile, error: profileReadError }, { data: consentRows, error: consentReadError }, { data: notificationsMutedValue, error: notificationsError }] = await Promise.all([
+      const [
+        { data: profile, error: profileReadError },
+        { data: consentRows, error: consentReadError },
+        { data: notificationsMutedValue, error: notificationsError },
+        { data: legacyPromptRows, error: legacyReadError },
+      ] = await Promise.all([
         supabase
           .from('profiles')
           .select('username, bio, avatar_url')
@@ -61,6 +78,7 @@ export default function EditProfilePage() {
           .single(),
         supabase.rpc('my_distribution_consents'),
         supabase.rpc('my_profile_notification_settings'),
+        supabase.rpc('my_legacy_distribution_prompt_state'),
       ])
 
       if (!alive) return
@@ -82,16 +100,25 @@ export default function EditProfilePage() {
       }
 
       if (consentReadError || !Array.isArray(consentRows)) {
-        setConsentError('Не удалось проверить согласие. Публичные изменения будут доступны после повторной проверки; приватные настройки можно сохранить.')
+        setConsentError('Не удалось проверить согласия. Обновите страницу перед изменением настроек распространения.')
       } else {
-        const active = (consentRows as ConsentRow[])
+        const rows = consentRows as ConsentRow[]
+        const activeProfile = rows
           .filter(row => row.scope === 'profile_public' && row.revoked_at === null)
           .sort((a, b) => Date.parse(b.granted_at) - Date.parse(a.granted_at))[0]
+        const activePublication = rows
+          .filter(row => row.scope === 'publication' && row.revoked_at === null)
+          .sort((a, b) => Date.parse(b.granted_at) - Date.parse(a.granted_at))[0]
 
-        if (active) {
-          setProfileConsentActive(true)
-          setProfileConsentGrantedAt(active.granted_at)
-        }
+        setProfileConsentActive(Boolean(activeProfile))
+        setProfileConsentGrantedAt(activeProfile?.granted_at ?? null)
+        setPublicationConsentActive(Boolean(activePublication))
+      }
+
+      if (legacyReadError || !Array.isArray(legacyPromptRows)) {
+        setLegacyPromptError('Не удалось проверить, есть ли у вас ранее опубликованные материалы.')
+      } else {
+        setLegacyPromptState((legacyPromptRows[0] as LegacyPromptState | undefined) ?? null)
       }
 
       setLoading(false)
@@ -136,6 +163,82 @@ export default function EditProfilePage() {
     } catch {
       setProfileConsentChecked(false)
       setConsentError('Не удалось отправить согласие. Проверьте соединение и попробуйте ещё раз.')
+    } finally {
+      setConsentLoading(false)
+    }
+  }
+
+  async function resolveLegacyPrompt(decision: 'grant_existing' | 'hide_existing') {
+    if (legacyPromptBusy) return
+
+    setLegacyPromptBusy(true)
+    setLegacyPromptError(null)
+
+    try {
+      const { error: decisionError } = await supabase.rpc(
+        'resolve_my_legacy_distribution_prompt',
+        { p_decision: decision },
+      )
+
+      if (decisionError) {
+        setLegacyPromptError(
+          'Не удалось сохранить выбор. Ваши материалы останутся в прежнем состоянии. Попробуйте ещё раз.',
+        )
+        return
+      }
+
+      const [{ data: rows, error: rowsError }, { data: promptRows, error: promptError }] = await Promise.all([
+        supabase.rpc('my_distribution_consents'),
+        supabase.rpc('my_legacy_distribution_prompt_state'),
+      ])
+
+      if (rowsError || !Array.isArray(rows) || promptError || !Array.isArray(promptRows)) {
+        setLegacyPromptError('Выбор сохранён, но состояние согласий не удалось обновить. Перезагрузите страницу.')
+        router.refresh()
+        return
+      }
+
+      const consentRows = rows as ConsentRow[]
+      const activeProfile = consentRows
+        .filter(row => row.scope === 'profile_public' && row.revoked_at === null)
+        .sort((a, b) => Date.parse(b.granted_at) - Date.parse(a.granted_at))[0]
+      const activePublication = consentRows.some(
+        row => row.scope === 'publication' && row.revoked_at === null,
+      )
+
+      setProfileConsentActive(Boolean(activeProfile))
+      setProfileConsentGrantedAt(activeProfile?.granted_at ?? null)
+      setPublicationConsentActive(activePublication)
+      setLegacyPromptState((promptRows[0] as LegacyPromptState | undefined) ?? null)
+      router.refresh()
+    } catch {
+      setLegacyPromptError('Не удалось отправить выбор. Проверьте соединение и попробуйте ещё раз.')
+    } finally {
+      setLegacyPromptBusy(false)
+    }
+  }
+
+  async function revokeAllDistributionConsents() {
+    if (consentLoading) return
+
+    setConsentLoading(true)
+    setConsentError(null)
+
+    try {
+      const { error: revokeError } = await supabase.rpc('revoke_my_all_distribution_consents')
+      if (revokeError) {
+        setConsentError('Не удалось отозвать согласия. Публичные материалы не изменены.')
+        return
+      }
+
+      setProfileConsentActive(false)
+      setProfileConsentGrantedAt(null)
+      setPublicationConsentActive(false)
+      setShowRevokeDialog(false)
+      setConsentError('Оба согласия отозваны. Профиль и публикации скрываются от посетителей; уже выданные ссылки на изображения истекут не позднее чем через минуту. Данные не удалены.')
+      router.refresh()
+    } catch {
+      setConsentError('Не удалось отправить отзыв согласий. Проверьте соединение и попробуйте ещё раз.')
     } finally {
       setConsentLoading(false)
     }
@@ -275,6 +378,101 @@ export default function EditProfilePage() {
             </p>
           )}
         </section>
+
+        {legacyPromptState?.has_approved_posts && !legacyPromptState.already_prompted && (
+          <section className="rounded-xl border border-wine/25 bg-wine/5 p-4">
+            <h2 className="font-semibold text-emerald-dark mb-2">
+              Ранее опубликованные материалы
+            </h2>
+            <p className="text-sm leading-relaxed text-brown-dark mb-3">
+              У вас есть публикации, созданные до введения отдельного согласия.
+              Сейчас они скрыты от посетителей. Подтвердите распространение этих
+              материалов или оставьте их скрытыми. Записи и файлы не удаляются.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                disabled={legacyPromptBusy}
+                onClick={() => void resolveLegacyPrompt('grant_existing')}
+                className="rounded-full bg-emerald-mid px-4 py-2 text-sm text-cream hover:bg-emerald-dark disabled:opacity-50"
+              >
+                {legacyPromptBusy ? 'Сохраняем…' : 'Подтвердить распространение'}
+              </button>
+              <button
+                type="button"
+                disabled={legacyPromptBusy}
+                onClick={() => void resolveLegacyPrompt('hide_existing')}
+                className="rounded-full border border-emerald-dark/20 px-4 py-2 text-sm text-brown-dark hover:bg-cream-warm disabled:opacity-50"
+              >
+                Скрыть мои материалы
+              </button>
+            </div>
+            {legacyPromptError && (
+              <p role="alert" className="mt-2 text-sm text-wine">{legacyPromptError}</p>
+            )}
+          </section>
+        )}
+
+        {legacyPromptError && !legacyPromptState?.has_approved_posts && (
+          <p role="alert" className="text-sm text-wine">{legacyPromptError}</p>
+        )}
+
+        <section className="rounded-xl border border-emerald-dark/15 bg-cream-warm/20 p-4">
+          <h2 className="font-semibold text-emerald-dark mb-2">
+            Распространение публикаций
+          </h2>
+          <p className="text-sm text-brown-dark">
+            {publicationConsentActive
+              ? 'Согласие на распространение ваших публикаций действует.'
+              : 'Согласие на распространение публикаций не действует. Старые публикации скрыты от посетителей; новые публикации отдельно запросят согласие.'}
+          </p>
+        </section>
+
+        {(profileConsentActive || publicationConsentActive) && (
+          <section className="rounded-xl border border-wine/25 p-4">
+            <button
+              type="button"
+              disabled={consentLoading}
+              onClick={() => setShowRevokeDialog(true)}
+              className="rounded-full border border-wine/40 px-4 py-2 text-sm text-wine hover:bg-wine/5 disabled:opacity-50"
+            >
+              Отозвать согласия и скрыть материалы
+            </button>
+            {showRevokeDialog && (
+              <div role="dialog" aria-modal="true" aria-labelledby="revoke-consent-title" className="mt-4 rounded-lg border border-wine/20 bg-cream p-4">
+                <h3 id="revoke-consent-title" className="font-semibold text-emerald-dark mb-2">
+                  Скрыть профиль и публикации?
+                </h3>
+                <p className="text-sm leading-relaxed text-brown-dark mb-3">
+                  Будут отозваны оба согласия. Публичная страница профиля,
+                  публикации, комментарии и изображения станут недоступны
+                  посетителям. Ваши записи, комментарии, фотографии и история
+                  согласий останутся в аккаунте и не будут удалены.
+                  Уже выданные ссылки на изображения перестанут действовать
+                  максимум через 60 секунд.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    disabled={consentLoading}
+                    onClick={() => void revokeAllDistributionConsents()}
+                    className="rounded-full bg-wine px-4 py-2 text-sm text-white hover:bg-wine-dark disabled:opacity-50"
+                  >
+                    {consentLoading ? 'Отзываем…' : 'Скрыть всё'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={consentLoading}
+                    onClick={() => setShowRevokeDialog(false)}
+                    className="rounded-full border border-emerald-dark/20 px-4 py-2 text-sm text-brown-dark hover:bg-cream-warm disabled:opacity-50"
+                  >
+                    Отозвать позже
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         <AvatarUploader
           currentUrl={avatarUrl}
