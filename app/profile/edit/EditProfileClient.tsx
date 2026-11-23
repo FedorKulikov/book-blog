@@ -22,6 +22,7 @@ type LegacyPromptState = {
   already_prompted: boolean
   profile_public_active: boolean
   publication_active: boolean
+  legacy_choice: 'granted' | 'hidden' | null
 }
 
 function formatGrantedAt(value: string): string {
@@ -234,6 +235,15 @@ export default function EditProfilePage() {
       setProfileConsentActive(false)
       setProfileConsentGrantedAt(null)
       setPublicationConsentActive(false)
+      setLegacyPromptState(previous => previous
+        ? {
+            ...previous,
+            already_prompted: true,
+            profile_public_active: false,
+            publication_active: false,
+            legacy_choice: 'hidden',
+          }
+        : previous)
       setShowRevokeDialog(false)
       setConsentError('Оба согласия отозваны. Профиль и публикации скрываются от посетителей; уже выданные ссылки на изображения истекут не позднее чем через минуту. Данные не удалены.')
       router.refresh()
@@ -422,7 +432,9 @@ export default function EditProfilePage() {
             Распространение публикаций
           </h2>
           <p className="text-sm text-brown-dark">
-            {publicationConsentActive
+            {legacyPromptState?.legacy_choice === 'hidden'
+              ? 'Ранее опубликованные материалы остаются скрытыми по вашему выбору. Новое согласие на будущие публикации не откроет старые записи.'
+              : publicationConsentActive
               ? 'Согласие на распространение ваших публикаций действует.'
               : 'Согласие на распространение публикаций не действует. Старые публикации скрыты от посетителей; новые публикации отдельно запросят согласие.'}
           </p>
