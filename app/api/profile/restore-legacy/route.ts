@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { getAdminClient } from '@/lib/supabase/admin'
 
 type ConsentRow = {
   scope: string
@@ -34,19 +33,10 @@ export async function POST() {
     )
   }
 
-  // No body or user ID is accepted from the client. The identity comes from
-  // auth.getUser(); only the server-side service-role RPC can perform the write.
-  const admin = getAdminClient()
-  if (!admin) {
-    return NextResponse.json(
-      { error: 'Серверная операция временно недоступна. Попробуйте позже.' },
-      { status: 503, headers: { 'Cache-Control': 'no-store' } },
-    )
-  }
-
-  const { data: restored, error: restoreError } = await admin.rpc(
-    'restore_hidden_legacy_distribution',
-    { p_user_id: data.user.id },
+  // No body or user ID is accepted from the client. The authenticated server
+  // client invokes a self-scoped RPC that derives the owner from auth.uid().
+  const { data: restored, error: restoreError } = await supabase.rpc(
+    'restore_my_hidden_legacy_distribution',
   )
 
   if (restoreError || !restored || restored.restored !== true) {

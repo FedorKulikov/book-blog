@@ -2,14 +2,14 @@
 -- Consent rows are recorded through the existing auth.uid()-scoped RPC.
 begin;
 
-create or replace function public.restore_hidden_legacy_distribution(p_user_id uuid)
+create or replace function public.restore_my_hidden_legacy_distribution()
 returns jsonb
 language plpgsql
 security definer
 set search_path = ''
 as $function$
 declare
-  v_user_id uuid := p_user_id;
+  v_user_id uuid := auth.uid();
   v_choice text;
   v_cutoff_at timestamptz;
   v_profile_created_at timestamptz;
@@ -20,11 +20,6 @@ begin
     raise exception 'Authentication is required to restore legacy distribution'
       using errcode = '28000';
   end if;
-
-  -- This RPC is service_role-only. The route passes the ID returned by auth.getUser().
-  -- Set the transaction-local claim so record_my_distribution_consent still binds
-  -- the audit rows through auth.uid(), without exposing the RPC to browser clients.
-  perform pg_catalog.set_config('request.jwt.claim.sub', v_user_id::text, true);
 
   select p.legacy_distribution_choice, p.legacy_distribution_cutoff_at, p.created_at
     into v_choice, v_cutoff_at, v_profile_created_at
@@ -92,12 +87,12 @@ begin
 end;
 $function$;
 
-comment on function public.restore_hidden_legacy_distribution(uuid) is
+comment on function public.restore_my_hidden_legacy_distribution() is
   'Server-only restoration for the user ID verified by the route; records missing scopes through record_my_distribution_consent and changes only legacy_distribution_choice to granted.';
 
-revoke all on function public.restore_hidden_legacy_distribution(uuid)
+revoke all on function public.restore_my_hidden_legacy_distribution()
   from public, anon, authenticated, service_role;
-grant execute on function public.restore_hidden_legacy_distribution(uuid)
-  to service_role;
+grant execute on function public.restore_my_hidden_legacy_distribution()
+  to authenticated;
 
 commit;
