@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import EmptyState from './EmptyState'
 import AvatarLightbox from './AvatarLightbox'
+import StorageImage from './StorageImage'
 import { Mail, BellOff } from './icons'
 
 type Profile = {
@@ -292,7 +293,7 @@ export default function ConversationList({
                 title={conv.otherUser?.avatar_url ? 'Открыть фото' : undefined}
               >
                 {conv.otherUser?.avatar_url ? (
-                  <img
+                  <StorageImage
                     src={conv.otherUser.avatar_url}
                     alt=""
                     className="w-full h-full object-cover"
