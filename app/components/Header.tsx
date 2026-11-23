@@ -195,7 +195,7 @@ export default function Sidebar() {
         </div>
 
         {/* Навигация */}
-        <nav className="flex-1 py-4 overflow-y-auto">
+        <nav className="sidebar-nav flex-1 overflow-y-auto py-4">
           {navItems.map(({ href, label, Icon, badge }) => {
             const isActive = pathname === href
             return (
