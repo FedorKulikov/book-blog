@@ -761,7 +761,16 @@ smoke cleanup runs after success and failure
 - Файлы: `app/HomeClient.tsx`, `app/components/Header.tsx`, `app/globals.css`; журналы обновлены. Серверная логика, данные, RLS/grants и production не менялись.
 
 
-### 2026-11-23 — Workflow гостевого UX-аудита
+### 2026-11-23 — Внешние миниатюры новостей и заглушки обложек книг
+- ExternalNewsCover переведён с next/image на img с loading=lazy, decoding=async и referrerPolicy=no-referrer; произвольные внешние хосты больше не проходят через /_next/image, wildcard в remotePatterns не добавлялся.
+- При отсутствующем или не загрузившемся внешнем изображении показывается градиентная заглушка с BookOpen; в крупных карточках отображается название источника.
+- Удалены sizes-параметры для external cover, поскольку оптимизатор Next.js больше не используется.
+- В StorageImage добавлен необязательный prop fallback; только каталог книг использует его для показа первой буквы названия при пустом/недоступном cover_url. Остальные клиенты StorageImage не передают prop, их поведение не менялось.
+- Production read-only verification: books — 127 строк, cover_url заполнен у всех; функция get_books_page возвращает столбец cover_url. Все ссылки ведут на публичные объекты post-images. База не изменялась.
+- Предыдущий гостевой browser run показывал 5 ошибок HTTP 400 на /books и 15 на /news; /books имеет sidebar с пятью ExternalNewsBlock обложками, которые также используют ExternalNewsCover. Ошибки в Supabase Storage logs на время этого прогона отсутствовали.
+- Проверка console/image load после merge/deploy ещё не выполнена; для неё требуется повторный guest Playwright run против нового production-кода. next.config.ts, migrations, policies, secrets, постовые изображения, аватары и production data не менялись.
+
+Workflow гостевого UX-аудита
 - Создан .github/workflows/ux-audit.yml, запускаемый через workflow_dispatch и pull_request в main.
 - В едином массиве заданы 10 публичных маршрутов и три динамических селектора; post/book/profile URL берутся из sitemap.xml, а не зашиваются в workflow.
 - Playwright управляет системным Chromium, который определяется через google-chrome / chromium / chromium-browser; пакет устанавливается только во временный каталог Actions, package.json проекта не изменён.

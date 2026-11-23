@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ImgHTMLAttributes, type SyntheticEvent } from 'react'
+import { useEffect, useState, type ImgHTMLAttributes, type ReactNode, type SyntheticEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const SIGNED_URL_TTL_SECONDS = 60
@@ -168,9 +168,12 @@ export default function StorageImage({
   alt,
   className,
   style,
+  fallback,
   ...imageProps
 }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
   src?: string | null
+  /** Component-specific fallback for public media such as book covers. */
+  fallback?: ReactNode
 }) {
   const [resolution, setResolution] = useState<SignedResolution | null>(null)
   const reference = src ? privateStorageReference(src) : null
@@ -240,6 +243,8 @@ export default function StorageImage({
   }
 
   if (!src || failed || !resolvedSrc) {
+    if (fallback !== undefined) return <>{fallback}</>
+
     return (
       <span
         role={alt ? 'img' : undefined}

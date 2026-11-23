@@ -12,6 +12,33 @@ import { fetchBooksPage, type BookRow } from './booksQuery'
 
 export type { BookRow } from './booksQuery'
 
+function BookCover({ book }: { book: BookRow }) {
+  const title = book.title?.trim() ?? ''
+  const initial = Array.from(title)[0]?.toLocaleUpperCase('ru-RU') ?? '—'
+  const fallback = (
+    <div
+      role="img"
+      aria-label={'Обложка книги: ' + (title || 'название отсутствует')}
+      className="flex h-full w-full items-center justify-center bg-emerald-mid/10"
+    >
+      <span className="font-playfair text-5xl font-semibold text-emerald-mid/65">
+        {initial}
+      </span>
+    </div>
+  )
+
+  return (
+    <StorageImage
+      src={book.cover_url}
+      alt={'Обложка книги: ' + (title || 'без названия')}
+      loading="lazy"
+      decoding="async"
+      className="h-full w-full object-cover"
+      fallback={fallback}
+    />
+  )
+}
+
 export default function BooksClient({
   initialBooks,
   initialHasMore,
@@ -161,21 +188,7 @@ export default function BooksClient({
             <Link key={book.id} href={`/book/${book.id}`} className="group">
               {/* Обложка */}
               <div className="aspect-[2/3] rounded-xl overflow-hidden bg-emerald-mid/10 mb-3 group-hover:opacity-90 transition-opacity relative">
-                {book.cover_url ? (
-                  <StorageImage
-                    src={book.cover_url}
-                    alt={book.title ?? ''}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <BookOpen
-                      size={40}
-                      strokeWidth={1.2}
-                      className="text-emerald-mid/30"
-                    />
-                  </div>
-                )}
+                <BookCover book={book} />
               </div>
 
               {/* Инфо */}

@@ -48,22 +48,26 @@ function CoverPlaceholder({ label }: { label: string }) {
   )
 }
 
-/** Обложка: у внешних новостей — через next/image (http-источники чинятся там) */
+/** Внешние новости идут напрямую к источнику, без Next Image optimizer. */
 function CardCover({
   item,
   className,
-  sizes,
 }: {
   item: PortalNewsItem
   className: string
-  sizes?: string
 }) {
   if (!item.cover) {
     return <CoverPlaceholder label={categoryLabel(item)} />
   }
 
   if (item.external) {
-    return <ExternalNewsCover url={item.cover} alt="" sizes={sizes} />
+    return (
+      <ExternalNewsCover
+        url={item.cover}
+        alt=""
+        fallbackLabel={item.source || categoryLabel(item)}
+      />
+    )
   }
 
   return <StorageImage src={item.cover} alt="" loading="lazy" className={className} />
@@ -180,7 +184,6 @@ export default function NewsCard({
           <div className="relative h-[220px] w-full overflow-hidden bg-[#12484C] sm:h-[260px] md:h-full md:min-h-[260px]">
             <CardCover
               item={item}
-              sizes="(max-width: 768px) 100vw, 44vw"
               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0E2931]/90 via-transparent to-transparent md:bg-gradient-to-r" />
