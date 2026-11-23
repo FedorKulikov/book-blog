@@ -318,8 +318,36 @@ begin
 end;
 $conversation_boundary$;
 
--- B can revoke only B's scopes. A's publication grant must remain active.
-select public.revoke_my_all_distribution_consents();
+-- B grants and revokes only their own profile_public scope.
+select public.record_my_distribution_consent(
+  'profile_public',
+  array[
+    'profile_username',
+    'profile_avatar',
+    'profile_bio',
+    'profile_joined_at'
+  ]::text[],
+  '1.1'
+);
+select public.revoke_my_distribution_consent('profile_public');
+
+do $b_own_scope_revoke$
+begin
+  if (select count(*) from public.my_distribution_consents()) <> 1
+     or not exists (
+       select 1 from public.my_distribution_consents()
+        where scope='profile_public' and revoked_at is not null
+     )
+     or exists (
+       select 1 from public.my_distribution_consents()
+        where scope='publication'
+     ) then
+    raise exception 'user B consent RPC returned another user history or failed to revoke B own scope';
+  end if;
+end;
+$b_own_scope_revoke$;
+
+-- B's revoke must not change A's publication grant.
 reset role;
 set local role authenticated;
 select pg_catalog.set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
@@ -329,10 +357,14 @@ begin
     select 1 from public.my_distribution_consents()
      where scope='publication' and revoked_at is null
   ) then
-    raise exception 'user B revoked or read user A consent instead of only their own scope';
+    raise exception 'user B revoked user A publication consent';
   end if;
 end;
 $user_scoped_revoke$;
+
+reset role;
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 
 -- User B chooses "hide my materials". It must be one-time and must not create grants.
 select public.resolve_my_legacy_distribution_prompt('hide_existing');
