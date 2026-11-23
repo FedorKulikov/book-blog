@@ -415,4 +415,25 @@ revoke all on function public.revoke_my_all_distribution_consents()
 grant execute on function public.revoke_my_all_distribution_consents()
   to authenticated, service_role;
 
+
+-- This callable SECURITY DEFINER counter bypasses table RLS by design. Keep it
+-- from updating posts that are no longer distributed under active consent.
+create or replace function public.increment_post_views(post_id_input uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  update public.posts
+     set views_count = coalesce(views_count, 0) + 1
+   where id = post_id_input
+     and status = 'approved'
+     and private.has_active_distribution_consent(user_id, 'publication');
+end;
+$function$;
+
+comment on function public.increment_post_views(uuid) is
+  'Increments views only for approved posts whose author has an active publication distribution consent.';
+
 commit;
