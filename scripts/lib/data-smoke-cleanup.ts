@@ -254,6 +254,41 @@ async function getConsentInventory(
   return result
 }
 
+export async function getAuthUsersByIds(
+  admin: AdminClient,
+  targetIds: string[],
+): Promise<Map<string, DataSmokeUser>> {
+  const targets = new Set(targetIds)
+  const found = new Map<string, DataSmokeUser>()
+  if (targets.size === 0) return found
+
+  let page = 1
+  while (true) {
+    const { data, error } = await admin.auth.admin.listUsers({
+      page,
+      perPage: PAGE_SIZE,
+    })
+    if (error) {
+      throw new Error('Auth Admin identity listing failed (' + (error.status ?? 'unknown') + ')')
+    }
+
+    for (const user of data.users) {
+      if (targets.has(user.id)) {
+        found.set(user.id, { id: user.id, email: user.email ?? '' })
+      }
+    }
+
+    if (data.users.length < PAGE_SIZE) break
+    const nextPage = data.nextPage ? Number(data.nextPage) : page + 1
+    if (!Number.isInteger(nextPage) || nextPage <= page) {
+      throw new Error('Auth Admin pagination returned an invalid identity page')
+    }
+    page = nextPage
+  }
+
+  return found
+}
+
 export async function listDataSmokeUsers(admin: AdminClient): Promise<DataSmokeUser[]> {
   const users: DataSmokeUser[] = []
   let page = 1
@@ -520,13 +555,11 @@ export async function cleanupSmokeUsers(
 
   // Auth deletion cascades profiles, posts, reports, notifications and the full
   // consent history (active and revoked). No consent is inserted or revoked here.
+  const authUsersById = await getAuthUsersByIds(admin, ids)
   for (const user of users) {
-    const { data: current, error: lookupError } = await admin.auth.admin.getUserById(user.id)
-    if (lookupError) {
-      if (lookupError.status === 404) continue
-      throw new Error('Auth lookup failed for ' + user.email + ' (status=' + (lookupError.status ?? 'unknown') + ')')
-    }
-    if (current.user.email?.toLowerCase() !== user.email.toLowerCase()) {
+    const current = authUsersById.get(user.id)
+    if (!current) continue
+    if (current.email.toLowerCase() !== user.email.toLowerCase()) {
       throw new Error('Auth email changed for manifest ID ' + user.id + '; refusing deletion')
     }
     const { error } = await admin.auth.admin.deleteUser(user.id)
