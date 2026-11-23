@@ -648,3 +648,6 @@
 
 - Exact-manifest delete run `45208454878` printed all 63 audit targets and passed the cascade guard. 62 existing Auth accounts were deleted; `data-smoke-a-mwsm717y` was already absent before deletion.
 - Strict post-delete verification reported zero target-related residuals (consents, profiles, posts, books, reports, notifications, Storage, conversations/messages and all other inventoried relations), but one global prefix-matching Auth account remained outside the manifest. The script failed closed on that global nonzero count. The one-time PR deletion step was removed immediately to prevent reruns; next run is read-only dry-run only. The extra account will not be deleted under this 63-account authorization.
+
+- Correction after the read-only follow-up dry-run: the one remaining account is the exact manifest target `data-smoke-a-mwsm717y@example.com` (`ce277934-bdfb-4c56-88f0-03af0edb4f76`), not an out-of-manifest account. Its remaining inventory is exactly one revoked consent; every other inventoried relation is zero.
+- The prior `getUserById` call returned 404 while paginated Auth Admin `listUsers` still returned the same UUID. Therefore the earlier "already absent" classification was wrong; changed validation and deletion identity checks to use full paginated Auth Admin listing. Retry is pinned to the unchanged 63-ID manifest.
