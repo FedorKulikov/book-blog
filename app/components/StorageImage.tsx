@@ -4,44 +4,44 @@ import { useEffect, useRef, useState, type ImgHTMLAttributes, type SyntheticEven
 import { supabase } from '@/lib/supabase'
 
 const SIGNED_URL_TTL_SECONDS = 60
-const CACHE_TTL_MS = 55_000
 
 type PrivateBucket = 'avatars' | 'post-images'
 type PrivateReference = { bucket: PrivateBucket; path: string }
 type QueuedRequest = {
   key: string
+  viewerKey: string
   bucket: PrivateBucket
   path: string
   resolve: (url: string | null) => void
 }
 
-const signedUrlCache = new Map<string, { url: string; expiresAt: number }>()
 const inFlight = new Map<string, Promise<string | null>>()
 const pending = new Map<string, QueuedRequest>()
 let flushScheduled = false
 
-function storageKey(bucket: PrivateBucket, path: string) {
-  return `${bucket}:${path}`
+function storageKey(viewerKey: string, bucket: PrivateBucket, path: string) {
+  return `${viewerKey}:${bucket}:${path}`
 }
 
 /**
  * Multiple images mounted in the same React commit are signed in one request
- * per bucket. Duplicate paths share one signature and the short-lived cache.
+ * per bucket and viewer. Duplicate paths share a single signature. The cache
+ * is only in-flight: bearer URLs are never reused after the batch completes.
  */
-function getSignedStorageUrl(
+async function getSignedStorageUrl(
   bucket: PrivateBucket,
   path: string,
-  forceRefresh = false,
 ): Promise<string | null> {
-  const key = storageKey(bucket, path)
+  let viewerKey: string
 
-  if (forceRefresh) signedUrlCache.delete(key)
-
-  const cached = signedUrlCache.get(key)
-  if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
-    return Promise.resolve(cached.url)
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    viewerKey = session?.user.id ?? 'anon'
+  } catch {
+    return null
   }
 
+  const key = storageKey(viewerKey, bucket, path)
   const existing = inFlight.get(key)
   if (existing) return existing
 
@@ -51,7 +51,7 @@ function getSignedStorageUrl(
   })
 
   inFlight.set(key, request)
-  pending.set(key, { key, bucket, path, resolve: resolveRequest })
+  pending.set(key, { key, viewerKey, bucket, path, resolve: resolveRequest })
 
   if (!flushScheduled) {
     flushScheduled = true
@@ -68,23 +68,32 @@ async function flushSignedUrlQueue() {
   const queued = Array.from(pending.values())
   pending.clear()
 
-  const byBucket = new Map<PrivateBucket, QueuedRequest[]>()
+  const byBucketAndViewer = new Map<string, QueuedRequest[]>()
   for (const request of queued) {
-    const group = byBucket.get(request.bucket) ?? []
+    const groupKey = `${request.viewerKey}:${request.bucket}`
+    const group = byBucketAndViewer.get(groupKey) ?? []
     group.push(request)
-    byBucket.set(request.bucket, group)
+    byBucketAndViewer.set(groupKey, group)
   }
 
   await Promise.all(
-    Array.from(byBucket.entries()).map(async ([bucket, requests]) => {
+    Array.from(byBucketAndViewer.values()).map(async (requests) => {
+      const first = requests[0]
       let signedRows: Array<{ path: string | null; signedUrl: string | null; error: string | null }> | null = null
 
       try {
-        const { data, error } = await supabase.storage
-          .from(bucket)
-          .createSignedUrls(requests.map((request) => request.path), SIGNED_URL_TTL_SECONDS)
+        const { data: { session } } = await supabase.auth.getSession()
+        const currentViewerKey = session?.user.id ?? 'anon'
 
-        if (!error) signedRows = data
+        // Do not let a request queued under one account receive a bearer URL
+        // signed with a different account's current session.
+        if (currentViewerKey === first.viewerKey) {
+          const { data, error } = await supabase.storage
+            .from(first.bucket)
+            .createSignedUrls(requests.map((request) => request.path), SIGNED_URL_TTL_SECONDS)
+
+          if (!error) signedRows = data
+        }
       } catch {
         signedRows = null
       }
@@ -98,15 +107,6 @@ async function flushSignedUrlQueue() {
         const url = row && !row.error && row.signedUrl ? row.signedUrl : null
 
         inFlight.delete(request.key)
-        if (url) {
-          signedUrlCache.set(request.key, {
-            url,
-            expiresAt: Date.now() + CACHE_TTL_MS,
-          })
-        } else {
-          signedUrlCache.delete(request.key)
-        }
-
         request.resolve(url)
       }
     }),
