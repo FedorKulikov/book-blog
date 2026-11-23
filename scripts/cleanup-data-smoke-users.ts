@@ -87,7 +87,7 @@ async function main() {
     }
     const authUsersById = await getAuthUsersByIds(admin, manifest.accounts.map(entry => entry.id))
     users = manifest.accounts.map(entry => {
-      const current = authUsersById.get(entry.id)
+      const current = authUsersById.get(entry.id.toLowerCase())
       if (!current) {
         console.log('MANIFEST ACCOUNT ALREADY ABSENT — ' + entry.email + ' :: ' + entry.id)
       } else if (current.email.toLowerCase() !== entry.email.toLowerCase()) {
