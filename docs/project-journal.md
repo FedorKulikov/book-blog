@@ -542,3 +542,14 @@
 - The post-deploy anonymous read check found SQLSTATE `42501` on `private.can_read_distribution_profile(uuid)`. Production ACL inspection showed that both public RLS predicates (`can_read_distribution_profile` and `can_read_distribution_post`) were executable only by `postgres`, while the public policies target `anon, authenticated`. The verification transaction was rolled back; the failed check did not change post counters or user data.
 - Prepared `20261215_distribution_read_helper_acl.sql`: revoke helper execution from `PUBLIC` and `service_role`, grant only to `anon` and `authenticated`. CI now applies it twice and the SQL test asserts all four role/function combinations. Follow-up PR and production verification remain pending.
 - No consent records were created or backfilled; no existing user or smoke-account rows were changed.
+
+
+## 2026-11-23 — B12-fix2 Stages 2–3: profile-only legacy choice and disclosure
+
+- Production migration `20261215_distribution_read_helper_acl.sql` applied at 12:17:26 UTC; checksum `ca983c1082ef0b6b5b77c64396ff70c8093b86e5cd6c2043c537be472807a858`. The required RLS predicates are executable by `anon` and `authenticated`, but remain closed to `PUBLIC` and `service_role`.
+- Anonymous production RLS query returned 19 visible profiles and 9 approved posts. The public post counter was invoked under `anon` in a rollback-only transaction: 8 → 9 inside the transaction, then back to 8 after rollback.
+- Production consent history remained at 40 rows with 2 active rows, both associated with the two existing `data-smoke-a-*` test accounts. No new consent rows were created.
+- Found a profile-only edge case: public RLS exposed pre-cutoff profiles pending a choice, but `my_legacy_distribution_prompt_state()` and the UI prompt only considered approved legacy posts. Added a follow-up to report legacy-profile state and permit owner-only grant/hide for a profile with no approved posts. The profile-only grant adds only `profile_public`; the hide branch adds no consent records.
+- Updated the profile-edit and public consent-page wording so it no longer claims undecided legacy material is hidden. Added a PostgreSQL regression test for profile-only hide/grant and configured CI to apply the new migration twice.
+- The production client-write smoke step is skipped for B12-fix2 because it writes consent history for generated production test accounts; equivalent SQL scenarios run on disposable PostgreSQL fixtures with final rollback.
+- Browser verification under a signed-in session for `/profile`, `/profile/edit`, and `/admin` remains outstanding pending local `.env.local` session credentials. Production health smoke run `45172846625` also failed its independent homepage SEO-marker assertion despite HTTP 200 from both domains; investigate separately.
