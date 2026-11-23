@@ -825,3 +825,21 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Final exact-snapshot verification — 2026-11-23:** all 63 original manifest Auth IDs are absent (`target_auth_users_remaining=0`) and all related rows/objects are zero: consents 0, profiles 0, posts 0, books 0, reports 0, notifications 0, Storage 0, conversations 0, messages 0, comments/likes/bookmarks/follows/tickets/ticket_messages/post_images 0. The cleanup deleted 62 Auth accounts; the remaining original ID was already absent when deletion began. Verification was performed through paginated Supabase Auth Admin ID listing, service-role PostgREST inventory, the service-role-only consent RPC and Storage API. The verification job passed (Chat security run 45210625721).
 
 **Out-of-manifest exception:** one account with the same email as a manifest entry now exists under a different Auth UUID (`data-smoke-a-mwsm717y@example.com`, ID `ce277934-bdfb-4c56-88f0-03d2d554b4f76`) and has one revoked consent; all its other inventoried relations are zero. It is not one of the 63 approved IDs and was deliberately not deleted. Therefore global prefix smoke account count is 1, while the exact 63-ID snapshot and its related content are fully clear. The regular production smoke workflow now performs guarded prefix cleanup after successful smoke runs; PR runs remain read-only apart from the fixed one-time cleanup already completed.
+
+
+## 2026-11-23 — Восстановление ранее скрытых legacy-материалов
+
+- **Требовалось:** дать владельцу возможность вернуть legacy-публикации после явного выбора «скрыть», не создавая фиктивные согласия и не меняя поведение пользователей с ещё не принятым решением.
+- **Изменено:** добавлены серверный маршрут `POST /api/profile/restore-legacy`, кнопка «Вернуть материалы» в настройках профиля (только при `legacy_choice = hidden`) и миграция `20261218_restore_hidden_legacy_distribution.sql`.
+- **Как работает:** маршрут получает пользователя через серверный `auth.getUser()`; клиент не передаёт UUID, scope, категории или флаг. Сервер вызывает self-scoped PostgreSQL RPC, доступный только роли `authenticated`; функция сама берёт владельца из `auth.uid()`, блокирует профиль, проверяет `hidden` и вызывает существующий `record_my_distribution_consent` для publication и/или profile_public только при наличии соответствующего legacy-контента и отсутствии активного согласия. Затем меняет только `legacy_distribution_choice` на `granted`; исходная дата решения сохраняется. Прямые UPDATE/доступ к закрытому полю не выдаются.
+- **Проверки добавлены:** SQL-сценарий скрытия и последующего восстановления проверяет настоящие consent rows с `granted_at`, гостевую видимость legacy-профиля и публикации, сохранение старой даты решения и прежний отказ новой публикации без consent. Миграция запускается дважды в Web quality CI; production health smoke проверяет, что гость получает 401 на restore endpoint.
+- **Границы:** политика конфиденциальности, Edge Functions, Hook, секреты и production-данные не меняются.
+
+
+## 2026-11-23 — Исправление SQL-теста закрытых legacy-полей
+
+- **Причина:** regression test восстановления читал `profiles.legacy_distribution_prompted_at` под ролью `authenticated`, хотя эта колонка намеренно закрыта.
+- **Изменено:** проверка перенесена на `public.my_legacy_distribution_prompt_state()` и поле `already_prompted`; проверка выполняется от имени того же пользователя и не требует ослабления grants.
+- **Сохранено:** отдельные assertions для `legacy_choice = granted`, двух активных consent rows, непустых `granted_at`, версий документов `1.0` / `1.1`, гостевой видимости legacy-поста и профиля, а также отказа новой публикации без согласия.
+- **Поиск по всем 9 файлам `tests/sql/`:** единственное чтение закрытого значения от роли `authenticated` было в указанной проверке. Остальные упоминания трёх колонок — проверки отсутствия SELECT/UPDATE grants либо тестовая подготовка/сравнение cutoff до переключения на `anon` / `authenticated`; других обращений к значениям закрытых колонок из этих ролей не найдено.
+- **Границы:** миграции, grants, приложение, политика, Edge Functions, Hook, secrets и production не менялись.
