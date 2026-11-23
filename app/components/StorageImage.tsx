@@ -77,7 +77,7 @@ async function flushSignedUrlQueue() {
 
   await Promise.all(
     Array.from(byBucket.entries()).map(async ([bucket, requests]) => {
-      let signedRows: Array<{ path: string | null; signedUrl: string; error: string | null }> | null = null
+      let signedRows: Array<{ path: string | null; signedUrl: string | null; error: string | null }> | null = null
 
       try {
         const { data, error } = await supabase.storage
