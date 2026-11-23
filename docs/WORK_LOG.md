@@ -807,3 +807,11 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Dry-run iteration:** Auth Admin, Storage and inventory reads succeeded and printed the matching accounts plus aggregate counts. The relationship guard then failed before completing because the query selected a non-existent `likes.id`; the production table has composite key `(user_id, post_id)`. Corrected the PostgREST projection to select those existing columns. No deletion or other production write occurred; the guard result remains pending rerun.
 
 **Production dry-run completed (PR #96, Chat security run 45205225391):** found 63 Auth accounts matching the explicit prefixes: 58 `data-smoke-*` and 5 `chat-smoke-*`. Inventory totals: 9 profiles, 2 posts, 2 books, 1 report, 10 notifications, 40 consent rows (2 active / 38 revoked), 6 Storage objects, 4 conversations, 2 messages, 1 ticket and 1 ticket message; other inventoried relation counts were zero. The foreign-content cascade guard completed with `CLEANUP SAFETY PASS`. Dry-run ended with `DRY-RUN ONLY`; no production writes/deletions occurred. Chat security and Web quality CI both passed. Full per-account list and counts are preserved in the workflow log.
+
+## 2026-11-23 — Exact-snapshot smoke cleanup execution
+
+**Scope lock:** created `scripts/cleanup-data-smoke-users-2026-11-23.json` from the successful production dry-run log (workflow run 45205225391, job 137799043533). It contains exactly 63 unique Auth ID/email pairs: 58 `data-smoke-*` and 5 `chat-smoke-*`. The deletion CLI now supports `--manifest`, requires exactly 63 entries for this approved snapshot, validates each ID/email against live Auth Admin, and passes only those entries to inventory, guard and cleanup. It prints every deletion email and Auth ID under `AUDIT DELETE TARGETS` before deleting.
+
+**Automation:** PR #96 workflow conditionally invokes the exact manifest only for PR #96. For subsequent successful production `workflow_run` smoke executions, a separate post-smoke step runs prefix-scoped cleanup with the same foreign-content guard and strict residual verification. PR dry-runs do not invoke the broad cleanup step.
+
+**Status:** code and workflow committed; production deletion has not yet been confirmed. Await the CI execution result. No real-user records or consent records are inserted/updated by this change.
