@@ -213,8 +213,8 @@ export default function HomeClient({ initialPosts }: { initialPosts: PostCardDat
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
-        <div>
+      <div className="grid w-full min-w-0 grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="w-full min-w-0">
           <div className="flex justify-between items-center mb-5">
             <h2 className="font-playfair text-2xl font-bold text-emerald-dark">
               {FEED_HEADINGS[filter]}
@@ -246,7 +246,7 @@ export default function HomeClient({ initialPosts }: { initialPosts: PostCardDat
           )}
 
           {!loading && posts.length > 0 && (
-            <div className="flex flex-col gap-6 max-w-3xl mx-auto w-full">
+            <div className="flex w-full min-w-0 flex-col gap-6">
               {posts.map(post => (
                 <PostCard key={post.id} post={post} />
               ))}
@@ -254,7 +254,7 @@ export default function HomeClient({ initialPosts }: { initialPosts: PostCardDat
           )}
         </div>
 
-        <aside className="space-y-8 bg-emerald-deep rounded-2xl p-6 text-cream">
+        <aside className="w-full min-w-0 space-y-8 rounded-2xl bg-emerald-deep p-6 text-cream">
           <TopAuthors />
           {/* На мобильных порядок: лента → авторы → теги → CTA.
               Популярные посты дублируют ленту, поэтому только с lg. */}
