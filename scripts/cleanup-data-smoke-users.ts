@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   assertNoForeignContentWouldBeCascadeDeleted,
   cleanupSmokeUsers,
@@ -19,6 +21,11 @@ for (const [name, value] of Object.entries({
 
 const deleteRequested = process.argv.includes('--delete')
 const dryRunRequested = process.argv.includes('--dry-run')
+const manifestFlag = process.argv.indexOf('--manifest')
+const manifestPath = manifestFlag >= 0 ? process.argv[manifestFlag + 1] : undefined
+if (manifestFlag >= 0 && (!manifestPath || manifestPath.startsWith('--'))) {
+  throw new Error('--manifest requires a JSON file path')
+}
 if (deleteRequested === dryRunRequested) {
   throw new Error('pass exactly one mode: --dry-run or --delete')
 }
@@ -58,7 +65,34 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: apiKeyOnlyFetch(SECRET) },
   })
-  const users = await listDataSmokeUsers(admin)
+  const discoveredUsers = await listDataSmokeUsers(admin)
+  let users = discoveredUsers
+
+  if (manifestPath) {
+    if (!deleteRequested) throw new Error('--manifest is accepted only with --delete')
+    const manifest = JSON.parse(readFileSync(resolve(process.cwd(), manifestPath), 'utf8')) as {
+      snapshot?: { count?: number }
+      accounts?: Array<{ email: string; id: string }>
+    }
+    if (manifest.snapshot?.count !== 63 || manifest.accounts?.length !== 63) {
+      throw new Error('cleanup manifest must contain exactly the approved 63-account snapshot')
+    }
+    const manifestIds = new Set<string>()
+    const currentById = new Map(discoveredUsers.map(user => [user.id, user]))
+    users = manifest.accounts.map(entry => {
+      if (!entry.email || !entry.id || manifestIds.has(entry.id)) {
+        throw new Error('cleanup manifest contains a missing or duplicate account')
+      }
+      manifestIds.add(entry.id)
+      const current = currentById.get(entry.id)
+      if (!current || current.email !== entry.email) {
+        throw new Error('cleanup manifest account no longer matches Auth Admin: ' + entry.email)
+      }
+      return { id: entry.id, email: entry.email }
+    })
+    console.log('EXACT MANIFEST MODE — only the 63 reviewed Auth IDs below are eligible for deletion')
+  }
+
   const inventory = await getDataSmokeInventory(admin, users)
 
   if (inventory.length !== users.length) {
@@ -66,7 +100,7 @@ async function main() {
   }
 
   console.log(`SMOKE ACCOUNT PREFIXES — ${SMOKE_ACCOUNT_EMAIL_PREFIXES.join(', ')}`)
-  console.log(`DRY-RUN — found ${users.length} matching Auth accounts`)
+  console.log(`${manifestPath ? 'EXACT DELETE TARGETS' : 'DRY-RUN — found matching Auth accounts'} — ${users.length}`)
 
   const totals = Object.fromEntries(INVENTORY_FIELDS.map(field => [
     field,
@@ -77,6 +111,10 @@ async function main() {
     console.log(`- ${row.email} :: ${row.id} :: ${counts}`)
   }
   console.log(`TOTAL RELATED RECORDS — ${JSON.stringify(totals)}`)
+  if (deleteRequested) {
+    console.log('AUDIT DELETE TARGET EMAILS —')
+    for (const user of users) console.log(`DELETE TARGET — ${user.email} :: ${user.id}`)
+  }
 
   await assertNoForeignContentWouldBeCascadeDeleted(admin, users)
   console.log('CLEANUP SAFETY PASS — no non-smoke content is linked in a way that would be cascade-deleted')
