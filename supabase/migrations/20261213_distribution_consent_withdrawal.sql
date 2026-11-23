@@ -125,7 +125,7 @@ as $function$
     when p_bucket_id = 'avatars' then exists (
       select 1
         from public.profiles p
-       where private.has_active_distribution_consent(p.id, 'profile_public')
+       where private.can_read_distribution_profile(p.id)
          and pg_catalog.right(
                coalesce(p.avatar_url, ''),
                pg_catalog.length(
