@@ -1,5 +1,5 @@
 create table public.tags (
-  id uuid primary key,
+  id uuid primary key default gen_random_uuid(),
   name text not null unique,
   slug text not null unique
 );
