@@ -53,30 +53,36 @@ export default function WelcomeClient() {
     let alive = true
 
     async function loadLegacyPrompt() {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser()
 
-      if (!alive) return
+        if (!alive) return
 
-      if (userError || !user) {
-        setLegacyPromptError('Не удалось проверить состояние ранее созданных данных. Откройте настройки профиля после повторного входа.')
+        if (userError || !user) {
+          setLegacyPromptError('Не удалось проверить состояние ранее созданных данных. Откройте настройки профиля после повторного входа.')
+          setLegacyPromptLoading(false)
+          return
+        }
+
+        const { data, error } = await supabase.rpc('my_legacy_distribution_prompt_state')
+        if (!alive) return
+
+        if (error || !Array.isArray(data)) {
+          console.error('[welcome] legacy distribution state lookup failed:', error?.message ?? 'unexpected response')
+          setLegacyPromptError('Не удалось проверить, есть ли у вас ранее созданные публичные данные. Выбор можно открыть в настройках профиля.')
+        } else {
+          setLegacyPromptState((data[0] as LegacyPromptState | undefined) ?? null)
+        }
+
         setLegacyPromptLoading(false)
-        return
+      } catch {
+        if (!alive) return
+        setLegacyPromptError('Не удалось проверить состояние ранее созданных данных. Попробуйте обновить страницу.')
+        setLegacyPromptLoading(false)
       }
-
-      const { data, error } = await supabase.rpc('my_legacy_distribution_prompt_state')
-      if (!alive) return
-
-      if (error || !Array.isArray(data)) {
-        console.error('[welcome] legacy distribution state lookup failed:', error?.message ?? 'unexpected response')
-        setLegacyPromptError('Не удалось проверить, есть ли у вас ранее созданные публичные данные. Выбор можно открыть в настройках профиля.')
-      } else {
-        setLegacyPromptState((data[0] as LegacyPromptState | undefined) ?? null)
-      }
-
-      setLegacyPromptLoading(false)
     }
 
     void loadLegacyPrompt()
@@ -246,6 +252,16 @@ export default function WelcomeClient() {
             <Link href="/profile/edit" className="underline underline-offset-2 hover:text-wine">
               Настройки профиля
             </Link>
+          </p>
+        )}
+
+        {!legacyPromptLoading && legacyPromptState?.already_prompted && legacyPromptState.legacy_choice === 'granted' && (
+          <p role="status" className="mb-6 text-sm text-brown/70">
+            Вы подтвердили распространение ранее созданных данных. Управлять отдельными согласиями можно в{' '}
+            <Link href="/profile/edit" className="underline underline-offset-2 hover:text-wine">
+              настройках профиля
+            </Link>
+            .
           </p>
         )}
 
