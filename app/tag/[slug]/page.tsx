@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { decodeTagSlug } from '@/lib/tags'
-import PostCard from '@/app/components/PostCard'
+import PostCard, { type PostCardData } from '@/app/components/PostCard'
 
 type TagRecord = { id: string; name: string; slug: string }
 
@@ -13,7 +13,7 @@ export default function TagPage() {
   const params = useParams<{ slug: string }>()
   const slug = params.slug
   const [tag, setTag] = useState<TagRecord | null>(null)
-  const [posts, setPosts] = useState<any[]>([])
+  const [posts, setPosts] = useState<PostCardData[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
