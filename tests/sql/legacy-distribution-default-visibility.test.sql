@@ -368,7 +368,7 @@ $staff_access$;
 
 reset role;
 
--- Only B's own explicit actions created consent records; no migration backfill.
+-- Only B's two explicit scope grants and F's profile-only grant may create consent records; no migration backfill.
 do $no_consent_backfill$
 begin
   if exists (
@@ -387,7 +387,7 @@ begin
   if (select count(*) from private.personal_data_consents
        where user_id = '55555555-5555-4555-8555-555555555555'
          and revoked_at is null) <> 2 then
-    raise exception 'the only active consent rows must come from B explicit user RPC actions';
+    raise exception 'B must have exactly two active rows from its own explicit user RPC actions';
   end if;
 
   if (select count(*) from private.personal_data_consents
