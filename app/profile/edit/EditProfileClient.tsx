@@ -38,6 +38,7 @@ export default function EditProfilePage() {
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [consentError, setConsentError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,7 +53,7 @@ export default function EditProfilePage() {
         return
       }
 
-      const [{ data: profile }, { data: consentRows, error: consentReadError }, { data: notificationsMutedValue, error: notificationsError }] = await Promise.all([
+      const [{ data: profile, error: profileReadError }, { data: consentRows, error: consentReadError }, { data: notificationsMutedValue, error: notificationsError }] = await Promise.all([
         supabase
           .from('profiles')
           .select('username, bio, avatar_url')
@@ -64,11 +65,16 @@ export default function EditProfilePage() {
 
       if (!alive) return
 
-      if (profile) {
-        setUsername(profile.username)
-        setBio(profile.bio || '')
-        setAvatarUrl(profile.avatar_url)
+      if (profileReadError || !profile) {
+        console.error('[profile-edit] failed to load current profile:', profileReadError?.message ?? 'profile row not found')
+        setProfileLoadError('Не удалось загрузить данные профиля. Форма сохранения заблокирована, чтобы не затереть имя пользователя. Обновите страницу и попробуйте ещё раз.')
+        setLoading(false)
+        return
       }
+
+      setUsername(profile.username ?? '')
+      setBio(profile.bio || '')
+      setAvatarUrl(profile.avatar_url)
       if (!notificationsError && typeof notificationsMutedValue === 'boolean') {
         setNotificationsMuted(notificationsMutedValue)
       } else {
@@ -138,6 +144,10 @@ export default function EditProfilePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (saving || avatarUploading) return
+    if (!username.trim()) {
+      setError('Имя пользователя не загружено. Обновите страницу; изменения не сохранены.')
+      return
+    }
 
     setSaving(true)
     setError(null)
@@ -172,6 +182,21 @@ export default function EditProfilePage() {
 
   if (loading) {
     return <main className="p-4 md:p-8 max-w-2xl mx-auto">Загрузка…</main>
+  }
+
+  if (profileLoadError) {
+    return (
+      <main className="p-4 md:p-8 max-w-2xl mx-auto">
+        <p role="alert" className="text-sm text-wine">{profileLoadError}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-3 rounded-full bg-emerald-mid px-4 py-2 text-sm text-cream hover:bg-emerald-dark"
+        >
+          Повторить
+        </button>
+      </main>
+    )
   }
 
   return (
