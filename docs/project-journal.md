@@ -619,3 +619,5 @@
 - Initial TypeScript check for the PostgREST refactor failed before test execution: the generic page helper expected a narrower PromiseLike response than the SDK filter builder, and the post-images query omitted its `post_id` filter argument. Corrected both; no production calls were made by that failed attempt.
 
 - Production PostgREST dry-run initially stopped on `public.likes` with SQLSTATE 42703. Verified the live schema: likes uses composite primary key `(user_id, post_id)` and has no `id`; corrected the select and row type accordingly. No delete/write step ran.
+
+- Moved the production dry-run gate to a successful `Apply DB migrations` workflow completion on `main`. The PR-triggered chat security job still validates TypeScript and chat cleanup but skips production inventory; after merge and successful migration rollout, the workflow-run event executes the production dry-run with the new RPC available.
