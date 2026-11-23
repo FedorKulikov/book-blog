@@ -629,3 +629,5 @@
 - Preserved the pre-delete relationship guard and added a check for smoke-authored support messages inside tickets owned by non-smoke users.
 - Removed the Management API Auth-config diagnostic and `SUPABASE_ACCESS_TOKEN` reference from this cleanup workflow. Only the existing `SUPABASE_SECRET_KEY` is required for the admin/Storage/PostgREST dry-run; no new secret was requested.
 - Enabled the production dry-run on PR CI as well as the post-migration workflow. No `--delete` command has been run. Actual dry-run inventory and guard result are pending CI.
+
+- First PR #96 production dry-run successfully enumerated smoke accounts and app/consent/Storage inventory through Auth Admin, Storage and PostgREST. It stopped before guard completion because a likes query selected a non-existent `id` column (the actual key is `user_id, post_id`). Updated the query to use the real composite key columns. No production write/deletion ran; a fresh dry-run is required to establish the safety result.
