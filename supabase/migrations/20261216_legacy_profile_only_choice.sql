@@ -148,8 +148,16 @@ begin
       );
     end if;
   else
-    perform public.revoke_my_distribution_consent('profile_public');
-    perform public.revoke_my_distribution_consent('publication');
+    -- Hide only the scopes represented by this user's legacy material. A
+    -- profile-only choice must not revoke a separate publication consent
+    -- already granted for future posts (and vice versa).
+    if v_has_legacy_profile then
+      perform public.revoke_my_distribution_consent('profile_public');
+    end if;
+
+    if v_has_legacy_posts then
+      perform public.revoke_my_distribution_consent('publication');
+    end if;
   end if;
 
   update public.profiles
