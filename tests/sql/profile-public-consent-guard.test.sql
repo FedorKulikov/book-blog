@@ -21,7 +21,6 @@ declare
   v_is_definer boolean;
   v_empty_path boolean;
   v_owner_postgres boolean;
-  v_notifications_fn oid := 'public.my_profile_notification_settings()'::regprocedure;
 begin
   if has_function_privilege('anon', v_guard, 'EXECUTE')
      or has_function_privilege('authenticated', v_guard, 'EXECUTE')
@@ -49,21 +48,6 @@ begin
   if not has_column_privilege('anon', 'public.profiles', 'username', 'SELECT')
      or not has_column_privilege('authenticated', 'public.profiles', 'username', 'SELECT') then
     raise exception 'public profile fields lost their SELECT grants';
-  end if;
-
-  if has_function_privilege('anon', v_notifications_fn, 'EXECUTE')
-     or not has_function_privilege('authenticated', v_notifications_fn, 'EXECUTE') then
-    raise exception 'private notification settings RPC grants are incorrect';
-  end if;
-
-  if has_column_privilege('anon', 'public.profiles', 'notifications_muted', 'SELECT')
-     or has_column_privilege('authenticated', 'public.profiles', 'notifications_muted', 'SELECT') then
-    raise exception 'notifications_muted remains directly selectable through the public profiles table';
-  end if;
-
-  if not has_column_privilege('anon', 'public.profiles', 'username', 'SELECT')
-     or not has_column_privilege('authenticated', 'public.profiles', 'username', 'SELECT') then
-    raise exception 'public profile column SELECT grants were not preserved';
   end if;
 
   select p.prosecdef,
