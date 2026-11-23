@@ -494,3 +494,10 @@
 - PostgreSQL 17 test log показал `profiles = 2` для владельца A. Это корректное поведение: A и B состоят в существующем личном диалоге, поэтому `private.can_read_distribution_profile()` разрешает обоим видеть профиль собеседника, даже без публичного согласия. Доступ постороннего пользователя C остаётся закрытым.
 - Исправлен `tests/sql/distribution-consent-withdrawal.test.sql`: вместо общего ожидания одной строки profiles отдельно проверяются own profile = 1, профиль собеседника в общем диалоге = 1, unrelated profile C = 0, own post = 1 и own post image = 1. Производственная политика не ослаблялась и не менялась.
 - Нужен повторный PostgreSQL 17 прогон на текущем head; PR не сливать до зелёного CI.
+
+
+## 2026-11-23 — B12 Stage 4 test correction: granted post visibility and user-scoped revoke
+
+- PostgreSQL 17 прогон показал, что test user B ожидал скрыть публикацию A после того, как A явно выдал active publication consent. Это неверное ожидание: approved post должен быть доступен B, пока согласие A действует.
+- Исправлен сценарий: B видит approved post A при активном согласии; `my_distribution_consents()` под B не возвращает записи A; отзыв B действует только на собственные scopes; повторная проверка под A подтверждает, что его publication consent остался активен. Последующий revoke A отдельно проверяет прекращение публичного доступа.
+- Production-код и RLS-политики не ослаблялись; менялся только SQL regression test. Нужен повторный зелёный PostgreSQL run на итоговом head.
