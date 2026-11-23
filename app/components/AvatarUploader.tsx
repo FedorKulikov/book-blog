@@ -9,20 +9,24 @@ import AvatarCropper from './AvatarCropper'
 type Props = {
   currentUrl?: string | null
   onUploaded: (url: string) => void
+  disabled?: boolean
+  onUploadingChange?: (uploading: boolean) => void
 }
 
-export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
+export default function AvatarUploader({
+  currentUrl,
+  onUploaded,
+  disabled = false,
+  onUploadingChange,
+}: Props) {
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(currentUrl || null)
   const [error, setError] = useState<string | null>(null)
-  // Файл, выбранный для обрезки: пока он есть, показываем модальный кроппер
   const [pendingFile, setPendingFile] = useState<File | null>(null)
 
   function handleFile(file: File | null) {
-    if (!file) return
+    if (disabled || !file) return
 
-    // Та же проверка, что и в ImageUploader: размер ≤ 5 МБ и только
-    // JPEG/PNG/WebP/GIF. Клиентская — для UX, серверная — в Storage.
     const check = validateImageFile(file)
     if (!check.ok) {
       setError(check.message)
@@ -30,37 +34,47 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
     }
 
     setError(null)
-    setPendingFile(file) // дальше — модальное окно с кроппером
+    setPendingFile(file)
   }
 
   async function handleCroppedSave(blob: Blob) {
+    if (disabled || uploading) return
+
     setUploading(true)
+    onUploadingChange?.(true)
     setError(null)
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      setError('Войдите в аккаунт')
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('Войдите в аккаунт')
+        return
+      }
+
+      const fileName = `${user.id}/avatar-${Date.now()}.jpg`
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, blob, { upsert: true, contentType: 'image/jpeg' })
+
+      if (upErr) {
+        setError(
+          upErr.message.includes('row-level security')
+            ? 'Для загрузки аватара требуется активное согласие на распространение публичных полей профиля.'
+            : upErr.message,
+        )
+        return
+      }
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName)
+      setPreview(data.publicUrl)
+      onUploaded(data.publicUrl)
+      setPendingFile(null)
+    } catch {
+      setError('Не удалось загрузить аватар. Проверьте соединение и попробуйте ещё раз.')
+    } finally {
       setUploading(false)
-      return
+      onUploadingChange?.(false)
     }
-
-    const fileName = `${user.id}/avatar-${Date.now()}.jpg`
-
-    const { error: upErr } = await supabase.storage
-      .from('avatars')
-      .upload(fileName, blob, { upsert: true, contentType: 'image/jpeg' })
-
-    if (upErr) {
-      setError(upErr.message)
-      setUploading(false)
-      return
-    }
-
-    const { data } = supabase.storage.from('avatars').getPublicUrl(fileName)
-    setPreview(data.publicUrl)
-    onUploaded(data.publicUrl)
-    setPendingFile(null)
-    setUploading(false)
   }
 
   return (
@@ -77,13 +91,13 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
           )}
         </div>
         <div className="flex-1">
-          <label className="inline-flex items-center gap-2 cursor-pointer bg-emerald-mid hover:bg-emerald-dark text-cream text-sm px-4 py-2 rounded-lg transition-colors">
+          <label className={`inline-flex items-center gap-2 bg-emerald-mid text-cream text-sm px-4 py-2 rounded-lg transition-colors ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-emerald-dark'}`}>
             <Upload size={15} strokeWidth={1.8} />
             <span>Выбрать файл</span>
             <input
               type="file"
               accept={IMAGE_ACCEPT_ATTR}
-              disabled={uploading}
+              disabled={disabled || uploading}
               onChange={(e) => {
                 handleFile(e.target.files?.[0] || null)
                 e.currentTarget.value = ''
@@ -94,7 +108,13 @@ export default function AvatarUploader({ currentUrl, onUploaded }: Props) {
           {uploading && (
             <p className="text-xs text-brown/60 mt-2">Загрузка…</p>
           )}
-          {error && <p className="text-xs text-wine mt-2">{error}</p>}
+          {error && <p role="alert" className="text-xs text-wine mt-2">{error}</p>}
+          {disabled && (
+            <p className="text-xs text-brown/60 mt-2">
+              Чтобы новый аватар не стал публичным раньше согласия, сначала
+              подтвердите отдельный пункт о распространении полей профиля.
+            </p>
+          )}
           <p className="text-xs text-brown/50 mt-2">
             JPG, PNG, WebP или GIF. До 5 МБ. После выбора можно подвинуть
             и обрезать фото.
