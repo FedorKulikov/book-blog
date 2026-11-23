@@ -601,3 +601,4 @@
 - The chat security workflow now validates the presence of the publishable key, secret key and Management API access token without printing them, then runs a production dry-run only. It does not invoke deletion.
 - No production data was changed. Next gate is to inspect CI's actual dry-run list and foreign-content guard before enabling `--delete`.
 
+- Initial CI attempt failed at TypeScript only: the script's `URL` string shadowed the global URL constructor in the production guard. Corrected it to `globalThis.URL`; the failed run stopped before smoke execution and before any production operation.
