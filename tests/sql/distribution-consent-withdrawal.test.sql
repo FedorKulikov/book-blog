@@ -20,7 +20,15 @@ alter table public.posts disable trigger posts_require_distribution_consent;
 insert into public.posts (id, user_id, title, type, status) values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '11111111-1111-4111-8111-111111111111', 'Legacy A', 'creative', 'approved'),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '22222222-2222-4222-8222-222222222222', 'Legacy B', 'creative', 'approved'),
-  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc3', '33333333-3333-4333-8333-333333333333', 'Legacy C', 'creative', 'approved');
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc3', '33333333-3333-4333-8333-333333333333', 'New C', 'creative', 'approved');
+
+update public.posts
+   set created_at = (
+     select legacy_distribution_cutoff_at + interval '1 second'
+       from public.profiles
+      where id = '33333333-3333-4333-8333-333333333333'
+   )
+ where id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc3';
 
 alter table public.posts enable trigger posts_require_distribution_consent;
 
@@ -64,7 +72,11 @@ begin
   if has_column_privilege('anon', 'public.profiles', 'legacy_distribution_prompted_at', 'SELECT')
      or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_prompted_at', 'SELECT')
      or has_column_privilege('anon', 'public.profiles', 'legacy_distribution_prompted_at', 'UPDATE')
-     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_prompted_at', 'UPDATE') then
+     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_prompted_at', 'UPDATE')
+     or has_column_privilege('anon', 'public.profiles', 'legacy_distribution_cutoff_at', 'SELECT')
+     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_cutoff_at', 'SELECT')
+     or has_column_privilege('anon', 'public.profiles', 'legacy_distribution_cutoff_at', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.profiles', 'legacy_distribution_cutoff_at', 'UPDATE') then
     raise exception 'legacy prompt timestamp must not be directly selectable or updatable';
   end if;
 
@@ -145,6 +157,22 @@ begin
   end if;
 end;
 $owner_access$;
+
+-- A post created after the profile's migration cutoff must not trigger a legacy prompt.
+reset role;
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
+do $new_user_no_legacy_prompt$
+begin
+  if (select has_approved_posts from public.my_legacy_distribution_prompt_state()) is not false then
+    raise exception 'post created after profile cutoff was misclassified as legacy';
+  end if;
+end;
+$new_user_no_legacy_prompt$;
+
+reset role;
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 
 -- NULL is not a valid prompt choice and must not fall through to "hide".
 do $null_decision$
