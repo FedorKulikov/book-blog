@@ -93,6 +93,9 @@ jobs:
       - name: Distribution consent flow tests
         run: npm run test:distribution-consent
 
+      - name: Hashtag normalization tests
+        run: npm run test:tags
+
       - name: Public profile consent tests
         run: npm run test:profile-public-consent
 
@@ -182,6 +185,9 @@ jobs:
             app/profile/'[username]'/page.tsx \
             app/post/'[id]'/PostView.tsx \
             app/post/'[id]'/layout.tsx \
+            app/post/'[id]'/edit/EditPostForm.tsx \
+            app/tag/'[slug]'/page.tsx \
+            lib/tags.ts \
             app/books/BooksClient.tsx \
             app/books/add/AddBookForm.tsx \
             app/book/'[id]'/BookView.tsx \
@@ -793,3 +799,44 @@ jobs:
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/ops-smoke-consent-inventory.test.sql
 
+  tag-normalization-sql:
+    name: Tag normalization migration (PostgreSQL 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: tags_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tags_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+      - name: Seed legacy tag fixtures
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname tags_test --set ON_ERROR_STOP=1 --file tests/sql/tag-normalization-fixtures.sql
+      - name: Apply tag normalization migration twice
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname tags_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261219_normalize_tags.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname tags_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261219_normalize_tags.sql
+      - name: Verify tag names, slugs, and post relations
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname tags_test --set ON_ERROR_STOP=1 --file tests/sql/tag-normalization-migration.test.sql

@@ -14,6 +14,7 @@ import NewsFields, {
 } from '../../components/NewsFields'
 import type { NewsCategory } from '../newsQuery'
 import { humanizeError } from '@/lib/errors'
+import { savePostTags } from '@/lib/tags'
 import { ChevronLeft } from '../../components/icons'
 
 function NewPostContent() {
@@ -49,42 +50,6 @@ function NewPostContent() {
       setUser(data.user)
     })
   }, [router])
-
-  async function saveTagsForPost(postId: string, tagNames: string[]) {
-    for (const rawName of tagNames) {
-      const name = rawName.trim()
-      if (!name) continue
-      const slug = name
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-zа-яё0-9-]/gi, '')
-
-      if (!slug) continue
-
-      const { data: existing } = await supabase
-        .from('tags')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle()
-
-      let tagId = existing?.id
-
-      if (!tagId) {
-        const { data: created } = await supabase
-          .from('tags')
-          .insert({ name, slug })
-          .select()
-          .single()
-        tagId = created?.id
-      }
-
-      if (tagId) {
-        await supabase
-          .from('post_tags')
-          .insert({ post_id: postId, tag_id: tagId })
-      }
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -152,12 +117,14 @@ function NewPostContent() {
 
       const post = result.post
 
-      const tagNames = tagsInput
-        .split(',')
-        .map(t => t.trim())
-        .filter(Boolean)
-      if (tagNames.length > 0) {
-        await saveTagsForPost(post.id, tagNames)
+      try {
+        await savePostTags(supabase, post.id, tagsInput)
+      } catch (tagError) {
+        const message = tagError instanceof Error ? tagError.message : 'Неизвестная ошибка'
+        console.error('[new-post] tag creation failed:', message)
+        setError('Пост создан, но теги не привязались. ' + humanizeError(message))
+        setLoading(false)
+        return
       }
 
       if (images.length > 0) {
@@ -296,10 +263,10 @@ function NewPostContent() {
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}
             className="w-full border border-emerald-dark/15 rounded-lg px-3 py-2 bg-cream-warm/40 focus:outline-none focus:border-emerald-mid"
-            placeholder="фэнтези, классика, романтика"
+            placeholder="#книги #чтение #обзор"
           />
           <p className="text-xs text-brown/55 mt-1">
-            Через запятую. Существующие и новые теги поддерживаются.
+            Хештеги разделяйте пробелами: #книги #чтение #обзор. Обычные названия можно вводить через запятую.
           </p>
         </div>
 
