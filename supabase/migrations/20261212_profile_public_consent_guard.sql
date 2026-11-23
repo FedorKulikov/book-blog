@@ -38,12 +38,18 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_user_id uuid := auth.uid();
+  v_user_id uuid;
 begin
+  -- Only end-user Auth sessions are subject to the consent guard. Do not cast
+  -- a service-role JWT subject to UUID; trusted services can still maintain
+  -- profiles. Inserts are intentionally not handled for signup.
+  if auth.role() = 'authenticated' then
+    v_user_id := auth.uid();
+  end if;
+
   -- Any signed-in API update to a public field must have the target profile's
   -- own grant. This also prevents an authenticated admin bypassing consent
-  -- when editing someone else's public profile. Inserts are intentionally
-  -- not handled; trusted system updates with no auth.uid() are not blocked.
+  -- when editing someone else's public profile.
   if v_user_id is not null
      and (
        new.username is distinct from old.username
