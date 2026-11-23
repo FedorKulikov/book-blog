@@ -615,3 +615,5 @@
 - Added PostgreSQL 17 regression test for the new RPC and wired migration/test into Web quality CI.
 - Removed Management API token and endpoint requirements from the cleanup CLI and dry-run step. The separate optional Auth password-posture check in the workflow remains independent.
 - Production `--delete` has not been run. Next validation gates are SQL migration/ACL regression CI, TypeScript + smoke CI, migration rollout to production, then a read-only production dry-run.
+
+- Initial TypeScript check for the PostgREST refactor failed before test execution: the generic page helper expected a narrower PromiseLike response than the SDK filter builder, and the post-images query omitted its `post_id` filter argument. Corrected both; no production calls were made by that failed attempt.
