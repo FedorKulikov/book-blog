@@ -42,6 +42,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Ensure psql
         run: |
@@ -56,64 +58,7 @@ jobs:
       - name: Apply migrations
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-name: Apply DB migrations
-
-# Одноразовый (но переиспользуемый) воркфлоу для применения SQL-миграций.
-#
-# Зачем: DDL нельзя выполнить через PostgREST (anon/service_role ключи
-# не умеют CREATE/ALTER). А секрет SUPABASE_DB_URL уже лежит в репозитории
-# и используется в backup.yml — значит подключение к базе из CI работает.
-# Здесь тот же секрет применяется к файлам миграций, и пароль никуда
-# не выводится: он живёт только в переменной окружения шага.
-#
-# Файлы миграций написаны идемпотентно (if not exists / drop ... if exists),
-# поэтому повторный запуск безопасен.
-
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'supabase/migrations/*.sql'
-      - '.github/ops/apply-migrations-once.marker'
-      - '.github/workflows/apply-migrations.yml'
-  workflow_dispatch:
-    inputs:
-      files:
-        description: 'Файлы миграций через пробел или ALL — все из supabase/migrations'
-        required: false
-        default: 'ALL'
-
-permissions:
-  contents: read
-
-concurrency:
-  group: apply-migrations
-  cancel-in-progress: false
-
-jobs:
-  apply:
-    name: psql → supabase
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Ensure psql
-        run: |
-          if command -v psql >/dev/null 2>&1; then
-            psql --version
-          else
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends postgresql-client
-            psql --version
-          fi
-
-      - name: Apply migrations
-        env:
-          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          REQUESTED_FILES: ${{ inputs.files }}
         run: |
           set -euo pipefail
           if [ -z "${DB_URL:-}" ]; then
@@ -122,123 +67,27 @@ jobs:
           fi
 
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            # Automatically apply only newly added SQL files; released migrations are append-only.
+            # Auto-apply only new files. Editing/deleting a released migration is forbidden.
             changes="$(git diff --name-status "${GITHUB_EVENT_BEFORE}" "${GITHUB_SHA}" -- 'supabase/migrations/*.sql')"
-            FILES=""
-            while IFS=            FILES=$(ls supabase/migrations/*.sql | sort)
-          fi
-
-          # Реестр применённых миграций: создаётся здесь же, чтобы первый
-          # запуск на чистой базе не падал
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "
-            create schema if not exists ops;
-            create table if not exists ops.applied_migrations (
-              filename   text primary key,
-              checksum   text,
-              applied_at timestamptz not null default now(),
-              applied_by text default current_user
-            );
-          "
-
-          applied=0
-          skipped=0
-
-          for f in $FILES; do
-            if [ ! -f "$f" ]; then
-              echo "::error::нет файла $f"
+            if [[ -n "${changes}" ]] && grep -Ev '^A[[:space:]]' <<< "${changes}"; then
+              echo "::error::Production migrations are append-only; only newly added SQL files can be auto-applied."
               exit 1
             fi
 
-            sum=$(sha256sum "$f" | cut -d' ' -f1)
-            prev=$(psql "$DB_URL" -tA -c "select checksum from ops.applied_migrations where filename = '$f'")
-
-            if [ -n "$prev" ]; then
-              if [ "$prev" = "$sum" ]; then
-                echo "пропускаю $f — уже применена"
-                skipped=$((skipped + 1))
-                continue
-              fi
-              echo "::warning::$f уже применена, но файл изменился — применяю повторно"
-            fi
-
-            echo "::group::применяю $f"
-            psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$f"
-            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "
-              insert into ops.applied_migrations (filename, checksum)
-              values ('$f', '$sum')
-              on conflict (filename) do update
-                set checksum = excluded.checksum, applied_at = now();
-            "
-            echo "::endgroup::"
-            applied=$((applied + 1))
-          done
-
-          echo "### Миграции: применено $applied, пропущено $skipped" >> $GITHUB_STEP_SUMMARY
-
-      - name: История миграций
-        env:
-          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          set -euo pipefail
-          psql "$DB_URL" -c "
-            select filename, left(checksum, 12) as checksum, applied_at::timestamp(0), applied_by
-            from ops.applied_migrations
-            order by filename;
-          "
-
-      - name: Verify schema
-        env:
-          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          FILES: ${{ inputs.files }}
-        run: |
-          set -euo pipefail
-          echo "::group::колонки external_news"
-          psql "$DB_URL" -c "
-            select column_name, data_type, is_nullable
-            from information_schema.columns
-            where table_schema = 'public' and table_name = 'external_news'
-            order by ordinal_position;
-          "
-          echo "::endgroup::"
-
-          echo "::group::распределение по рубрикам и языкам"
-          psql "$DB_URL" -c "
-            select news_category, lang, count(*)
-            from public.external_news
-            group by 1, 2
-            order by 3 desc;
-          "
-          echo "::endgroup::"
-
-          echo "::group::тренды"
-          psql "$DB_URL" -c "
-            select topic, kind, mentions
-            from public.news_trends
-            order by mentions desc
-            limit 10;
-          " || echo "таблица news_trends пока пуста — заполнится при импорте"
-          echo "::endgroup::"
-\\t' read -r status file; do
-              [[ -z "${status}" ]] && continue
-              if [[ "${status}" != "A" || -z "${file}" ]]; then
-                echo "::error::Production migrations are append-only; only newly added SQL files can be auto-applied."
-                exit 1
-              fi
-              FILES="${FILES} ${file}"
-            done <<< "${changes}"
-
+            new_files="$(git diff --diff-filter=A --name-only "${GITHUB_EVENT_BEFORE}" "${GITHUB_SHA}" -- 'supabase/migrations/*.sql')"
             marker_path=".github/ops/apply-migrations-once.marker"
             if git diff --name-only "${GITHUB_EVENT_BEFORE}" "${GITHUB_SHA}" -- "${marker_path}" | grep -Fxq "${marker_path}"; then
-              marker_file="$(tr -d '\\r\\n' < "${marker_path}")"
-              if [[ ! "${marker_file}" =~ ^supabase/migrations/[A-Za-z0-9_.-]+\\.sql$ || ! -f "${marker_file}" ]]; then
+              marker_file="$(tr -d '\r\n' < "${marker_path}")"
+              if [[ ! "${marker_file}" =~ ^supabase/migrations/[A-Za-z0-9_.-]+\.sql$ || ! -f "${marker_file}" ]]; then
                 echo "::error::The one-time migration marker must contain one existing migration path."
                 exit 1
               fi
-              FILES="${FILES} ${marker_file}"
+              new_files="$(printf '%s\n%s\n' "${new_files}" "${marker_file}" | sed '/^$/d' | sort -u)"
             fi
 
-            FILES="$(printf '%s\\n' "${FILES}" | xargs)"
-            if [[ -z "${FILES}" ]]; then
+            mapfile -t files <<< "${new_files}"
+            FILES="${files[*]}"
+            if [[ -z "${FILES// }" ]]; then
               echo "No new migration files or one-time marker in this push; nothing to apply."
               echo "### Миграции: изменений для применения нет" >> "$GITHUB_STEP_SUMMARY"
               exit 0
@@ -349,7 +198,7 @@ jobs:
           set -euo pipefail
           stage4_registered="$(psql "$DB_URL" -tA -v ON_ERROR_STOP=1 -c "select count(*) from ops.applied_migrations where filename='supabase/migrations/20261213_distribution_consent_withdrawal.sql'")"
           if [[ "$stage4_registered" != "1" ]]; then
-            echo "Stage 4 migration is not in this run's scope; skipping Stage 4-specific verification."
+            echo "Stage 4 migration is not registered; skipping Stage 4-specific verification."
             exit 0
           fi
 
@@ -358,12 +207,10 @@ jobs:
               (select count(*) from information_schema.columns
                 where table_schema='public' and table_name='profiles'
                   and column_name in ('legacy_distribution_prompted_at','legacy_distribution_cutoff_at','legacy_distribution_choice')),
-              (select count(*) from pg_policies
-                where schemaname='public' and tablename='profiles'
-                  and policyname='profiles_read_distribution_consent'),
-              (select count(*) from pg_policies
-                where schemaname='public' and tablename='posts'
-                  and policyname='posts_read_distribution_consent'),
+              (select count(*) from pg_policies where schemaname='public' and tablename='profiles'
+                and policyname='profiles_read_distribution_consent'),
+              (select count(*) from pg_policies where schemaname='public' and tablename='posts'
+                and policyname='posts_read_distribution_consent'),
               (select count(*) from pg_policies
                 where schemaname='public' and tablename in ('comments','likes','post_images','post_tags')
                   and policyname in ('comments_read_visible_posts','likes_read_visible_posts','post_images_read_visible_posts','post_tags_read_visible_posts')),
