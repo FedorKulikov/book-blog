@@ -330,6 +330,29 @@ begin
      or (select publication_active from public.my_legacy_distribution_prompt_state()) is not true then
     raise exception 'later publication consent overwrote the hidden legacy decision';
   end if;
+
+  -- Revoking only the publication scope must also keep legacy rows hidden
+  -- if a fresh publication consent is recorded later.
+  perform public.revoke_my_distribution_consent('publication');
+  perform public.record_my_distribution_consent(
+    'publication',
+    array[
+      'author_username',
+      'author_avatar',
+      'publication_title',
+      'publication_text',
+      'publication_images',
+      'publication_tags',
+      'linked_book',
+      'news_metadata'
+    ]::text[],
+    '1.0'
+  );
+
+  if (select legacy_choice from public.my_legacy_distribution_prompt_state()) <> 'hidden'
+     or (select publication_active from public.my_legacy_distribution_prompt_state()) is not true then
+    raise exception 'scoped publication revoke allowed legacy material to be re-published';
+  end if;
 end;
 $hide_and_repeat$;
 
