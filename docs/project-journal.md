@@ -645,3 +645,6 @@
 
 - First manifest execution stopped before cleanup: Auth Admin returned 404 for `data-smoke-a-mwsm717y`; no deletion occurred in that attempt.
 - Updated exact-manifest mode to verify each fixed UUID individually: confirmed-absent IDs remain in the targeted inventory and residue cleanup, existing IDs must retain the exact snapshot email, and other Auth errors abort. The deletion helper repeats the identity check and skips only confirmed 404 accounts.
+
+- Exact-manifest delete run `45208454878` printed all 63 audit targets and passed the cascade guard. 62 existing Auth accounts were deleted; `data-smoke-a-mwsm717y` was already absent before deletion.
+- Strict post-delete verification reported zero target-related residuals (consents, profiles, posts, books, reports, notifications, Storage, conversations/messages and all other inventoried relations), but one global prefix-matching Auth account remained outside the manifest. The script failed closed on that global nonzero count. The one-time PR deletion step was removed immediately to prevent reruns; next run is read-only dry-run only. The extra account will not be deleted under this 63-account authorization.
