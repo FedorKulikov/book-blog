@@ -162,7 +162,7 @@ export default function StorageImage({
   const bucket = reference?.bucket
   const objectPath = reference?.path
   const resolvedSrc = reference
-    ? signedResult?.source === src ? signedResult.url ?? undefined : undefined
+    ? signedResult && signedResult.source === src ? signedResult.url ?? undefined : undefined
     : src ?? undefined
   const unavailable = !!src && failedSource === src
 
