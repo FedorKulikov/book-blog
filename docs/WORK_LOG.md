@@ -886,3 +886,12 @@ Fix second likes query in production safety guard
 **Production dry-run:** after PR #94 merge and migration deployment, Auth Admin/Storage/PostgREST inventory completed and reported 61 matched smoke accounts. Totals: 9 profiles, 2 posts, 2 books, 1 report, 10 notifications, 40 consents (2 active / 38 revoked), 6 Storage objects, 4 conversations, 2 messages, 1 ticket and 1 ticket message; other inventoried categories were 0. The cross-account guard then failed on a second `likes` select still requesting a nonexistent `id` column (PostgreSQL 42703). No delete or write occurred.
 
 **Correction:** changed that guard query to the live composite-key schema `likes(user_id, post_id)`. Added a main-branch push trigger restricted to cleanup script/config/workflow paths so the production dry-run reruns after this code-only fix, without rerunning the migration workflow. The production dry-run still executes only `--dry-run`.
+
+Автоочистка после health smoke и неуспешных прогонов
+
+- **Что требовалось:** устранить накопление тестовых аккаунтов после production health smoke и после упавших smoke/migration workflow.
+- **Что сделано:** workflow cleanup подписан на `Apply DB migrations` и `Production health smoke`; job запускается для завершившихся `success` и `failure`, но не `cancelled`. PR-only проверки отделены от workflow_run; production cleanup выполняется с `always()`.
+- **Как сделано:** используется прежний guarded CLI `--delete` с явными smoke-префиксами; pull_request deletion не запускается. Очистка остаётся fail-closed: ненулевые остатки приводят к ошибке команды и красному job.
+- **Проверки:** статически проверены workflow trigger, conclusion filter и условия шагов. CI/actionlint после commit ожидается; runtime-тест события failure/cancelled ещё не проводился.
+- **Что не получилось / осталось:** фактический production workflow_run после health smoke/failure ещё не наблюдался; PR не объединён.
+- **Публикация:** commit отправлен в рабочую ветку PR #96; production и данные пользователей не менялись.
