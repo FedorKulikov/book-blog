@@ -301,7 +301,7 @@ begin
       using errcode = '28000';
   end if;
 
-  if p_decision not in ('grant_existing', 'hide_existing') then
+  if p_decision is null or p_decision not in ('grant_existing', 'hide_existing') then
     raise exception 'Unsupported legacy distribution prompt decision'
       using errcode = '22023';
   end if;
