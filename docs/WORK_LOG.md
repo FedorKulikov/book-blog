@@ -553,3 +553,11 @@ PR #80 merged: `41acca517d8e1a0a55edee640aac3d405ed11fa6`. На точном hea
 **Deployment/smoke:** production migration пока не применялась. Не включал новые live assertions в текущий PR, поскольку существующий chat-security smoke запускается до deployment и проверяет старую production schema. После зелёного PR и применения миграции добавлю отдельный smoke follow-up, проверяющий live A/B и cleanup. Пользовательские данные/Storage/prod schema пока не изменялись.
 
 **Границы:** `/privacy`, publication scope и версия 1.0, recovery, Hook, `mailer_autoconfirm`, secrets и service-role key не менялись.
+
+## 2026-11-23 — B12, этап 3: production rollout и live A/B smoke
+
+PR #82 merged: `e9fa04b60f3c033c48f5ec0888cda3c58c67de2e`. Migration `20261212_profile_public_consent_guard.sql` applied to production PostgreSQL 17. Checksum in `ops.applied_migrations`: `73a601d0c5be78374f931f712fed0613c9039f47bc71bd8a54f26689ccbdb189`.
+
+**Post-deploy verification:** profile trigger present on UPDATE OF username,bio,avatar_url; helper and private-notification RPC are postgres-owned SECURITY DEFINER with empty search_path; correct authenticated/service_role grants and no anon EXECUTE; private notifications_muted SELECT removed for anon/authenticated; avatar INSERT/UPDATE policies require the owner profile consent; legacy PUBLIC avatar update policy removed.
+
+**Smoke-only follow-up PR:** script now adds live A/B checks for profile_public no-consent refusal, private notification preference, consent version 1.1/categories, owner-only history/revoke, successful avatar upload/replace and public profile update, followed by post-revoke refusal. Cleanup revokes both consent scopes before sign-out and deletes synthetic profiles/content/Storage objects; `auth.users` retained. This follow-up CI result is pending.
