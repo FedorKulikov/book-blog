@@ -1,72 +1,58 @@
 'use client'
 
-// app/components/ExternalNewsCover.tsx
-// Обложка внешней новости. Три задачи:
-//   1) картинки может не быть вовсе (cover_url = null);
-//   2) ссылка может быть битой (404) — тогда срабатывает onError;
-//   3) часть источников (litkarta.ru) отдаёт картинки ТОЛЬКО по http,
-//      а сайт работает по https. Браузер вырезал бы такую картинку как
-//      Mixed Content, поэтому она идёт через next/image: оптимизатор
-//      скачивает её на сервере и отдаёт уже по https.
 import { useState } from 'react'
-import Image from 'next/image'
 import { BookOpen } from './icons'
 
+/**
+ * Внешние изображения приходят с произвольных медиахостов.
+ * Не прогоняем их через next/image: оптимизатор отклоняет хосты,
+ * отсутствующие в remotePatterns, и создаёт лишние запросы /_next/image.
+ */
 export default function ExternalNewsCover({
   url,
   alt,
   iconSize = 36,
-  sizes = '(max-width: 768px) 100vw, 50vw',
+  fallbackLabel,
 }: {
   url: string | null
   alt: string
   iconSize?: number
-  /** Подсказка оптимизатору: какую ширину занимает картинка */
-  sizes?: string
+  fallbackLabel?: string | null
 }) {
-  // Две независимые «ступени» деградации:
-  //   next/image → обычный <img referrerPolicy="no-referrer"> → заглушка
-  const [optimizerFailed, setOptimizerFailed] = useState(false)
-  const [plainFailed, setPlainFailed] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const label = fallbackLabel?.trim()
 
-  if (!url || plainFailed) {
+  if (!url || failed) {
     return (
-      <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#014b32] to-[#0E2931]">
+      <span
+        role="img"
+        aria-label={label ? 'Изображение источника: ' + label : 'Изображение недоступно'}
+        className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#014b32] to-[#0E2931] px-3 text-center"
+      >
         <BookOpen
           size={iconSize}
           strokeWidth={1.2}
-          className="text-[#E2E2E0]/35"
+          className="text-[#E2E2E0]/45"
         />
-      </span>
-    )
-  }
-
-  // Оптимизатор не смог отдать картинку (403 от источника или таймаут):
-  // показываем обычный <img> без referrer — часть сайтов режет именно его
-  if (optimizerFailed) {
-    return (
-      <span className="relative block h-full w-full overflow-hidden">
-        <img
-          src={url}
-          alt={alt}
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={() => setPlainFailed(true)}
-          className="h-full w-full object-cover"
-        />
+        {label && iconSize >= 24 && (
+          <span className="max-w-full truncate text-[10px] font-medium uppercase tracking-[0.14em] text-[#E2E2E0]/55">
+            {label}
+          </span>
+        )}
       </span>
     )
   }
 
   return (
     <span className="relative block h-full w-full overflow-hidden">
-      <Image
+      <img
         src={url}
         alt={alt}
-        fill
-        sizes={sizes}
-        onError={() => setOptimizerFailed(true)}
-        className="object-cover"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-cover"
       />
     </span>
   )

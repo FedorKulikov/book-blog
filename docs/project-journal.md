@@ -759,3 +759,13 @@ smoke cleanup runs after success and failure
 - Геометрия проверяется для viewport 1440 и 1920 px при desktop sidebar 256 px, main padding 32 px, max-width 1280 px, grid gap 32 px, sidebar track 300 px: на 1440 внутренняя ширина 1120 px (content 788 px + gap 32 px + sidebar 300 px); на 1920 max-width ограничивает внутреннюю ширину 1216 px (content 884 px + gap 32 px + sidebar 300 px). Незаполненного правого трека нет; карточки и заголовок имеют общий левый край.
 - Проверка фактических скриншотов в браузере не выполнена: репозиторий не удалось клонировать из-за отсутствия DNS-доступа к github.com в локальной среде. Проверка CI/сборки будет выполнена для PR.
 - Файлы: `app/HomeClient.tsx`, `app/components/Header.tsx`, `app/globals.css`; журналы обновлены. Серверная логика, данные, RLS/grants и production не менялись.
+
+
+### 2026-11-23 — Внешние миниатюры новостей и заглушки обложек книг
+- ExternalNewsCover переведён с next/image на img с loading=lazy, decoding=async и referrerPolicy=no-referrer; произвольные внешние хосты больше не проходят через /_next/image, wildcard в remotePatterns не добавлялся.
+- При отсутствующем или не загрузившемся внешнем изображении показывается градиентная заглушка с BookOpen; в крупных карточках отображается название источника.
+- Удалены sizes-параметры для external cover, поскольку оптимизатор Next.js больше не используется.
+- В StorageImage добавлен необязательный prop fallback; только каталог книг использует его для показа первой буквы названия при пустом/недоступном cover_url. Остальные клиенты StorageImage не передают prop, их поведение не менялось.
+- Production read-only verification: books — 127 строк, cover_url заполнен у всех; функция get_books_page возвращает столбец cover_url. Все ссылки ведут на публичные объекты post-images. База не изменялась.
+- Предыдущий гостевой browser run показывал 5 ошибок HTTP 400 на /books и 15 на /news; /books имеет sidebar с пятью ExternalNewsBlock обложками, которые также используют ExternalNewsCover. Ошибки в Supabase Storage logs на время этого прогона отсутствовали.
+- Проверка console/image load после merge/deploy ещё не выполнена; для неё требуется повторный guest Playwright run против нового production-кода. next.config.ts, migrations, policies, secrets, постовые изображения, аватары и production data не менялись.
