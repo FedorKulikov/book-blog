@@ -5,7 +5,9 @@ begin;
 
 alter table public.profiles
   add column if not exists legacy_distribution_prompted_at timestamptz,
-  add column if not exists legacy_distribution_cutoff_at timestamptz not null default pg_catalog.now();
+  add column if not exists legacy_distribution_cutoff_at timestamptz not null default pg_catalog.now(),
+  add column if not exists legacy_distribution_choice text
+    check (legacy_distribution_choice is null or legacy_distribution_choice in ('granted', 'hidden'));
 
 create schema if not exists private;
 
@@ -91,6 +93,7 @@ as $function$
   select exists (
     select 1
       from public.posts p
+     join public.profiles author on author.id = p.user_id
      where p.id = p_post_id
        and (
          p.user_id = auth.uid()
@@ -98,6 +101,10 @@ as $function$
          or (
            p.status = 'approved'
            and private.has_active_distribution_consent(p.user_id, 'publication')
+           and (
+             p.created_at > author.legacy_distribution_cutoff_at
+             or author.legacy_distribution_choice = 'granted'
+           )
          )
        )
   );
@@ -138,9 +145,7 @@ as $function$
       exists (
         select 1
           from public.post_images i
-          join public.posts p on p.id = i.post_id
-         where p.status = 'approved'
-           and private.has_active_distribution_consent(p.user_id, 'publication')
+         where private.can_read_distribution_post(i.post_id)
            and pg_catalog.right(
                  coalesce(i.url, ''),
                  pg_catalog.length(
@@ -247,7 +252,8 @@ returns table (
   has_approved_posts boolean,
   already_prompted boolean,
   profile_public_active boolean,
-  publication_active boolean
+  publication_active boolean,
+  legacy_choice text
 )
 language plpgsql
 stable
@@ -272,7 +278,8 @@ begin
     ),
     p.legacy_distribution_prompted_at is not null,
     private.has_active_distribution_consent(v_user_id, 'profile_public'),
-    private.has_active_distribution_consent(v_user_id, 'publication')
+    private.has_active_distribution_consent(v_user_id, 'publication'),
+    p.legacy_distribution_choice
   from public.profiles p
   where p.id = v_user_id;
 end;
@@ -370,7 +377,11 @@ begin
   end if;
 
   update public.profiles
-     set legacy_distribution_prompted_at = pg_catalog.now()
+     set legacy_distribution_prompted_at = pg_catalog.now(),
+         legacy_distribution_choice = case
+           when p_decision = 'grant_existing' then 'granted'
+           else 'hidden'
+         end
    where id = v_user_id
    returning legacy_distribution_prompted_at into v_prompted_at;
 
@@ -408,6 +419,16 @@ begin
 
   perform public.revoke_my_distribution_consent('profile_public');
   perform public.revoke_my_distribution_consent('publication');
+
+  -- A later grant for new posts must not silently re-publish pre-migration rows
+  -- after the user has explicitly withdrawn all distribution consent.
+  update public.profiles
+     set legacy_distribution_prompted_at = coalesce(
+           legacy_distribution_prompted_at,
+           pg_catalog.now()
+         ),
+         legacy_distribution_choice = 'hidden'
+   where id = v_user_id;
 end;
 $function$;
 
