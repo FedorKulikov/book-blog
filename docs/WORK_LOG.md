@@ -710,3 +710,21 @@ For this B12-fix2 PR, the production client-write smoke step is skipped because 
 
 
 A further source/test review identified a Stage 1 regression: the #89 post-read predicate allowed any active publication consent to reopen pre-cutoff posts after the author had chosen hidden. Migration 20261216 now applies the original Stage 4 distinction consistently to post RLS and the public view counter: active publication consent covers posts at/after the cutoff, or pre-cutoff posts only when the owner explicitly selected grant_existing; undecided pre-cutoff posts remain visible while choice is NULL. hide_existing keeps future-publication consent intact and uses the legacy choice to hide only old posts. Regression fixtures cover explicit legacy grant, hide followed by later publication consent, a new post remaining visible, post-counter parity, and profile-only hide preserving an independent publication scope. All fixture rows are rolled back.
+
+
+## 2026-11-23 — B12-fix2 Stage 3/4 deployment and production verification
+
+PR #91 merged to main as c3a24db053e35930158c75f957e1906bebb156c0 (head 8e1c1e9737a9f712d741e95d9a43774ab983f14b). Web quality checks passed, including all four jobs: quality/build, local Supabase Auth + Storage integration, PostgreSQL 17 personal-data-consent migrations/regression, and PostgreSQL 17 email recovery. Chat security smoke passed 32/32; its production client-write step was confirmed skipped for this B12-fix2 PR because that harness writes consent-history rows for generated production accounts.
+
+Production workflow 45176986018 completed successfully, including Apply migrations, migration history, schema verification, and Stage 4 production privacy verification. It applied supabase/migrations/20261216_legacy_profile_only_choice.sql at 2026-11-23 12:43:38.188302 UTC, checksum ab5697591f760be22ecbea0f903c2b47710cbfab178c0c12792903cebaabc9a7, by postgres.
+
+Read-only production verification after deployment:
+- 19 profiles; all 19 remain undecided (legacy_distribution_choice IS NULL).
+- 9 approved posts remain pre-cutoff and visible pending each author's choice.
+- Anonymous RLS returns 19 profiles and 9 approved posts.
+- anon/authenticated can execute the two RLS predicates and public view counter; PUBLIC/service_role cannot execute the post predicate. The prompt-state and decision RPCs remain authenticated-only.
+- Consent history remains exactly 40 rows, 2 active; both active rows belong to the two existing data-smoke-a-* accounts. No production consent row was created, backfilled, updated, or revoked by this work.
+
+Regression SQL ran against disposable PostgreSQL 17 fixtures and finished with ROLLBACK. It covers pending legacy visibility, explicit grant_existing, profile-only hide/grant, preserved independent future-publication consent, post-cutoff publication visibility, hidden legacy non-republication, counter parity, and staff/owner access.
+
+Still not browser-verified under a signed-in session: /profile, /profile/edit, and /admin; that requires the local session from .env.local. The separate production health smoke 45172846625 had HTTP 200 for both domains but failed its expected homepage SEO-marker assertion; that remains an independent follow-up.
