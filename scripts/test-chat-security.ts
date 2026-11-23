@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { SMOKE_ACCOUNT_PREFIX } from './lib/smoke-account-config'
 
 const SUPA_URL = process.env.SUPABASE_URL ?? ''
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -50,7 +51,7 @@ function safeError(error: { code?: string; status?: number } | null) {
 }
 
 async function createTestUser(prefix: string): Promise<TestUser> {
-  const email = `chat-smoke-${prefix}-${stamp}@example.com`
+  const email = `${SMOKE_ACCOUNT_PREFIX.chat}${prefix}-${stamp}@example.com`
   const username = `chat_smoke_${prefix}_${stamp}`
   const { data, error } = await admin.auth.admin.createUser({
     email,
