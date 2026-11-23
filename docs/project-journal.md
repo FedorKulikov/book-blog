@@ -573,3 +573,11 @@
 - Two explicit buttons call `resolve_my_legacy_distribution_prompt()` only after a user click. The text says old rows/files are retained, and makes clear that future-publication consent is a separate scope. A previously saved `granted` or `hidden` decision is reflected on later visits.
 - Added fallback links to `/profile/edit` and `/consent-distribution` if state lookup fails or the user wants full settings.
 - No migration, consent insertion/backfill, production data write or service-role path was added. Existing SQL regression coverage for the resolver remains the DB test; this PR requires normal Web CI. Authenticated browser QA for /welcome remains pending because .env.local session credentials are not available here.
+
+## 2026-11-23 — Agent interruption and recovery protocol
+
+- Added `docs/agent-working-protocol.md` after researching OpenAI's current troubleshooting guidance, the official 2026-09-29 service RCA, a public Codex SSE idle-timeout issue, and user-reported ChatGPT interruptions.
+- Clearly separated verified OpenAI information from third-party reports and qualitative observations from our own long GitHub/Supabase/CI sessions. Large logs and long final messages are not stated as proven causes.
+- Set the operating limit to five substantial work steps per response. Each completed step is committed and pushed to the working branch; one response covers one stage/area; CI waits use a saved run ID and are checked in a separate step; logs are summarized and final reports stay within ten lines.
+- Added recovery instructions to inspect branch/commit/PR/CI and external system state before resuming or repeating a possibly completed write.
+- Documentation-only change. No code, migrations, production records, secrets, or user data changed. Exact cause of the ChatGPT banner remains unverified.

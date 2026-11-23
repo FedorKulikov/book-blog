@@ -739,3 +739,13 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Write boundary:** the state RPC is read-only. `resolve_my_legacy_distribution_prompt()` is called only from the two explicit decision buttons. No automatic acceptance, onboarding side effect, consent seed, migration or production write was added. Existing `/profile/edit` remains the full settings location.
 
 **Not completed:** signed-in browser QA for /welcome remains unavailable because the local session from `.env.local` is not present in this execution environment. CI (TypeScript, ESLint, production build and existing PostgreSQL regression suite) is the next gate; production consent-write smoke remains excluded for B12-fix2.
+
+## 2026-11-23 — Agent working / interruption recovery protocol
+
+**Required:** investigate the recurring ChatGPT “Connection interrupted. Waiting for the complete answer” banner and define a resumable, low-output work protocol.
+
+**Implemented:** added `docs/agent-working-protocol.md`. It distinguishes official OpenAI troubleshooting/RCA, public Codex SSE-idle-timeout observations, community reports, and our own uninstrumented observations. It defines a maximum of five substantial work steps per response, one task area per stage, commit + push after each completed step, concise logs/reports, explicit CI run IDs, and a post-interruption state-reconciliation sequence for branches, PRs, workflows, migrations, and external writes.
+
+**Validation:** documentation-only review; references point to OpenAI Help Center, OpenAI Status RCA, public OpenAI Codex issue, and community reports. No application code, migrations, production data, or secrets changed.
+
+**Limitations:** exact ChatGPT stream failure mechanism is not publicly established; no claim is made that long logs, CI waits, or long final messages are proven root causes.
