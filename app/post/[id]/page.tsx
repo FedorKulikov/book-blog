@@ -49,10 +49,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     ? `${post.title} — ${truncate(plainContent, 38)}`
     : post.title
   const canonical = `/post/${post.id}`
-  const images = post.post_images.slice(0, 4).map(image => ({
-    url: image.url,
-    alt: post.title,
-  }))
+  // Private user media must not be emitted as public crawler URLs.
+  const images = [{ url: '/og-default.jpg', width: 1200, height: 630 }]
 
   return {
     title: metaTitle,
@@ -117,9 +115,7 @@ export default async function PostPage({ params }: PageProps) {
               name: 'Хлеба и букв',
               url: SITE_URL,
             },
-            image: post.post_images.length
-              ? post.post_images.slice(0, 4).map(image => image.url)
-              : undefined,
+            image: `${SITE_URL}/og-default.jpg`,
             about: post.books?.title
               ? {
                   '@type': 'Book',
