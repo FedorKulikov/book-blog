@@ -12,6 +12,13 @@ on:
       - 'scripts/test-client-write-security.ts'
       - 'scripts/cleanup-data-smoke-users.ts'
       - 'scripts/lib/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/cleanup-data-smoke-users.ts'
+      - 'scripts/lib/**'
+      - '.github/workflows/chat-security-smoke.yml'
       - '.github/workflows/chat-security-smoke.yml'
       - 'supabase/migrations/**'
       - 'app/signup/page.tsx'
@@ -33,14 +40,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: chat-security-smoke-${{ github.event.pull_request.number || github.event.workflow_run.id }}
+  group: chat-security-smoke-${{ github.event.pull_request.number || github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   smoke:
     if: >-
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -98,7 +106,7 @@ jobs:
       # This workflow must never create production consent records for test users.
 
       - name: Require production smoke-cleanup credentials
-        if: github.event_name == 'workflow_run'
+        if: github.event_name != 'pull_request'
         env:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
@@ -114,7 +122,7 @@ jobs:
           echo "Required service-role/publishable credentials are configured (values were not printed)."
 
       - name: Production smoke-account cleanup dry-run
-        if: github.event_name == 'workflow_run'
+        if: github.event_name != 'pull_request'
         env:
           SUPABASE_URL: https://tbqjyaxbymntdqzldrjz.supabase.co
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
