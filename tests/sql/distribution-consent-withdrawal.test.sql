@@ -149,17 +149,29 @@ set local role authenticated;
 select pg_catalog.set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 do $owner_access$
 declare
-  v_profiles integer;
+  v_own_profile integer;
+  v_chat_peer_profile integer;
+  v_unrelated_profile integer;
   v_posts integer;
   v_images integer;
 begin
-  select count(*) into v_profiles from public.profiles;
+  select count(*) into v_own_profile
+    from public.profiles
+   where id = auth.uid();
+  -- A and B have a conversation, so both may read the counterpart's profile.
+  select count(*) into v_chat_peer_profile
+    from public.profiles
+   where id = '22222222-2222-4222-8222-222222222222';
+  select count(*) into v_unrelated_profile
+    from public.profiles
+   where id = '33333333-3333-4333-8333-333333333333';
   select count(*) into v_posts from public.posts;
   select count(*) into v_images from public.post_images;
 
-  if v_profiles <> 1 or v_posts <> 1 or v_images <> 1 then
-    raise exception 'owner lost access to own hidden material: uid %, profiles %, posts %, images %',
-      auth.uid(), v_profiles, v_posts, v_images;
+  if v_own_profile <> 1 or v_chat_peer_profile <> 1
+     or v_unrelated_profile <> 0 or v_posts <> 1 or v_images <> 1 then
+    raise exception 'owner/chat privacy mismatch: uid %, own profile %, chat peer %, unrelated %, posts %, images %',
+      auth.uid(), v_own_profile, v_chat_peer_profile, v_unrelated_profile, v_posts, v_images;
   end if;
 
   if (select has_approved_posts from public.my_legacy_distribution_prompt_state()) is not true
