@@ -20,6 +20,7 @@ declare
   v_is_definer boolean;
   v_empty_path boolean;
   v_owner_postgres boolean;
+  v_notifications_fn oid := 'public.my_profile_notification_settings()'::regprocedure;
 begin
   if has_function_privilege('anon', v_guard, 'EXECUTE')
      or has_function_privilege('authenticated', v_guard, 'EXECUTE')
@@ -31,6 +32,21 @@ begin
      or not has_function_privilege('authenticated', v_has_consent, 'EXECUTE')
      or not has_function_privilege('service_role', v_has_consent, 'EXECUTE') then
     raise exception 'has_my_profile_public_consent grants are incorrect';
+  end if;
+
+  if has_function_privilege('anon', v_notifications_fn, 'EXECUTE')
+     or not has_function_privilege('authenticated', v_notifications_fn, 'EXECUTE') then
+    raise exception 'private notification settings RPC grants are incorrect';
+  end if;
+
+  if has_column_privilege('anon', 'public.profiles', 'notifications_muted', 'SELECT')
+     or has_column_privilege('authenticated', 'public.profiles', 'notifications_muted', 'SELECT') then
+    raise exception 'notifications_muted remains directly selectable through the public profiles table';
+  end if;
+
+  if not has_column_privilege('anon', 'public.profiles', 'username', 'SELECT')
+     or not has_column_privilege('authenticated', 'public.profiles', 'username', 'SELECT') then
+    raise exception 'public profile column SELECT grants were not preserved';
   end if;
 
   select p.prosecdef,
@@ -120,6 +136,10 @@ begin
   get diagnostics v_count = row_count;
   if v_count <> 1 then
     raise exception 'private notifications setting update did not succeed';
+  end if;
+
+  if public.my_profile_notification_settings() is not true then
+    raise exception 'owner-only notification RPC did not return the updated private setting';
   end if;
 
   begin
