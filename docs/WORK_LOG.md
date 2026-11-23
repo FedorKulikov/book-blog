@@ -728,3 +728,14 @@ Read-only production verification after deployment:
 Regression SQL ran against disposable PostgreSQL 17 fixtures and finished with ROLLBACK. It covers pending legacy visibility, explicit grant_existing, profile-only hide/grant, preserved independent future-publication consent, post-cutoff publication visibility, hidden legacy non-republication, counter parity, and staff/owner access.
 
 Still not browser-verified under a signed-in session: /profile, /profile/edit, and /admin; that requires the local session from .env.local. The separate production health smoke 45172846625 had HTTP 200 for both domains but failed its expected homepage SEO-marker assertion; that remains an independent follow-up.
+
+
+## 2026-11-23 — B12-fix2 Stage 2 UI: legacy choice on /welcome
+
+**Required:** make the one-time legacy distribution choice discoverable during authenticated onboarding, while preserving the rule that consent is never written without the user's explicit action.
+
+**Implemented:** `app/welcome/WelcomeClient.tsx` now loads the current user's legacy prompt state through the authenticated-only `my_legacy_distribution_prompt_state()` RPC. If a pre-cutoff profile and/or approved legacy posts still await a decision, /welcome displays the pending-visible state and offers two explicit actions: confirm distribution or hide the applicable legacy material. Copy distinguishes profile-only, posts-only and combined cases, explains that hidden records/files are retained, and clarifies that future-publication consent is separate. The page links to /profile/edit and /consent-distribution. A saved legacy decision is shown when the route is revisited.
+
+**Write boundary:** the state RPC is read-only. `resolve_my_legacy_distribution_prompt()` is called only from the two explicit decision buttons. No automatic acceptance, onboarding side effect, consent seed, migration or production write was added. Existing `/profile/edit` remains the full settings location.
+
+**Not completed:** signed-in browser QA for /welcome remains unavailable because the local session from `.env.local` is not present in this execution environment. CI (TypeScript, ESLint, production build and existing PostgreSQL regression suite) is the next gate; production consent-write smoke remains excluded for B12-fix2.
