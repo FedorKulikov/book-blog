@@ -521,6 +521,14 @@ export async function cleanupSmokeUsers(
   // Auth deletion cascades profiles, posts, reports, notifications and the full
   // consent history (active and revoked). No consent is inserted or revoked here.
   for (const user of users) {
+    const { data: current, error: lookupError } = await admin.auth.admin.getUserById(user.id)
+    if (lookupError) {
+      if (lookupError.status === 404) continue
+      throw new Error('Auth lookup failed for ' + user.email + ' (status=' + (lookupError.status ?? 'unknown') + ')')
+    }
+    if (current.user.email?.toLowerCase() !== user.email.toLowerCase()) {
+      throw new Error('Auth email changed for manifest ID ' + user.id + '; refusing deletion')
+    }
     const { error } = await admin.auth.admin.deleteUser(user.id)
     if (error) {
       throw new Error('Auth deletion failed for ' + user.email + ' (status=' + (error.status ?? 'unknown') + ')')
