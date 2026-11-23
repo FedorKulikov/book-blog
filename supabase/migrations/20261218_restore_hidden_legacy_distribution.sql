@@ -93,7 +93,7 @@ end;
 $function$;
 
 comment on function public.restore_hidden_legacy_distribution(uuid) is
-  'Restores only the authenticated caller hidden pre-cutoff materials, records missing publication/profile scopes through record_my_distribution_consent, and changes only legacy_distribution_choice to granted.';
+  'Server-only restoration for the user ID verified by the route; records missing scopes through record_my_distribution_consent and changes only legacy_distribution_choice to granted.';
 
 revoke all on function public.restore_hidden_legacy_distribution(uuid)
   from public, anon, authenticated, service_role;
