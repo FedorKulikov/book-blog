@@ -621,3 +621,9 @@
 - Production PostgREST dry-run initially stopped on `public.likes` with SQLSTATE 42703. Verified the live schema: likes uses composite primary key `(user_id, post_id)` and has no `id`; corrected the select and row type accordingly. No delete/write step ran.
 
 - Moved the production dry-run gate to a successful `Apply DB migrations` workflow completion on `main`. The PR-triggered chat security job still validates TypeScript and chat cleanup but skips production inventory; after merge and successful migration rollout, the workflow-run event executes the production dry-run with the new RPC available.
+
+## 2026-11-23 — Production dry-run reached guard; fix composite likes query
+
+- Following successful migration rollout, the production dry-run read the full inventory for 61 accounts using Auth Admin, Storage API and PostgREST. It reported 40 consent rows (2 active / 38 revoked), 2 posts, 2 books, 1 report, 10 notifications and 6 Storage objects; it also reported 9 profiles, 4 conversations, 2 messages, 1 ticket and 1 ticket message.
+- The safety guard stopped on a stale second `likes` query selecting nonexistent `id` from `public.likes`. The live schema has composite key `(user_id, post_id)`; corrected the guard select. No foreign-content check completed in that attempt and no production data changed.
+- Added a narrowly path-filtered `push: main` trigger for cleanup code/workflow updates so a code-only fix reruns the read-only dry-run after merge. `--delete` remains absent from the workflow.
