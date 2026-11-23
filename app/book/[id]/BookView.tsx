@@ -5,6 +5,7 @@ import Link from 'next/link'
 import PostCard from '@/app/components/PostCard'
 import EmptyState from '@/app/components/EmptyState'
 import ViewCounterBook from '@/app/components/ViewCounterBook'
+import StorageImage from '@/app/components/StorageImage'
 import {
   BookOpen,
   PenLine,
@@ -55,7 +56,7 @@ export default function BookView({
       <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6 mb-10 bg-emerald-deep rounded-2xl p-6 md:p-8 text-cream">
         {/* Обложка */}
         {book.cover_url ? (
-          <img
+          <StorageImage
             src={book.cover_url}
             alt={book.title}
             className="w-full aspect-[2/3] object-cover rounded-lg"
