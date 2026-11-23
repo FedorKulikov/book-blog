@@ -5,7 +5,7 @@ export function decodeTagSlug(value: string): string | null {
 }
 
 export function normalizeTagName(value: string): string {
-  return value.normalize('NFC').replace(/^#+/u, '').trim().replace(/\s+/gu, ' ')
+  return value.normalize('NFC').trim().replace(/^#+/u, '').trim().replace(/\s+/gu, ' ')
 }
 
 export function createTagSlug(value: string): string {

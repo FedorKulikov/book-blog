@@ -49,7 +49,8 @@ test('publishing with three hashtags creates three tag rows and three post links
         },
         async single() {
           assert.ok(inserted)
-          const row = { id: `tag-${++sequence}`, ...inserted }
+          const values = inserted as { name: string; slug: string }
+          const row = { id: `tag-${++sequence}`, name: values.name, slug: values.slug }
           tags.push(row)
           return { data: row, error: null }
         },

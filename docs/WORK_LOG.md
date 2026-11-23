@@ -923,3 +923,5 @@ Fix second likes query in production safety guard
 - Production browser route `/tag/творчество` до merge/deploy не проверен; CI проверяет decode/parser и SQL миграцию в отдельной базе.
 - Supabase CLI отсутствовал, `npx` попытка истекла по тайм-ауту. Production migration auto-apply workflow не запускался; миграция будет ждать PR merge.
 - Не менялись RLS, grants, прочие workflow, юридические документы, production data или production schema.
+- По результатам CI исправлены дефекты тестовой обвязки: fixture `tags.id` теперь повторяет production default `gen_random_uuid()`, PL/pgSQL переменная в SQL assertion переименована для устранения неоднозначности, fake Supabase client типизирован явно; `normalizeTagName` теперь удаляет ведущие пробелы перед снятием `#`.
+
