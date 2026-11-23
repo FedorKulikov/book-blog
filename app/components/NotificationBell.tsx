@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { Bell } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
+import StorageImage from './StorageImage'
 import type { User } from '@supabase/supabase-js'
 
 type Notification = {
@@ -496,7 +497,7 @@ export default function NotificationBell() {
                     <div className="shrink-0 w-9 h-9 rounded-full overflow-hidden bg-emerald-mid/20 flex items-center justify-center text-emerald-dark text-sm font-semibold">
                       {n.actor_avatar ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <StorageImage
                           src={n.actor_avatar}
                           alt={n.actor_username || ''}
                           className="w-full h-full object-cover"
