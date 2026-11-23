@@ -581,3 +581,13 @@
 - Set the operating limit to five substantial work steps per response. Each completed step is committed and pushed to the working branch; one response covers one stage/area; CI waits use a saved run ID and are checked in a separate step; logs are summarized and final reports stay within ten lines.
 - Added recovery instructions to inspect branch/commit/PR/CI and external system state before resuming or repeating a possibly completed write.
 - Documentation-only change. No code, migrations, production records, secrets, or user data changed. Exact cause of the ChatGPT banner remains unverified.
+
+## 2026-11-23 — Data-smoke cleanup engine (stage 1)
+
+- Added a reusable cleanup module and an explicit one-shot CLI for accumulated `data-smoke-*@example.com` Auth accounts.
+- The CLI prints a dry-run inventory first. Only the explicit `--delete` mode performs cleanup; default execution is not enabled.
+- Storage is enumerated by exact `storage.objects.owner_id` and removed through the Storage API. Books and user-authored external-news rows are explicitly deleted because their FK behavior is `SET NULL`; Auth deletion then cascades profile-owned app data and all consent history, including revoked rows.
+- A pre-delete guard refuses to proceed if foreign/non-smoke chat, post interactions, reports/notifications or ticket replies would be cascade-deleted.
+- Added a final Management API read-only SQL check for remaining `data-smoke` Auth users, consent rows, profiles, posts, books, reports, notifications, Storage objects and external news.
+- Scope: only `data-smoke-*@example.com`; non-smoke accounts are not eligible. No production data was changed. CI/typecheck and integration into regular smoke/workflow remain for the next stage.
+
