@@ -612,3 +612,12 @@ Added `profiles.legacy_distribution_cutoff_at DEFAULT now()` and restricted lega
 Updated `StorageImage`: identical object paths share one in-memory signed URL request/cache per viewer, with a 5-second safety margin before 60-second expiry. The cache is not persisted and is partitioned by viewer ID. A failed/expired/unauthorized image displays a neutral placeholder via `onError` rather than a broken image; the page remains usable.
 
 Documented the sizing check: 20 unique root-comment avatars can generate up to 20 signed URLs, with repeated object paths deduplicated; visible replies and other unique page images add their own signatures. Confirmed post/profile/book Open Graph, Twitter and JSON-LD use `/og-default.jpg`; sitemap has no image URLs and is dynamically filtered by RLS. CI and production visual verification are still pending; do not merge before green checks.
+
+
+## 2026-11-23 — B12 Stage 4 CI correction: legacy cutoff SQL fixture
+
+The first PostgreSQL 17 run exposed a fixture mismatch: the CI `public.posts` table lacked production's `created_at` column. Added `created_at timestamptz NOT NULL DEFAULT now()` to the workflow fixture.
+
+A second issue was identified in `my_legacy_distribution_prompt_state()`: the cutoff comparison used the posts alias instead of the profile alias. Corrected it to `post.created_at <= profile.legacy_distribution_cutoff_at`.
+
+Preserved explicit `legacy_distribution_choice` behavior and regression coverage: future publication consent must not republish content previously hidden by the one-time legacy decision or a later revoke-all; a new post created after the cutoff remains visible with active consent. The PostgreSQL CI test covers these scenarios. The corrections still require a green run on the current head; production migration has not been applied.
