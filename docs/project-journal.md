@@ -602,3 +602,6 @@
 - No production data was changed. Next gate is to inspect CI's actual dry-run list and foreign-content guard before enabling `--delete`.
 
 - Initial CI attempt failed at TypeScript only: the script's `URL` string shadowed the global URL constructor in the production guard. Corrected it to `globalThis.URL`; the failed run stopped before smoke execution and before any production operation.
+
+- PR #94 dry-run attempt: chat security tests passed 32/32 and all three required CI secret variables were present. The Management API read-only query returned HTTP 403 before inventory/safety evaluation. Supabase's current endpoint documentation requires the scoped PAT permission `database_read` (Dashboard: Database → Read) and access to the target project. The service-role/secret key was working; no production deletes or consent writes occurred.
+- Next gate: replace only the GitHub `SUPABASE_ACCESS_TOKEN` secret with a token that has Database → Read for project `tbqjyaxbymntdqzldrjz`, then rerun the dry-run. Do not enable `--delete` until the complete inventory and safety guard are visible and reviewed.
