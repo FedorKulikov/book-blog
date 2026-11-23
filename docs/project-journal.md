@@ -635,3 +635,10 @@
 - Production dry-run succeeded on PR #96 (run `45205225391`): 63 matched Auth accounts — 58 `data-smoke-*` and 5 `chat-smoke-*`. Inventory: 9 profiles, 2 posts, 2 books, 1 report, 10 notifications, 40 consent rows (2 active, 38 revoked), 6 Storage objects, 4 conversations, 2 messages, 1 ticket and 1 ticket message; comments, likes, bookmarks, follows, external news and post images were 0.
 - `assertNoForeignContentWouldBeCascadeDeleted` completed successfully (`CLEANUP SAFETY PASS`); the script ended in dry-run-only mode. No production data was modified or deleted. The run's per-account lines contain each selected email, Auth ID and related-record counts.
 - Chat security smoke and all Web quality jobs completed successfully on the same PR head.
+
+## 2026-11-23 — Pin exact 63-account production cleanup
+
+- Captured the exact 63 email/Auth-ID pairs from the successful production dry-run log (`45205225391`, job `137799043533`) in `scripts/cleanup-data-smoke-users-2026-11-23.json`.
+- Added a manifest mode that requires exactly 63 unique entries and verifies each email/ID pair against live Auth Admin before inventory, guard or deletion. It cannot widen selection to other prefix-matching accounts. The script prints the complete audit target list before any deletion.
+- CI for PR #96 is configured to delete only this manifest. Future successful production smoke workflow runs execute guarded prefix cleanup after smoke to avoid accumulating test accounts.
+- At journal update time the exact production deletion is pending CI; no deletion is claimed yet.
