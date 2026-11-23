@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   assertNoForeignContentWouldBeCascadeDeleted,
+  getAuthUsersByIds,
   cleanupSmokeUsers,
   getDataSmokeInventory,
   listDataSmokeUsers,
@@ -78,27 +79,22 @@ async function main() {
       throw new Error('cleanup manifest must contain exactly the approved 63-account snapshot')
     }
     const manifestIds = new Set<string>()
-    const validated: Array<{ id: string; email: string }> = []
     for (const entry of manifest.accounts) {
       if (!entry.email || !entry.id || manifestIds.has(entry.id)) {
         throw new Error('cleanup manifest contains a missing or duplicate account')
       }
       manifestIds.add(entry.id)
-      const { data, error } = await admin.auth.admin.getUserById(entry.id)
-      if (error) {
-        if (error.status === 404) {
-          console.log('MANIFEST ACCOUNT ALREADY ABSENT — ' + entry.email + ' :: ' + entry.id)
-          validated.push({ id: entry.id, email: entry.email })
-          continue
-        }
-        throw new Error('Auth Admin lookup failed for manifest account ' + entry.email + ' (status=' + (error.status ?? 'unknown') + ')')
-      }
-      if (data.user.email?.toLowerCase() !== entry.email.toLowerCase()) {
+    }
+    const authUsersById = await getAuthUsersByIds(admin, manifest.accounts.map(entry => entry.id))
+    users = manifest.accounts.map(entry => {
+      const current = authUsersById.get(entry.id)
+      if (!current) {
+        console.log('MANIFEST ACCOUNT ALREADY ABSENT — ' + entry.email + ' :: ' + entry.id)
+      } else if (current.email.toLowerCase() !== entry.email.toLowerCase()) {
         throw new Error('cleanup manifest Auth email mismatch for ID ' + entry.id + '; refusing deletion')
       }
-      validated.push({ id: entry.id, email: entry.email })
-    }
-    users = validated
+      return { id: entry.id, email: entry.email }
+    })
     console.log('EXACT MANIFEST MODE — only the 63 reviewed Auth IDs below are eligible for deletion')
   }
 
