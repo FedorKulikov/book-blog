@@ -772,3 +772,4 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 
 **Validation:** production deletion has not been run. CI dry-run is pending PR execution; the first production inventory and cross-account guard result must be inspected before any deletion stage.
 
+**CI follow-up:** the first PR run stopped at TypeScript because a local `URL` string shadowed the global constructor in the production guard. Changed the guard to use `globalThis.URL`. No smoke test or production cleanup ran in the failed attempt.
