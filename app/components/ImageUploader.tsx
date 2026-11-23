@@ -7,6 +7,7 @@ import {
   MAX_IMAGE_BYTES,
   validateImageFile,
 } from './imageValidation'
+import StorageImage from './StorageImage'
 
 type Props = {
   onUploaded: (urls: string[]) => void
@@ -168,7 +169,7 @@ export default function ImageUploader({ onUploaded, enabled = true, onUploadingC
         <div className="flex flex-wrap gap-2 mt-3">
           {previews.map((url, i) => (
             <div key={`${url}-${i}`} className="relative group">
-              <img
+              <StorageImage
                 src={url}
                 alt=""
                 className="w-20 h-20 object-cover rounded border border-emerald-dark/20"
