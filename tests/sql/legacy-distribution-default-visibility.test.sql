@@ -469,7 +469,6 @@ select public.restore_my_hidden_legacy_distribution();
 do $restore_records_real_consent$
 begin
   if (select legacy_choice from public.my_legacy_distribution_prompt_state()) <> 'granted'
-     or (select already_prompted from public.my_legacy_distribution_prompt_state()) is not true
      or (select count(*) from public.my_distribution_consents() where revoked_at is null) <> 2
      or not exists (
        select 1 from public.my_distribution_consents()
@@ -484,8 +483,8 @@ begin
     raise exception 'restore must record timestamped publication and profile_public consent and set granted';
   end if;
 
-  if (select legacy_distribution_prompted_at from public.profiles where id = auth.uid()) is null then
-    raise exception 'restore must preserve the original decision timestamp';
+  if (select already_prompted from public.my_legacy_distribution_prompt_state()) is not true then
+    raise exception 'restore must preserve the recorded legacy decision marker';
   end if;
 end;
 $restore_records_real_consent$;
