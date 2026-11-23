@@ -9,14 +9,10 @@ import { SMOKE_ACCOUNT_EMAIL_PREFIXES } from './lib/smoke-account-config'
 
 const URL = process.env.SUPABASE_URL ?? ''
 const SECRET = process.env.SUPABASE_SECRET_KEY ?? ''
-const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN ?? ''
-const PROJECT_REF = process.env.SUPABASE_PROJECT_REF ?? ''
 
 for (const [name, value] of Object.entries({
   SUPABASE_URL: URL,
   SUPABASE_SECRET_KEY: SECRET,
-  SUPABASE_ACCESS_TOKEN: ACCESS_TOKEN,
-  SUPABASE_PROJECT_REF: PROJECT_REF,
 })) {
   if (!value) throw new Error(`missing environment variable: ${name}`)
 }
@@ -49,12 +45,21 @@ const INVENTORY_FIELDS = [
   'post_images',
 ] as const
 
+function apiKeyOnlyFetch(key: string): typeof fetch {
+  return (input, init) => {
+    const headers = new Headers(init?.headers)
+    if (headers.get('authorization') === 'Bearer ' + key) headers.delete('authorization')
+    return fetch(input, { ...init, headers })
+  }
+}
+
 async function main() {
   const admin = createClient(URL, SECRET, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: apiKeyOnlyFetch(SECRET) },
   })
   const users = await listDataSmokeUsers(admin)
-  const inventory = await getDataSmokeInventory(PROJECT_REF, ACCESS_TOKEN, users)
+  const inventory = await getDataSmokeInventory(admin, users)
 
   if (inventory.length !== users.length) {
     throw new Error(`Auth/SQL inventory mismatch: ${users.length} users, ${inventory.length} inventory rows`)
@@ -73,7 +78,7 @@ async function main() {
   }
   console.log(`TOTAL RELATED RECORDS — ${JSON.stringify(totals)}`)
 
-  await assertNoForeignContentWouldBeCascadeDeleted(PROJECT_REF, ACCESS_TOKEN)
+  await assertNoForeignContentWouldBeCascadeDeleted(admin, users)
   console.log('CLEANUP SAFETY PASS — no non-smoke content is linked in a way that would be cascade-deleted')
 
   if (dryRunRequested) {
@@ -82,7 +87,7 @@ async function main() {
   }
 
   console.log(`DELETE — removing ${users.length} explicitly matched smoke accounts`)
-  const residuals = await cleanupSmokeUsers(admin, PROJECT_REF, ACCESS_TOKEN, users)
+  const residuals = await cleanupSmokeUsers(admin, users)
   const remaining = Object.values(residuals).reduce((sum, count) => sum + count, 0)
   console.log(`CLEANUP RESULT — ${JSON.stringify(residuals)}`)
   if (remaining !== 0) {
