@@ -48,7 +48,7 @@ function CoverPlaceholder({ label }: { label: string }) {
   )
 }
 
-/** Обложка: у внешних новостей — через next/image (http-источники чинятся там) */
+/** Внешние новости идут напрямую к источнику, без Next Image optimizer. */
 function CardCover({
   item,
   className,

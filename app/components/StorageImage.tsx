@@ -168,6 +168,7 @@ export default function StorageImage({
   alt,
   className,
   style,
+  fallback,
   ...imageProps
 }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
   src?: string | null
