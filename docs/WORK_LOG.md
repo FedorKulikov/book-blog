@@ -683,3 +683,12 @@ The migration does not insert, update, or backfill `private.personal_data_consen
 No UI, books, privacy policy, email recovery, Hook, secrets, or production data were changed. The migration is not applied to production by this change.
 
 A full CI run also surfaced a related public counter mismatch: the production `increment_post_views(uuid)` ACL lacked EXECUTE for `anon`/`authenticated`, and the counter condition did not include pending legacy posts. Extended the same migration to replace that function with the same public-distribution predicate, revoke implicit `PUBLIC` execution and explicitly grant `anon` plus `authenticated`. SQL coverage now checks public counter grant, pending legacy increment, hidden legacy no-increment, and increment after a real consent. This is a migration-only fix; it has not been applied to production.
+
+
+## 2026-11-23 — B12-fix2 Stage 1 production ACL follow-up
+
+PR #89 merged as `41948d0154b68b89a99140dc1e7a6539ae54033b`. The production migration workflow applied `20261214_legacy_distribution_default_visibility.sql` at 2026-11-23 12:11:33 UTC (registered checksum `6066b9ddf1f7858bdd675db39ef5fd6cf612781c45730625cf5c42edd6d17d7c`). The public counter now has EXECUTE for `anon` and `authenticated`.
+
+The first post-deploy anonymous RLS read exposed a separate ACL gap: `private.can_read_distribution_profile(uuid)` and `private.can_read_distribution_post(uuid)`, which are invoked directly by public SELECT policies, had EXECUTE only for `postgres`. The attempted verification transaction failed with SQLSTATE `42501` and was rolled back before any counter update or data mutation. The schema already grants `USAGE` on `private`; no broad schema grant is needed.
+
+Prepared follow-up migration `20261215_distribution_read_helper_acl.sql` to revoke `PUBLIC`/service-role access and grant EXECUTE only to `anon` and `authenticated` on those two RLS predicates. Added explicit ACL assertions to the PostgreSQL regression test and an idempotent twice-applied step in Web quality CI. This follow-up is pending PR review/merge and production application; public read restoration is not yet verified. No consent rows or user data were created, updated, or deleted.

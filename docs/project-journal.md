@@ -534,3 +534,11 @@
 **Tests added:** `tests/sql/legacy-distribution-default-visibility.test.sql` covers pending pre-cutoff posts/profiles, hiding after the actual one-time hide RPC, restoring visibility after actual user-scoped consent, strict cutoff behavior for a fresh profile, post-cutoff INSERT rejection with SQLSTATE `42501`, owner retention and admin access. The PostgreSQL 17 workflow applies the new migration twice before running the test. No book, UI, privacy, recovery, Hook, or secret files were changed. Production was not modified.
 
 **CI follow-up:** the first full workflow run found that production `increment_post_views(uuid)` did not have `EXECUTE` for `anon` or `authenticated`, and its SQL predicate also excluded undecided legacy posts. Read-only inspection confirmed the missing grants. The same migration now aligns the counter with the pending-legacy/publication-consent predicate and explicitly grants only `anon` and `authenticated` (after revoking `PUBLIC`). The SQL test verifies pending legacy increments, hidden legacy non-increments, real-consent increments, and the RPC grants. No production change was applied.
+
+
+## 2026-11-23 — B12-fix2 Stage 1 production ACL follow-up
+
+- PR #89 merged as `41948d0154b68b89a99140dc1e7a6539ae54033b`; the production apply-migrations workflow registered `20261214_legacy_distribution_default_visibility.sql` at 12:11:33 UTC with checksum `6066b9ddf1f7858bdd675db39ef5fd6cf612781c45730625cf5c42edd6d17d7c`.
+- The post-deploy anonymous read check found SQLSTATE `42501` on `private.can_read_distribution_profile(uuid)`. Production ACL inspection showed that both public RLS predicates (`can_read_distribution_profile` and `can_read_distribution_post`) were executable only by `postgres`, while the public policies target `anon, authenticated`. The verification transaction was rolled back; the failed check did not change post counters or user data.
+- Prepared `20261215_distribution_read_helper_acl.sql`: revoke helper execution from `PUBLIC` and `service_role`, grant only to `anon` and `authenticated`. CI now applies it twice and the SQL test asserts all four role/function combinations. Follow-up PR and production verification remain pending.
+- No consent records were created or backfilled; no existing user or smoke-account rows were changed.

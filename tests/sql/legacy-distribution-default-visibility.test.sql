@@ -74,6 +74,13 @@ begin
     raise exception 'migration/test setup must not fabricate consent records';
   end if;
 
+  if not has_function_privilege('anon', 'private.can_read_distribution_profile(uuid)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'private.can_read_distribution_profile(uuid)', 'EXECUTE')
+     or not has_function_privilege('anon', 'private.can_read_distribution_post(uuid)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'private.can_read_distribution_post(uuid)', 'EXECUTE') then
+    raise exception 'public RLS policy predicates must be executable by anon and authenticated';
+  end if;
+
   if not has_function_privilege('anon', 'public.increment_post_views(uuid)', 'EXECUTE')
      or not has_function_privilege('authenticated', 'public.increment_post_views(uuid)', 'EXECUTE') then
     raise exception 'public post view counter must remain executable by anon and authenticated';
