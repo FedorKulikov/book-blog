@@ -50,14 +50,18 @@ export type CleanupResiduals = {
 const DATA_SMOKE_EMAIL = /^data-smoke-[^@\s]+@example\.com$/i
 const PAGE_SIZE = 1000
 
-function assertDataSmokeUsers(users: DataSmokeUser[]): void {
+function assertUserId(id: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error('refusing to clean account with invalid Auth user id')
+  }
+}
+
+function assertSmokeUsers(users: DataSmokeUser[]): void {
   for (const user of users) {
     if (!smokeAccountEmailMatches(user.email)) {
-      throw new Error(`refusing to clean non-data-smoke account: ${user.email}`)
+      throw new Error(`refusing to clean non-smoke account: ${user.email}`)
     }
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) {
-      throw new Error('refusing to clean account with invalid Auth user id')
-    }
+    assertUserId(user.id)
   }
 }
 
@@ -144,7 +148,7 @@ export async function getDataSmokeInventory(
   accessToken: string,
   users: DataSmokeUser[],
 ): Promise<InventoryRow[]> {
-  assertDataSmokeUsers(users)
+  assertSmokeUsers(users)
   const ids = uuidArray(users.map(user => user.id))
   return managementReadOnlyQuery<InventoryRow>(projectRef, accessToken, `
     select
@@ -193,6 +197,8 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     foreign_reports: number
     foreign_notifications: number
     foreign_ticket_messages: number
+    foreign_book_references: number
+    foreign_actor_notifications: number
   }>(projectRef, accessToken, `
     with smoke_users as (
       select id from auth.users
@@ -225,7 +231,16 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
           and n.user_id not in (select id from smoke_users)) as foreign_notifications,
       (select count(*)::int from public.ticket_messages tm
         where tm.ticket_id in (select id from smoke_tickets)
-          and tm.sender_id not in (select id from smoke_users)) as foreign_ticket_messages;
+          and tm.sender_id not in (select id from smoke_users)) as foreign_ticket_messages,
+      (select count(*)::int from public.posts p
+        where p.book_id in (
+          select b.id from public.books b
+          where b.created_by in (select id from smoke_users)
+        )
+          and p.user_id not in (select id from smoke_users)) as foreign_book_references,
+      (select count(*)::int from public.notifications n
+        where n.actor_id in (select id from smoke_users)
+          and n.user_id not in (select id from smoke_users)) as foreign_actor_notifications;
   `)
   if (rows.length !== 1) {
     throw new Error('Could not verify cross-account cleanup safety')
@@ -233,7 +248,7 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
   const risks = rows[0]
   const riskTotal = Object.values(risks).reduce((sum, count) => sum + count, 0)
   if (riskTotal > 0) {
-    throw new Error(`cleanup blocked: non-data-smoke content would be cascade-deleted (${JSON.stringify(risks)})`)
+    throw new Error(`cleanup blocked: non-smoke content would be affected (${JSON.stringify(risks)})`)
   }
 }
 
@@ -243,7 +258,7 @@ export async function cleanupSmokeUsers(
   accessToken: string,
   users: DataSmokeUser[],
 ): Promise<CleanupResiduals> {
-  assertDataSmokeUsers(users)
+  assertSmokeUsers(users)
   const ids = users.map(user => user.id)
   const idsSql = uuidArray(ids)
   const idsTextSql = textArray(ids)
@@ -307,7 +322,7 @@ export async function verifySmokeCleanup(
   accessToken: string,
   deletedUserIds: string[],
 ): Promise<CleanupResiduals> {
-  assertDataSmokeUsers(deletedUserIds.map(id => ({ id, email: `data-smoke-verified-${id}@example.com` })))
+  for (const id of deletedUserIds) assertUserId(id)
   const ids = uuidArray(deletedUserIds)
   const textIds = textArray(deletedUserIds)
   const rows = await managementReadOnlyQuery<CleanupResiduals>(projectRef, accessToken, `
