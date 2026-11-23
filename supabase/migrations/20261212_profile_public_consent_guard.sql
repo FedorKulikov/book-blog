@@ -40,10 +40,11 @@ as $function$
 declare
   v_user_id uuid := auth.uid();
 begin
-  -- Only a signed-in owner changing their own public fields is guarded.
-  -- Inserts are intentionally not handled by this trigger.
+  -- Any signed-in API update to a public field must have the target profile's
+  -- own grant. This also prevents an authenticated admin bypassing consent
+  -- when editing someone else's public profile. Inserts are intentionally
+  -- not handled; trusted system updates with no auth.uid() are not blocked.
   if v_user_id is not null
-     and old.id = v_user_id
      and (
        new.username is distinct from old.username
        or new.bio is distinct from old.bio
@@ -52,7 +53,7 @@ begin
      and not exists (
        select 1
          from private.personal_data_consents as c
-        where c.user_id = v_user_id
+        where c.user_id = old.id
           and c.scope = 'profile_public'
           and c.revoked_at is null
      ) then
