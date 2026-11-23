@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { SMOKE_ACCOUNT_PREFIX } from './lib/smoke-account-config'
 import {
   DISTRIBUTION_CONSENT_CATEGORIES,
   DISTRIBUTION_CONSENT_VERSION,
@@ -54,7 +55,7 @@ function safeError(error: { code?: string; status?: number } | null) {
 }
 
 async function createUser(label: string): Promise<TestUser> {
-  const email = `data-smoke-${label}-${stamp}@example.com`
+  const email = `${SMOKE_ACCOUNT_PREFIX.data}${label}-${stamp}@example.com`
   const username = `data_smoke_${label}_${stamp}`
   const { data, error } = await admin.auth.admin.createUser({
     email,
