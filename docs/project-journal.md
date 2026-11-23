@@ -658,3 +658,13 @@
 - Verification: Supabase Auth Admin paginated ID listing (`target_auth_users_remaining=0`); service-role PostgREST inventory and consent RPC; Storage API. Target residual counts are all zero: consents, profiles, posts, books, reports, notifications, Storage objects, conversations, messages, comments, likes, bookmarks, follows, tickets, ticket messages and post images.
 - One account with the same email as a manifest entry but a different Auth UUID exists outside the approved snapshot: `data-smoke-a-mwsm717y@example.com`, UUID `ce277934-bdfb-4c56-88f0-03d2d554b4f76`, with one revoked consent and zero other related records. It was not deleted because the user authorized only the original 63 UUIDs. Global prefix smoke count is therefore 1, but all 63 authorized UUIDs and their content are gone.
 - The workflow includes guarded prefix cleanup after future successful production smoke runs; pull-request runs only dry-run and exact-manifest verification. Chat smoke and exact-manifest verification passed in run `45210625721`.
+
+
+## 2026-11-23 — Политика конфиденциальности 1.2
+
+- Обновлена только `app/privacy/page.tsx`; версия повышена с 1.1 до 1.2, дата редакции — 23 ноября 2026 года.
+- Уточнено: новые публикации и изменения публичных полей профиля требуют отдельных действующих согласий; без соответствующего согласия действие не проходит.
+- Описан переходный режим: ранее созданные материалы остаются видимыми до явного решения владельца; отсутствие решения не считается согласием и не создаёт запись о нём; выбор предлагается при входе.
+- Описан отзыв через настройки профиля: публичные материалы скрываются от других посетителей, но не удаляются; временные ссылки на изображения истекают не позднее минуты.
+- Зафиксировано ограничение текущей реализации: повторное согласие для новых публикаций не открывает ранее скрытые legacy-публикации. Для восстановления видимости публичного профиля требуется отдельное согласие на профиль.
+- Проверено чтением связанных UI-компонентов и SQL миграций; изменения ограничены политикой и двумя рабочими журналами.
