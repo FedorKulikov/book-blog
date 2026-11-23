@@ -535,3 +535,21 @@ PR #80 merged: `41acca517d8e1a0a55edee640aac3d405ed11fa6`. На точном hea
 **Cleanup verified:** 0 synthetic profiles/posts/books/conversations/tickets/notifications/storage objects; 12 synthetic `auth.users` retained intentionally under the existing no-delete constraint; profiles removed. One revoked synthetic consent row remains as live audit evidence. All earlier 10 synthetic profiles, 5 posts/books and 9 Storage objects from previous interrupted runs were cleaned using exact IDs/paths. Cleanup is now part of smoke and fails the job if cleanup fails.
 
 **Limit:** live HTTP verifier could not access the Layero page endpoints, so browser form → deployed Next.js `/api/posts` was not proven end-to-end. Server handler logic is covered by unit/CI and live Supabase API/DB behavior is verified. `/privacy`, recovery, Hook, mailer_autoconfirm and secrets were not changed.
+
+## 2026-11-23 — B12, этап 3: consent for public profile fields
+
+**Определение публичных данных:** просмотрены схема `public.profiles` и гостевой `app/profile/[username]`. Реально видимы гостям: `username`, `avatar_url`, `bio`, `created_at` (текст «С нами с»). `city` отсутствует в схеме. `role` на гостевой странице не отображается. `notifications_muted` — приватная настройка и в согласие не входит.
+
+**Версии и категории:** добавлен `PROFILE_PUBLIC_CONSENT_CATEGORIES` с `profile_username`, `profile_avatar`, `profile_bio`, `profile_joined_at`. Для профиля отдельная версия 1.1; существующая `DISTRIBUTION_CONSENT_VERSION` публикаций оставлена 1.0, существующие publication RPC/trigger/categories/rows не менялись.
+
+**Сервер/форма:** добавлены POST `/api/profile/consent` (auth.getUser, fixed scope/categories/version, без user_id) и PATCH `/api/profile` (повторно читает active profile_public через my_distribution_consents, не доверяет UI checkbox, 422 до UPDATE). Форма показывает unchecked checkbox, ссылку на `/consent-distribution`, либо активное согласие с датой. Все public fields сохраняются серверным маршрутом.
+
+**Приватная настройка:** обнаружено, что `notifications_muted` была доступна прямым SELECT из-за table-level SELECT на profiles. Migration ограничивает SELECT по колонкам, оставляя публичные поля, и добавляет owner-only `my_profile_notification_settings()` RPC. UI, unread badge и серверное сохранение используют RPC; уведомление fail-closed при ошибке. Приватное изменение notifications_muted не требует profile_public consent.
+
+**Защита БД/Storage:** BEFORE UPDATE OF username,bio,avatar_url guard требует active consent именно целевого профиля. Registration INSERT остаётся разрешённым (handle_new_user AFTER INSERT); системные обновления без auth.uid() пропускаются; admin API не может менять публичные поля профиля без согласия владельца. Public `avatars` bucket insert/update policies требуют active consent; убрана legacy PUBLIC UPDATE policy, которая могла обойти новую policy. Публичное чтение и owner delete не менялись.
+
+**Проверки:** добавлены `tests/profile-public-consent.test.ts` и `tests/sql/profile-public-consent-guard.test.sql`: отсутствие согласия, активное согласие, только приватная настройка, RPC isolation, no-session, отсутствие прямого SELECT notifications_muted, signup INSERT, system update no JWT, Storage insert/update, revoke. PR CI ожидает запуска.
+
+**Deployment/smoke:** production migration пока не применялась. Не включал новые live assertions в текущий PR, поскольку существующий chat-security smoke запускается до deployment и проверяет старую production schema. После зелёного PR и применения миграции добавлю отдельный smoke follow-up, проверяющий live A/B и cleanup. Пользовательские данные/Storage/prod schema пока не изменялись.
+
+**Границы:** `/privacy`, publication scope и версия 1.0, recovery, Hook, `mailer_autoconfirm`, secrets и service-role key не менялись.
