@@ -7,12 +7,12 @@ declare
   a1 constant uuid := '0c9cb092-2125-46e5-938c-f4c20ad4dcb8';
   b1 constant uuid := '1521176b-06b9-4342-87d4-73e523ef41b8';
   a2 constant uuid := '3f92703b-7c9e-474f-a529-b1f4a74a92aa';
-  b2 constant uuid := '85226399-163d-45df-b1cb-23e523ef41b8';
+  b2 constant uuid := '85226399-163d-45df-b1cb-23d35bc2e17b';
   target_ids uuid[] := array[
     '0c9cb092-2125-46e5-938c-f4c20ad4dcb8'::uuid,
     '1521176b-06b9-4342-87d4-73e523ef41b8'::uuid,
     '3f92703b-7c9e-474f-a529-b1f4a74a92aa'::uuid,
-    '85226399-163d-45df-b1cb-23e523ef41b8'::uuid
+    '85226399-163d-45df-b1cb-23d35bc2e17b'::uuid
   ];
 begin
   if (select count(*) from auth.users where id = any(target_ids)) <> 4 then
@@ -48,7 +48,7 @@ begin
     raise exception 'cleanup preflight: one of the target profiles does not match the reviewed smoke fixture';
   end if;
 
-  if (select count(*) from public.profiles where id=any(target_ids)) not in (0,1,2,3,4) then
+  if (select count(*) from public.profiles where id=any(target_ids)) <> 4 then
     raise exception 'cleanup preflight: unexpected profile count';
   end if;
 
@@ -144,20 +144,19 @@ begin
     raise exception 'cleanup preflight: one of the exact notification ids changed ownership or type';
   end if;
 
-  if (select count(*) from public.posts where user_id=any(target_ids)) <> 2
-     and (select count(*) from public.posts where user_id=any(target_ids)) <> 0 then
+  if (select count(*) from public.posts where user_id=any(target_ids)) <> 2 then
     raise exception 'cleanup preflight: unexpected target post count';
   end if;
 
-  if (select count(*) from public.books where created_by=any(target_ids)) not in (0,1,2) then
+  if (select count(*) from public.books where created_by=any(target_ids)) <> 2 then
     raise exception 'cleanup preflight: unexpected target book count';
   end if;
 
-  if (select count(*) from public.reports where reporter_id=any(target_ids)) not in (0,1) then
+  if (select count(*) from public.reports where reporter_id=any(target_ids)) <> 1 then
     raise exception 'cleanup preflight: unexpected target report count';
   end if;
 
-  if (select count(*) from public.notifications where user_id=any(target_ids) or actor_id=any(target_ids)) not in (0,1,2,3) then
+  if (select count(*) from public.notifications where user_id=any(target_ids) or actor_id=any(target_ids)) <> 3 then
     raise exception 'cleanup preflight: unexpected target notification count';
   end if;
 
@@ -229,23 +228,25 @@ begin
 
   if exists (
     select 1 from storage.objects o
-    where (o.owner_id::text = any(array[a1::text,b1::text,a2::text,b2::text]))
-       or o.name like any(array[a1::text||'/%',b1::text||'/%',a2::text||'/%',b2::text||'/%'])
-      and not (
-        (o.bucket_id='avatars' and o.name=a1::text||'/storage-smoke-mwt011i9.png' and o.owner_id::text=a1::text)
-        or (o.bucket_id='post-images' and o.name=a1::text||'/storage-smoke-mwt011i9.png' and o.owner_id::text=a1::text)
-        or (o.bucket_id='chat-media' and o.name=a1::text||'/storage-smoke-mwt011i9.png' and o.owner_id::text=a1::text)
-        or (o.bucket_id='avatars' and o.name=a2::text||'/storage-smoke-mwt0lik5.png' and o.owner_id::text=a2::text)
-        or (o.bucket_id='post-images' and o.name=a2::text||'/storage-smoke-mwt0lik5.png' and o.owner_id::text=a2::text)
-        or (o.bucket_id='chat-media' and o.name=a2::text||'/storage-smoke-mwt0lik5.png' and o.owner_id::text=a2::text)
-      )
+    where (
+      o.owner_id::text = any(array[a1::text,a2::text])
+      or o.name like any(array[a1::text||'/%',a2::text||'/%'])
+    )
+    and not (
+      (o.bucket_id='avatars' and o.name=a1::text||'/storage-smoke-mwt011i9.png' and o.owner_id::text=a1::text)
+      or (o.bucket_id='post-images' and o.name=a1::text||'/storage-smoke-mwt011i9.png' and o.owner_id::text=a1::text)
+      or (o.bucket_id='chat-media' and o.name=a1::text||'/storage-smoke-mwt011i9.png' and o.owner_id::text=a1::text)
+      or (o.bucket_id='avatars' and o.name=a2::text||'/storage-smoke-mwt0lik5.png' and o.owner_id::text=a2::text)
+      or (o.bucket_id='post-images' and o.name=a2::text||'/storage-smoke-mwt0lik5.png' and o.owner_id::text=a2::text)
+      or (o.bucket_id='chat-media' and o.name=a2::text||'/storage-smoke-mwt0lik5.png' and o.owner_id::text=a2::text)
+    )
   ) then
     raise exception 'cleanup preflight: unexpected Storage object is associated with a target account';
   end if;
 
   if (select count(*) from storage.objects o
       where o.owner_id::text in (a1::text,a2::text)
-        or o.name like any(array[a1::text||'/%',a2::text||'/%'])) > 6 then
+        or o.name like any(array[a1::text||'/%',a2::text||'/%'])) <> 6 then
     raise exception 'cleanup preflight: more than six target Storage objects exist';
   end if;
 end;
