@@ -621,3 +621,40 @@
 - Production PostgREST dry-run initially stopped on `public.likes` with SQLSTATE 42703. Verified the live schema: likes uses composite primary key `(user_id, post_id)` and has no `id`; corrected the select and row type accordingly. No delete/write step ran.
 
 - Moved the production dry-run gate to a successful `Apply DB migrations` workflow completion on `main`. The PR-triggered chat security job still validates TypeScript and chat cleanup but skips production inventory; after merge and successful migration rollout, the workflow-run event executes the production dry-run with the new RPC available.
+
+## 2026-11-23 — Smoke cleanup uses Auth Admin, Storage and PostgREST only
+
+- Replaced the Management API SQL read path with paginated Supabase Auth Admin user listing, client-side prefix filtering, recursive Storage API listing restricted to each matched UUID root folder, and service-role PostgREST reads for application tables.
+- The private consent table is not exposed through PostgREST and service_role has no direct SELECT grant. Its inventory remains available through the already-existing `public.ops_smoke_consent_inventory(uuid[])` PostgREST RPC, owned by postgres and executable only by `service_role`; anonymous and authenticated execution are denied.
+- Preserved the pre-delete relationship guard and added a check for smoke-authored support messages inside tickets owned by non-smoke users.
+- Removed the Management API Auth-config diagnostic and `SUPABASE_ACCESS_TOKEN` reference from this cleanup workflow. Only the existing `SUPABASE_SECRET_KEY` is required for the admin/Storage/PostgREST dry-run; no new secret was requested.
+- Enabled the production dry-run on PR CI as well as the post-migration workflow. No `--delete` command has been run. Actual dry-run inventory and guard result are pending CI.
+
+- First PR #96 production dry-run successfully enumerated smoke accounts and app/consent/Storage inventory through Auth Admin, Storage and PostgREST. It stopped before guard completion because a likes query selected a non-existent `id` column (the actual key is `user_id, post_id`). Updated the query to use the real composite key columns. No production write/deletion ran; a fresh dry-run is required to establish the safety result.
+
+- Production dry-run succeeded on PR #96 (run `45205225391`): 63 matched Auth accounts — 58 `data-smoke-*` and 5 `chat-smoke-*`. Inventory: 9 profiles, 2 posts, 2 books, 1 report, 10 notifications, 40 consent rows (2 active, 38 revoked), 6 Storage objects, 4 conversations, 2 messages, 1 ticket and 1 ticket message; comments, likes, bookmarks, follows, external news and post images were 0.
+- `assertNoForeignContentWouldBeCascadeDeleted` completed successfully (`CLEANUP SAFETY PASS`); the script ended in dry-run-only mode. No production data was modified or deleted. The run's per-account lines contain each selected email, Auth ID and related-record counts.
+- Chat security smoke and all Web quality jobs completed successfully on the same PR head.
+
+## 2026-11-23 — Pin exact 63-account production cleanup
+
+- Captured the exact 63 email/Auth-ID pairs from the successful production dry-run log (`45205225391`, job `137799043533`) in `scripts/cleanup-data-smoke-users-2026-11-23.json`.
+- Added a manifest mode that requires exactly 63 unique entries and verifies each email/ID pair against live Auth Admin before inventory, guard or deletion. It cannot widen selection to other prefix-matching accounts. The script prints the complete audit target list before any deletion.
+- CI for PR #96 is configured to delete only this manifest. Future successful production smoke workflow runs execute guarded prefix cleanup after smoke to avoid accumulating test accounts.
+- At journal update time the exact production deletion is pending CI; no deletion is claimed yet.
+
+- First manifest execution stopped before cleanup: Auth Admin returned 404 for `data-smoke-a-mwsm717y`; no deletion occurred in that attempt.
+- Updated exact-manifest mode to verify each fixed UUID individually: confirmed-absent IDs remain in the targeted inventory and residue cleanup, existing IDs must retain the exact snapshot email, and other Auth errors abort. The deletion helper repeats the identity check and skips only confirmed 404 accounts.
+
+- Exact-manifest delete run `45208454878` printed all 63 audit targets and passed the cascade guard. 62 existing Auth accounts were deleted; `data-smoke-a-mwsm717y` was already absent before deletion.
+- Strict post-delete verification reported zero target-related residuals (consents, profiles, posts, books, reports, notifications, Storage, conversations/messages and all other inventoried relations), but one global prefix-matching Auth account remained outside the manifest. The script failed closed on that global nonzero count. The one-time PR deletion step was removed immediately to prevent reruns; next run is read-only dry-run only. The extra account will not be deleted under this 63-account authorization.
+
+- Correction after the read-only follow-up dry-run: the one remaining account is the exact manifest target `data-smoke-a-mwsm717y@example.com` (`ce277934-bdfb-4c56-88f0-03af0edb4f76`), not an out-of-manifest account. Its remaining inventory is exactly one revoked consent; every other inventoried relation is zero.
+- The prior `getUserById` call returned 404 while paginated Auth Admin `listUsers` still returned the same UUID. Therefore the earlier "already absent" classification was wrong; changed validation and deletion identity checks to use full paginated Auth Admin listing. Retry is pinned to the unchanged 63-ID manifest.
+
+## 2026-11-23 — Exact 63-account cleanup completed and verified
+
+- Cleanup of the approved snapshot: 62 Auth accounts were deleted by the cleanup operation; the 63rd original Auth ID was already absent before the first deletion attempt. The final read-only verification confirms all 63 original Auth IDs are absent.
+- Verification: Supabase Auth Admin paginated ID listing (`target_auth_users_remaining=0`); service-role PostgREST inventory and consent RPC; Storage API. Target residual counts are all zero: consents, profiles, posts, books, reports, notifications, Storage objects, conversations, messages, comments, likes, bookmarks, follows, tickets, ticket messages and post images.
+- One account with the same email as a manifest entry but a different Auth UUID exists outside the approved snapshot: `data-smoke-a-mwsm717y@example.com`, UUID `ce277934-bdfb-4c56-88f0-03d2d554b4f76`, with one revoked consent and zero other related records. It was not deleted because the user authorized only the original 63 UUIDs. Global prefix smoke count is therefore 1, but all 63 authorized UUIDs and their content are gone.
+- The workflow includes guarded prefix cleanup after future successful production smoke runs; pull-request runs only dry-run and exact-manifest verification. Chat smoke and exact-manifest verification passed in run `45210625721`.

@@ -64,6 +64,7 @@ type InventoryRow = {
 
 export type CleanupResiduals = {
   smoke_users_remaining: number
+  target_auth_users_remaining: number
   consent_rows_remaining: number
   active_consents_remaining: number
   profiles_remaining: number
@@ -254,6 +255,42 @@ async function getConsentInventory(
   return result
 }
 
+export async function getAuthUsersByIds(
+  admin: AdminClient,
+  targetIds: string[],
+): Promise<Map<string, DataSmokeUser>> {
+  const targets = new Set(targetIds.map(id => id.toLowerCase()))
+  const found = new Map<string, DataSmokeUser>()
+  if (targets.size === 0) return found
+
+  let page = 1
+  while (true) {
+    const { data, error } = await admin.auth.admin.listUsers({
+      page,
+      perPage: PAGE_SIZE,
+    })
+    if (error) {
+      throw new Error('Auth Admin identity listing failed (' + (error.status ?? 'unknown') + ')')
+    }
+
+    for (const user of data.users) {
+      const normalizedId = user.id.toLowerCase()
+      if (targets.has(normalizedId)) {
+        found.set(normalizedId, { id: user.id, email: user.email ?? '' })
+      }
+    }
+
+    if (data.users.length < PAGE_SIZE) break
+    const nextPage = data.nextPage ? Number(data.nextPage) : page + 1
+    if (!Number.isInteger(nextPage) || nextPage <= page) {
+      throw new Error('Auth Admin pagination returned an invalid identity page')
+    }
+    page = nextPage
+  }
+
+  return found
+}
+
 export async function listDataSmokeUsers(admin: AdminClient): Promise<DataSmokeUser[]> {
   const users: DataSmokeUser[] = []
   let page = 1
@@ -426,10 +463,11 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     notificationsByActor,
     messagesInConversations,
     ticketMessages,
+    ticketMessagesBySmokeSender,
     postsOnSmokeBooks,
   ] = await Promise.all([
     selectByIds<CommentRow>(admin, 'comments', 'id,user_id,post_id', 'post_id', postIds),
-    selectByIds<LikeRow>(admin, 'likes', 'id,user_id,post_id', 'post_id', postIds),
+    selectByIds<LikeRow>(admin, 'likes', 'user_id,post_id', 'post_id', postIds),
     selectByIds<BookmarkRow>(admin, 'bookmarks', 'id,user_id,post_id', 'post_id', postIds),
     selectByIds<ReportRow>(admin, 'reports', 'id,reporter_id,post_id,comment_id', 'post_id', postIds),
     selectByIds<ReportRow>(admin, 'reports', 'id,reporter_id,post_id,comment_id', 'comment_id', commentIds),
@@ -439,10 +477,12 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     selectByIds<NotificationRow>(admin, 'notifications', 'id,user_id,actor_id,post_id,comment_id,message_id', 'actor_id', ids),
     selectByIds<MessageRow>(admin, 'messages', 'id,sender_id,conversation_id', 'conversation_id', conversationIds),
     selectByIds<TicketMessageRow>(admin, 'ticket_messages', 'id,sender_id,ticket_id', 'ticket_id', ticketIds),
+    selectByIds<TicketMessageRow>(admin, 'ticket_messages', 'id,sender_id,ticket_id', 'sender_id', ids),
     selectByIds<PostRow>(admin, 'posts', 'id,user_id,book_id', 'book_id', bookIds),
   ])
 
   const smokeIdSet = new Set(ids)
+  const smokeTicketIdSet = new Set(ticketIds)
   const mixedConversations = smokeConversations.filter(row =>
     (smokeIdSet.has(row.user1_id) && !smokeIdSet.has(row.user2_id)) ||
     (smokeIdSet.has(row.user2_id) && !smokeIdSet.has(row.user1_id)),
@@ -461,6 +501,7 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     foreign_notifications_on_smoke_messages: notificationsOnMessages.filter(row => !smokeIdSet.has(row.user_id)).length,
     foreign_recipients_of_smoke_actor_notifications: notificationsByActor.filter(row => !smokeIdSet.has(row.user_id)).length,
     foreign_ticket_messages: ticketMessages.filter(row => !smokeIdSet.has(row.sender_id)).length,
+    smoke_authored_messages_in_foreign_tickets: ticketMessagesBySmokeSender.filter(row => !smokeTicketIdSet.has(row.ticket_id)).length,
     foreign_posts_referencing_smoke_books: postsOnSmokeBooks.filter(row => !smokeIdSet.has(row.user_id)).length,
   }
 
@@ -516,7 +557,13 @@ export async function cleanupSmokeUsers(
 
   // Auth deletion cascades profiles, posts, reports, notifications and the full
   // consent history (active and revoked). No consent is inserted or revoked here.
+  const authUsersById = await getAuthUsersByIds(admin, ids)
   for (const user of users) {
+    const current = authUsersById.get(user.id.toLowerCase())
+    if (!current) continue
+    if (current.email.toLowerCase() !== user.email.toLowerCase()) {
+      throw new Error('Auth email changed for manifest ID ' + user.id + '; refusing deletion')
+    }
     const { error } = await admin.auth.admin.deleteUser(user.id)
     if (error) {
       throw new Error('Auth deletion failed for ' + user.email + ' (status=' + (error.status ?? 'unknown') + ')')
@@ -532,6 +579,7 @@ export async function verifySmokeCleanup(
 ): Promise<CleanupResiduals> {
   assertSmokeUsers(deletedUsers)
   const currentSmokeUsers = await listDataSmokeUsers(admin)
+  const targetAuthUsers = await getAuthUsersByIds(admin, deletedUsers.map(user => user.id))
   const inventory = await getDataSmokeInventory(admin, deletedUsers)
 
   const sum = (field: keyof InventoryRow) =>
@@ -539,6 +587,7 @@ export async function verifySmokeCleanup(
 
   return {
     smoke_users_remaining: currentSmokeUsers.length,
+    target_auth_users_remaining: targetAuthUsers.size,
     consent_rows_remaining: sum('consents'),
     active_consents_remaining: sum('active_consents'),
     profiles_remaining: sum('profiles'),

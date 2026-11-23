@@ -1,0 +1,262 @@
+{
+  "snapshot": {
+    "workflow_run": 45205225391,
+    "job_id": 137799043533,
+    "verified_at": "2026-11-23T15:27:10Z",
+    "count": 63
+  },
+  "accounts": [
+    {
+      "email": "chat-smoke-a-mwsap9ki@example.com",
+      "id": "31708106-7279-45ac-bcf4-93c8466701ae"
+    },
+    {
+      "email": "chat-smoke-a-mwt0axjw@example.com",
+      "id": "5338610b-d02d-4be5-acd6-c2abc8628772"
+    },
+    {
+      "email": "chat-smoke-a-mwtelrnz@example.com",
+      "id": "1ebdb136-88ca-472d-baf4-469e33b10d30"
+    },
+    {
+      "email": "chat-smoke-b-mwsap9ki@example.com",
+      "id": "406806a2-3bb7-42c3-98e4-d64f70314d8e"
+    },
+    {
+      "email": "chat-smoke-b-mwtelrnz@example.com",
+      "id": "20d1722a-0ead-4cba-a8ef-ef018213bd42"
+    },
+    {
+      "email": "data-smoke-a-mwr0wohz@example.com",
+      "id": "7a750d52-cc6f-49cc-925f-015fafae4c45"
+    },
+    {
+      "email": "data-smoke-a-mwrcx7lx@example.com",
+      "id": "f2d09893-cc49-4e1d-9911-24d4df9c24e2"
+    },
+    {
+      "email": "data-smoke-a-mwrdr1l3@example.com",
+      "id": "9d63e0d9-de24-4d6c-a735-b56a734da7b0"
+    },
+    {
+      "email": "data-smoke-a-mwsa888t@example.com",
+      "id": "e0e48417-df02-44d3-ae30-72d9ef08eb2e"
+    },
+    {
+      "email": "data-smoke-a-mwsaf0hq@example.com",
+      "id": "e5e4750f-4670-4058-b6f0-05a5d4c3a493"
+    },
+    {
+      "email": "data-smoke-a-mwsien7p@example.com",
+      "id": "6293a83b-b281-4c82-9039-ec113c60b797"
+    },
+    {
+      "email": "data-smoke-a-mwslx1ky@example.com",
+      "id": "62e04d92-b024-4946-add5-bdc59f868d05"
+    },
+    {
+      "email": "data-smoke-a-mwslyihz@example.com",
+      "id": "e6bf473e-068b-4be7-a7e2-f7a03ed94ec7"
+    },
+    {
+      "email": "data-smoke-a-mwsm0fpr@example.com",
+      "id": "01eb45af-afde-4b13-9996-110f1623b254"
+    },
+    {
+      "email": "data-smoke-a-mwsm262a@example.com",
+      "id": "0271fb2b-a843-4148-9dca-84a076116353"
+    },
+    {
+      "email": "data-smoke-a-mwsm4lbq@example.com",
+      "id": "f63d071b-c9cd-4d3b-bec4-ebb62fd0794b"
+    },
+    {
+      "email": "data-smoke-a-mwsm717y@example.com",
+      "id": "ce277934-bdfb-4c56-88f0-03af0edb4f76"
+    },
+    {
+      "email": "data-smoke-a-mwsm8nub@example.com",
+      "id": "be2c9f15-cb4e-45c9-97bb-a653b969fbbe"
+    },
+    {
+      "email": "data-smoke-a-mwsmj201@example.com",
+      "id": "c8cf5210-1b98-4180-95f9-bddbf31fee3d"
+    },
+    {
+      "email": "data-smoke-a-mwsyxxu4@example.com",
+      "id": "29a8a924-2a54-48c4-a90d-84df1975136c"
+    },
+    {
+      "email": "data-smoke-a-mwszwmtu@example.com",
+      "id": "4876bf84-d2a2-42d5-863f-cc9747693b38"
+    },
+    {
+      "email": "data-smoke-a-mwszxs3m@example.com",
+      "id": "de3a5a53-37cc-4deb-9493-cba310b2e911"
+    },
+    {
+      "email": "data-smoke-a-mwszzlxo@example.com",
+      "id": "46a694fc-9cc8-4383-9fa7-de03ac64d883"
+    },
+    {
+      "email": "data-smoke-a-mwt011i9@example.com",
+      "id": "0c9cb092-2125-46e5-938c-f4c20ad4dcb8"
+    },
+    {
+      "email": "data-smoke-a-mwt01yzm@example.com",
+      "id": "36c3fd42-8e5c-4d0f-a02a-342a011e467b"
+    },
+    {
+      "email": "data-smoke-a-mwt06sbw@example.com",
+      "id": "1656583a-2bd6-43b8-af14-36f833c64a80"
+    },
+    {
+      "email": "data-smoke-a-mwt0ewwi@example.com",
+      "id": "6fef9edf-cffa-4ce4-a28a-1fb2b8854be8"
+    },
+    {
+      "email": "data-smoke-a-mwt0lik5@example.com",
+      "id": "3f92703b-7c9e-474f-a529-b1f4a74a92aa"
+    },
+    {
+      "email": "data-smoke-a-mwt0mn6a@example.com",
+      "id": "a4b3fdcd-12bd-42b1-8a4c-caad3da73a41"
+    },
+    {
+      "email": "data-smoke-a-mwt0pe8p@example.com",
+      "id": "72db81cd-35a6-46e9-8927-e4d8fa73c5ee"
+    },
+    {
+      "email": "data-smoke-a-mwt0umr8@example.com",
+      "id": "1408835b-6eb2-4ab0-9bc7-4f8870145591"
+    },
+    {
+      "email": "data-smoke-a-mwt0wnda@example.com",
+      "id": "69d7f9fd-9a15-4c02-8ad2-1e04eface784"
+    },
+    {
+      "email": "data-smoke-a-mwt15nz3@example.com",
+      "id": "d385f07b-7573-4835-9131-857462b87934"
+    },
+    {
+      "email": "data-smoke-a-mwt1797f@example.com",
+      "id": "e13fbe96-34ce-465d-a5bc-890f17ab1fad"
+    },
+    {
+      "email": "data-smoke-b-mwr0wohz@example.com",
+      "id": "ba4e8aaa-92a6-4738-94aa-03a28506dda2"
+    },
+    {
+      "email": "data-smoke-b-mwrcx7lx@example.com",
+      "id": "40acee41-4598-4943-be5c-774075667d62"
+    },
+    {
+      "email": "data-smoke-b-mwrdr1l3@example.com",
+      "id": "6e14fafa-8c85-4b86-9979-ca4384fb030f"
+    },
+    {
+      "email": "data-smoke-b-mwsa888t@example.com",
+      "id": "db8eb44d-8bf2-4633-989c-6b8dac113d63"
+    },
+    {
+      "email": "data-smoke-b-mwsaf0hq@example.com",
+      "id": "69370792-ac51-4fb1-bb63-5e9efb086e8e"
+    },
+    {
+      "email": "data-smoke-b-mwsien7p@example.com",
+      "id": "8796bcf0-4539-4514-b9d6-177810b619a6"
+    },
+    {
+      "email": "data-smoke-b-mwslx1ky@example.com",
+      "id": "2bc89d72-45be-4337-ad6e-bd772bee403e"
+    },
+    {
+      "email": "data-smoke-b-mwslyihz@example.com",
+      "id": "dfa2f3ee-7923-4d20-8307-75f0598b5cd1"
+    },
+    {
+      "email": "data-smoke-b-mwsm0fpr@example.com",
+      "id": "b3eda634-69c6-4911-8acd-373cd4085a44"
+    },
+    {
+      "email": "data-smoke-b-mwsm262a@example.com",
+      "id": "ab9380e8-a2ac-40d4-8885-af4b2503fde0"
+    },
+    {
+      "email": "data-smoke-b-mwsm4lbq@example.com",
+      "id": "c5129590-c015-4073-9e27-f95ebbd961fc"
+    },
+    {
+      "email": "data-smoke-b-mwsm717y@example.com",
+      "id": "d1149113-2c76-48da-9538-03af0edb4f76"
+    },
+    {
+      "email": "data-smoke-b-mwsm8nub@example.com",
+      "id": "f3b84f33-47a4-4945-8ea7-6dd7194b485a"
+    },
+    {
+      "email": "data-smoke-b-mwsmj201@example.com",
+      "id": "8d92ddc7-f8a5-443a-97b2-c6d8a66ed66e"
+    },
+    {
+      "email": "data-smoke-b-mwsyxxu4@example.com",
+      "id": "3043d7ae-abd9-4b43-a5a1-38705112846c"
+    },
+    {
+      "email": "data-smoke-b-mwszwmtu@example.com",
+      "id": "0813042f-d92d-4b14-95e2-864f4ec3b188"
+    },
+    {
+      "email": "data-smoke-b-mwszxs3m@example.com",
+      "id": "6f0e7897-c9a1-4a8e-863b-3b44ad24a861"
+    },
+    {
+      "email": "data-smoke-b-mwszzlxo@example.com",
+      "id": "9a6ba9df-1595-41a8-8789-e869622fc8a5"
+    },
+    {
+      "email": "data-smoke-b-mwt011i9@example.com",
+      "id": "1521176b-06b9-4342-87d4-73e523ef41b8"
+    },
+    {
+      "email": "data-smoke-b-mwt01yzm@example.com",
+      "id": "ad8a592b-ae5f-44e0-ac43-11520f901db8"
+    },
+    {
+      "email": "data-smoke-b-mwt06sbw@example.com",
+      "id": "1ca79880-957c-4724-afda-5bf022e43c8a"
+    },
+    {
+      "email": "data-smoke-b-mwt0ewwi@example.com",
+      "id": "243618f2-de5e-44e1-b168-31fe4a374359"
+    },
+    {
+      "email": "data-smoke-b-mwt0lik5@example.com",
+      "id": "85226399-163d-45df-b1cb-23d35bc2e17b"
+    },
+    {
+      "email": "data-smoke-b-mwt0mn6a@example.com",
+      "id": "9dd538b6-f8c0-4898-9d1b-4eb55beb496c"
+    },
+    {
+      "email": "data-smoke-b-mwt0pe8p@example.com",
+      "id": "7ffa7a6c-ab2b-41b0-b2eb-20108e700ee3"
+    },
+    {
+      "email": "data-smoke-b-mwt0umr8@example.com",
+      "id": "d5ea1302-6068-434e-8ce1-e4311aeefd04"
+    },
+    {
+      "email": "data-smoke-b-mwt0wnda@example.com",
+      "id": "b0727504-8218-43db-84d3-73d558f9ffcb"
+    },
+    {
+      "email": "data-smoke-b-mwt15nz3@example.com",
+      "id": "0414e443-3b8b-49b6-9a34-2c7e55ae253a"
+    },
+    {
+      "email": "data-smoke-b-mwt1797f@example.com",
+      "id": "094656d5-8615-445c-8088-5dd0866305ea"
+    }
+  ]
+}
