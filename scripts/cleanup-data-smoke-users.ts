@@ -78,18 +78,27 @@ async function main() {
       throw new Error('cleanup manifest must contain exactly the approved 63-account snapshot')
     }
     const manifestIds = new Set<string>()
-    const currentById = new Map(discoveredUsers.map(user => [user.id, user]))
-    users = manifest.accounts.map(entry => {
+    const validated: Array<{ id: string; email: string }> = []
+    for (const entry of manifest.accounts) {
       if (!entry.email || !entry.id || manifestIds.has(entry.id)) {
         throw new Error('cleanup manifest contains a missing or duplicate account')
       }
       manifestIds.add(entry.id)
-      const current = currentById.get(entry.id)
-      if (!current || current.email !== entry.email) {
-        throw new Error('cleanup manifest account no longer matches Auth Admin: ' + entry.email)
+      const { data, error } = await admin.auth.admin.getUserById(entry.id)
+      if (error) {
+        if (error.status === 404) {
+          console.log('MANIFEST ACCOUNT ALREADY ABSENT — ' + entry.email + ' :: ' + entry.id)
+          validated.push({ id: entry.id, email: entry.email })
+          continue
+        }
+        throw new Error('Auth Admin lookup failed for manifest account ' + entry.email + ' (status=' + (error.status ?? 'unknown') + ')')
       }
-      return { id: entry.id, email: entry.email }
-    })
+      if (data.user.email?.toLowerCase() !== entry.email.toLowerCase()) {
+        throw new Error('cleanup manifest Auth email mismatch for ID ' + entry.id + '; refusing deletion')
+      }
+      validated.push({ id: entry.id, email: entry.email })
+    }
+    users = validated
     console.log('EXACT MANIFEST MODE — only the 63 reviewed Auth IDs below are eligible for deletion')
   }
 
