@@ -749,3 +749,14 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Validation:** documentation-only review; references point to OpenAI Help Center, OpenAI Status RCA, public OpenAI Codex issue, and community reports. No application code, migrations, production data, or secrets changed.
 
 **Limitations:** exact ChatGPT stream failure mechanism is not publicly established; no claim is made that long logs, CI waits, or long final messages are proven root causes.
+
+## 2026-11-23 — Data-smoke cleanup engine (stage 1)
+
+**Required:** prepare a strictly scoped cleanup for accumulated `data-smoke-*@example.com` production test accounts, including Storage and full consent history, without touching other accounts.
+
+**Implemented:** added `scripts/lib/data-smoke-cleanup.ts` for exact account discovery, per-account inventory, Storage-owner lookup/removal through the Storage API, deletion of books and external-news rows that use `ON DELETE SET NULL`, Auth-user deletion, and final residual-count verification including `private.personal_data_consents`. Auth deletion relies on the existing FK cascade to remove profiles, posts, reports, notifications and both active/revoked consent rows. Added `scripts/cleanup-data-smoke-users.ts`: it always prints the dry-run inventory first; `--dry-run` makes no writes and `--delete` explicitly proceeds.
+
+**Safety:** the selector is restricted to `data-smoke-*@example.com`; user IDs are UUID-validated. Before deleting, a read-only guard blocks cleanup if deleting a smoke profile/post/ticket would cascade-delete non-smoke conversations, comments, likes, bookmarks, reports, notifications or support replies. No consent is inserted or revoked by the cleanup.
+
+**Validation:** checked production FK delete rules and existing Storage ownership layout; TypeScript/CI execution is pending in the next stage. No production writes or deletes were run in this stage.
+
