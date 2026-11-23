@@ -753,6 +753,13 @@ jobs:
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261214_legacy_distribution_default_visibility.sql
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261214_legacy_distribution_default_visibility.sql
 
+      - name: Apply public distribution RLS helper grants twice
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261215_distribution_read_helper_acl.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261215_distribution_read_helper_acl.sql
+
       - name: Verify legacy default visibility, explicit hide, and consent
         env:
           PGPASSWORD: postgres
