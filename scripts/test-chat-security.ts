@@ -372,7 +372,7 @@ async function main() {
     const cleanupFailures: string[] = []
     const recordDelete = async (
       label: string,
-      operation: Promise<{ error: { code?: string; status?: number } | null }>,
+      operation: PromiseLike<{ error: { code?: string; status?: number } | null }>,
     ) => {
       const { error } = await operation
       if (error) cleanupFailures.push(`${label} (${safeError(error)})`)
