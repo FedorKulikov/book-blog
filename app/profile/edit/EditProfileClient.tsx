@@ -52,13 +52,14 @@ export default function EditProfilePage() {
         return
       }
 
-      const [{ data: profile }, { data: consentRows, error: consentReadError }] = await Promise.all([
+      const [{ data: profile }, { data: consentRows, error: consentReadError }, { data: notificationsMutedValue, error: notificationsError }] = await Promise.all([
         supabase
           .from('profiles')
-          .select('username, bio, avatar_url, notifications_muted')
+          .select('username, bio, avatar_url')
           .eq('id', user.id)
           .single(),
         supabase.rpc('my_distribution_consents'),
+        supabase.rpc('my_profile_notification_settings'),
       ])
 
       if (!alive) return
@@ -67,7 +68,11 @@ export default function EditProfilePage() {
         setUsername(profile.username)
         setBio(profile.bio || '')
         setAvatarUrl(profile.avatar_url)
-        setNotificationsMuted(!!profile.notifications_muted)
+      }
+      if (!notificationsError && typeof notificationsMutedValue === 'boolean') {
+        setNotificationsMuted(notificationsMutedValue)
+      } else {
+        setConsentError('Не удалось загрузить настройку уведомлений. Приватную настройку пока нельзя сохранить.')
       }
 
       if (consentReadError || !Array.isArray(consentRows)) {
