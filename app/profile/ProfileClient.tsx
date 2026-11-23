@@ -45,7 +45,7 @@ export default function ProfileClient({ initialUserId }: { initialUserId: string
 
       const { data: p } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, username, avatar_url, bio, role, created_at')
         .eq('id', initialUserId)
         .single()
       setProfile(p as unknown as Profile | null)

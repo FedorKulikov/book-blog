@@ -86,6 +86,9 @@ jobs:
       - name: Distribution consent flow tests
         run: npm run test:distribution-consent
 
+      - name: Public profile consent tests
+        run: npm run test:profile-public-consent
+
       - name: TypeScript
         run: npx tsc --noEmit
 
@@ -116,14 +119,21 @@ jobs:
             app/messages/'[id]'/page.tsx \
             app/news/new/page.tsx \
             app/news/new/NewsForm.tsx \
+            app/consent-distribution/page.tsx \
+            app/components/AvatarUploader.tsx \
+            app/profile/edit/EditProfileClient.tsx \
             app/components/ImageUploader.tsx \
             app/api/posts/route.ts \
             app/consent-distribution/page.tsx \
             lib/distribution-consent.ts \
             lib/distribution-consent-server.ts \
+            lib/profile-consent-server.ts \
+            app/api/profile/consent/route.ts \
+            app/api/profile/route.ts \
             app/books/add/page.tsx \
             app/profile/page.tsx \
             app/profile/ProfileClient.tsx \
+            app/components/UnreadMessagesBadge.tsx \
             app/profile/edit/page.tsx \
             app/profile/edit/EditProfileClient.tsx \
             app/support/'[id]'/page.tsx \
@@ -207,6 +217,17 @@ jobs:
           STABLE
           AS $function$
             SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $function$;
+
+          CREATE OR REPLACE FUNCTION auth.role()
+          RETURNS text
+          LANGUAGE sql
+          STABLE
+          AS $function$
+            SELECT CASE
+              WHEN NULLIF(current_setting('request.jwt.claim.sub', true), '') IS NULL THEN 'anon'
+              ELSE 'authenticated'
+            END
           $function$;
 
           CREATE SCHEMA storage;
@@ -467,8 +488,20 @@ jobs:
             SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
           $function$;
 
+          CREATE OR REPLACE FUNCTION auth.role()
+          RETURNS text
+          LANGUAGE sql
+          STABLE
+          AS $function$
+            SELECT CASE
+              WHEN NULLIF(current_setting('request.jwt.claim.sub', true), '') IS NULL THEN 'anon'
+              ELSE 'authenticated'
+            END
+          $function$;
+
           GRANT USAGE ON SCHEMA auth, public TO anon, authenticated, service_role;
           GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION auth.role() TO anon, authenticated, service_role;
           SQL
 
       - name: Apply migration to clean PostgreSQL database
@@ -533,4 +566,64 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/distribution-consent-publication-guard.test.sql
+
+      - name: Create profile and Storage fixtures, apply profile-consent guard
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE public.profiles (
+            id uuid PRIMARY KEY REFERENCES auth.users(id),
+            username text NOT NULL,
+            bio text,
+            avatar_url text,
+            created_at timestamptz DEFAULT now(),
+            role text DEFAULT 'user',
+            is_banned boolean DEFAULT false,
+            banned_until timestamptz,
+            onboarding_completed_at timestamptz,
+            notifications_muted boolean DEFAULT false
+          );
+          ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+          GRANT UPDATE ON public.profiles TO authenticated;
+          CREATE POLICY profiles_update_own_test ON public.profiles
+            FOR UPDATE TO authenticated
+            USING ((SELECT auth.uid()) = id)
+            WITH CHECK ((SELECT auth.uid()) = id);
+          CREATE POLICY profiles_read_own_test ON public.profiles
+            FOR SELECT TO authenticated
+            USING ((SELECT auth.uid()) = id);
+
+          CREATE SCHEMA storage;
+          CREATE TABLE storage.objects (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            bucket_id text NOT NULL,
+            name text NOT NULL
+          );
+          ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+          GRANT USAGE ON SCHEMA storage TO authenticated;
+          GRANT SELECT, INSERT, UPDATE ON storage.objects TO authenticated;
+          CREATE POLICY avatars_public_read_test ON storage.objects
+            FOR SELECT TO anon, authenticated
+            USING (bucket_id = 'avatars');
+
+          CREATE FUNCTION storage.foldername(name text)
+          RETURNS text[]
+          LANGUAGE sql
+          IMMUTABLE
+          SET search_path = ''
+          AS $function$
+            SELECT pg_catalog.string_to_array(name, '/')
+          $function$;
+          GRANT EXECUTE ON FUNCTION storage.foldername(text) TO authenticated;
+          SQL
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261212_profile_public_consent_guard.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261212_profile_public_consent_guard.sql
+
+      - name: Verify public profile fields and avatar Storage require consent
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/profile-public-consent-guard.test.sql
 

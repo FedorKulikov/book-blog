@@ -1,17 +1,17 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { DISTRIBUTION_CONSENT_VERSION } from '@/lib/distribution-consent'
+import { DISTRIBUTION_CONSENT_VERSION, PROFILE_PUBLIC_CONSENT_VERSION } from '@/lib/distribution-consent'
 
 export const metadata: Metadata = {
   title: 'Согласие на распространение данных',
-  description: 'Какие данные публикации будут доступны посетителям сайта и как отозвать согласие.',
+  description: 'Какие данные профиля и публикаций доступны посетителям сайта и как отозвать согласие.',
 }
 
 export default function ConsentDistributionPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 md:px-8">
-      <Link href="/news/new" className="mb-6 inline-flex text-sm text-brown/70 underline hover:text-wine">
-        Вернуться к публикации
+      <Link href="/profile/edit" className="mb-6 inline-flex text-sm text-brown/70 underline hover:text-wine">
+        Вернуться к профилю
       </Link>
 
       <article className="space-y-6 rounded-2xl border border-emerald-dark/10 bg-cream-warm/30 p-5 md:p-8">
@@ -20,15 +20,30 @@ export default function ConsentDistributionPage() {
             Отдельное согласие
           </p>
           <h1 className="font-playfair text-2xl font-bold text-emerald-dark md:text-3xl">
-            Публикация и распространение данных
+            Распространение персональных данных
           </h1>
           <p className="text-sm text-brown/60">
-            Версия документа {DISTRIBUTION_CONSENT_VERSION}
+            Версия согласия на публикации: {DISTRIBUTION_CONSENT_VERSION}. Версия согласия на публичные поля профиля: {PROFILE_PUBLIC_CONSENT_VERSION}.
+          </p>
+          <p className="leading-relaxed text-brown-dark">
+            Ниже перечислено, какие данные становятся доступными другим людям,
+            когда ты даёшь отдельное согласие на публичный профиль или создаёшь
+            публикацию.
           </p>
         </header>
 
         <section className="space-y-2">
-          <h2 className="font-semibold text-emerald-dark">Какие данные будут видны</h2>
+          <h2 className="font-semibold text-emerald-dark">Публичные поля профиля</h2>
+          <p className="leading-relaxed text-brown-dark">
+            На странице твоего публичного профиля посетители сайта смогут увидеть
+            имя пользователя, фотографию профиля, описание «О себе» и дату
+            регистрации («С нами с»). Город в профиле не собирается и не
+            публикуется.
+          </p>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="font-semibold text-emerald-dark">Данные публикаций</h2>
           <p className="leading-relaxed text-brown-dark">
             Вместе с публикацией посетители смогут увидеть её заголовок и текст,
             прикреплённые изображения, теги и ссылку на выбранную книгу. Также
@@ -41,10 +56,10 @@ export default function ConsentDistributionPage() {
         <section className="space-y-2">
           <h2 className="font-semibold text-emerald-dark">Кому доступны данные</h2>
           <p className="leading-relaxed text-brown-dark">
-            Публикация доступна всем посетителям сайта, а не только
-            зарегистрированным пользователям. Публичные страницы могут
-            попадать в поисковые системы и становиться доступными по прямой
-            ссылке за пределами сайта.
+            Эти данные доступны всем посетителям сайта, а не только
+            зарегистрированным пользователям. Публичные страницы и изображения
+            могут открываться по прямой ссылке, а страницы профиля и публикации
+            могут попадать в поисковые системы.
           </p>
         </section>
 
@@ -56,15 +71,17 @@ export default function ConsentDistributionPage() {
             <Link href="/privacy#contact" className="underline text-wine hover:text-wine-dark">
               политике конфиденциальности
             </Link>
-            . Само удаление публикации и прекращение дальнейшего распространения
-            могут быть отдельными действиями; опиши в запросе, что именно нужно
-            прекратить.
+            . Само удаление публикации, изображения или прекращение дальнейшего
+            распространения могут быть отдельными действиями; укажи в запросе,
+            что именно нужно прекратить.
           </p>
         </section>
 
         <p className="border-t border-emerald-dark/10 pt-4 text-sm leading-relaxed text-brown/70">
-          Это согласие отдельное: оно не заменяет правила сайта и не объединено
-          с их принятием. Без него новая публикация не будет создана.
+          Согласие на публичные поля профиля и согласие на публикацию
+          фиксируются отдельно. Они не заменяют правила сайта и не объединены
+          с их принятием. Приватные настройки уведомлений в этот перечень не
+          входят.
         </p>
       </article>
     </main>

@@ -30,7 +30,7 @@ export default function AdminPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, role')
         .eq('id', user.id)
         .single()
 

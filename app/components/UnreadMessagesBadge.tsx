@@ -23,14 +23,15 @@ export default function UnreadMessagesBadge({
       }
 
       // Общий mute уведомлений из настроек профиля
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('notifications_muted')
-        .eq('id', user.id)
-        .maybeSingle()
+      const { data: notificationsMuted, error: settingsError } = await supabase.rpc('my_profile_notification_settings')
       if (!alive) return
 
-      if (profile?.notifications_muted === true) {
+      if (settingsError || typeof notificationsMuted !== 'boolean') {
+        setCount(0)
+        return
+      }
+
+      if (notificationsMuted === true) {
         setCount(0)
         return
       }
