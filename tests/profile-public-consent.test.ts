@@ -126,6 +126,20 @@ test('private notification preference saves without checking profile consent', a
   assert.deepEqual(fake.updates, [{ notifications_muted: true }])
 })
 
+test('private notification setting lookup failure prevents any profile update', async () => {
+  const fake = fakeSupabase({ notificationsError: { code: 'XX000' } })
+  const result = await updateProfileWithConsent(
+    fake.client,
+    userId,
+    { ...baseInput, notificationsMuted: true },
+    supabaseUrl,
+  )
+
+  assert.equal(result.status, 503)
+  assert.equal(fake.updates.length, 0)
+  assert.deepEqual(fake.rpcCalls, ['my_profile_notification_settings'])
+})
+
 test('public profile change succeeds with the owner active profile_public grant', async () => {
   const fake = fakeSupabase({
     consentRows: [{
