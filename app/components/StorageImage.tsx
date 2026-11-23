@@ -1,135 +1,22 @@
 'use client'
 
-import { useEffect, useRef, useState, type ImgHTMLAttributes, type SyntheticEvent } from 'react'
+import { useEffect, useState, type ImgHTMLAttributes, type SyntheticEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const SIGNED_URL_TTL_SECONDS = 60
+const SIGNED_URL_CACHE_SAFETY_SECONDS = 5
 
 type PrivateBucket = 'avatars' | 'post-images'
-type PrivateReference = { bucket: PrivateBucket; path: string }
-type QueuedRequest = {
-  key: string
-  viewerKey: string
-  bucket: PrivateBucket
-  path: string
-  resolve: (url: string | null) => void
+
+type CachedSignedUrl = {
+  url: string
+  expiresAt: number
 }
 
-const inFlight = new Map<string, Promise<string | null>>()
-let viewerLookup: Promise<string> | null = null
-const pending = new Map<string, QueuedRequest>()
-let flushScheduled = false
+const signedUrlCache = new Map<string, CachedSignedUrl>()
+const signedUrlRequests = new Map<string, Promise<string>>()
 
-function storageKey(viewerKey: string, bucket: PrivateBucket, path: string) {
-  return `${viewerKey}:${bucket}:${path}`
-}
-
-/**
- * Multiple images mounted in the same React commit are signed in one request
- * per bucket and viewer. Duplicate paths share a single signature. The cache
- * is only in-flight: bearer URLs are never reused after the batch completes.
- */
-function getViewerKey(): Promise<string> {
-  if (!viewerLookup) {
-    const lookup = supabase.auth
-      .getSession()
-      .then(({ data }) => data.session?.user.id ?? 'anon')
-      .catch(() => 'anon')
-
-    viewerLookup = lookup
-    void lookup.finally(() => {
-      if (viewerLookup === lookup) viewerLookup = null
-    })
-  }
-
-  return viewerLookup
-}
-
-async function getSignedStorageUrl(
-  bucket: PrivateBucket,
-  path: string,
-): Promise<string | null> {
-  let viewerKey: string
-
-  try {
-    viewerKey = await getViewerKey()
-  } catch {
-    return null
-  }
-
-  const key = storageKey(viewerKey, bucket, path)
-  const existing = inFlight.get(key)
-  if (existing) return existing
-
-  let resolveRequest!: (url: string | null) => void
-  const request = new Promise<string | null>((resolve) => {
-    resolveRequest = resolve
-  })
-
-  inFlight.set(key, request)
-  pending.set(key, { key, viewerKey, bucket, path, resolve: resolveRequest })
-
-  if (!flushScheduled) {
-    flushScheduled = true
-    queueMicrotask(() => {
-      void flushSignedUrlQueue()
-    })
-  }
-
-  return request
-}
-
-async function flushSignedUrlQueue() {
-  flushScheduled = false
-  const queued = Array.from(pending.values())
-  pending.clear()
-
-  const byBucketAndViewer = new Map<string, QueuedRequest[]>()
-  for (const request of queued) {
-    const groupKey = `${request.viewerKey}:${request.bucket}`
-    const group = byBucketAndViewer.get(groupKey) ?? []
-    group.push(request)
-    byBucketAndViewer.set(groupKey, group)
-  }
-
-  await Promise.all(
-    Array.from(byBucketAndViewer.values()).map(async (requests) => {
-      const first = requests[0]
-      let signedRows: Array<{ path: string | null; signedUrl: string | null; error: string | null }> | null = null
-
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const currentViewerKey = session?.user.id ?? 'anon'
-
-        // Do not let a request queued under one account receive a bearer URL
-        // signed with a different account's current session.
-        if (currentViewerKey === first.viewerKey) {
-          const { data, error } = await supabase.storage
-            .from(first.bucket)
-            .createSignedUrls(requests.map((request) => request.path), SIGNED_URL_TTL_SECONDS)
-
-          if (!error) signedRows = data
-        }
-      } catch {
-        signedRows = null
-      }
-
-      const byPath = new Map(
-        (signedRows ?? []).map((row) => [row.path ?? '', row]),
-      )
-
-      for (const request of requests) {
-        const row = byPath.get(request.path)
-        const url = row && !row.error && row.signedUrl ? row.signedUrl : null
-
-        inFlight.delete(request.key)
-        request.resolve(url)
-      }
-    }),
-  )
-}
-
-function privateStorageReference(source: string): PrivateReference | null {
+function privateStorageReference(source: string): { bucket: PrivateBucket; path: string } | null {
   try {
     const url = new URL(source)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -158,70 +45,116 @@ function privateStorageReference(source: string): PrivateReference | null {
   }
 }
 
+async function getSignedStorageUrl(bucket: PrivateBucket, path: string): Promise<string> {
+  const key = `${bucket}:${path}`
+  const now = Date.now()
+  const cached = signedUrlCache.get(key)
+
+  if (cached && cached.expiresAt > now) return cached.url
+
+  const pending = signedUrlRequests.get(key)
+  if (pending) return pending
+
+  const request = supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, SIGNED_URL_TTL_SECONDS)
+    .then(({ data, error }) => {
+      if (error || !data?.signedUrl) {
+        throw new Error(error?.message ?? 'Storage returned an empty signed URL')
+      }
+
+      signedUrlCache.set(key, {
+        url: data.signedUrl,
+        expiresAt: Date.now() + (
+          SIGNED_URL_TTL_SECONDS - SIGNED_URL_CACHE_SAFETY_SECONDS
+        ) * 1000,
+      })
+      return data.signedUrl
+    })
+    .finally(() => {
+      signedUrlRequests.delete(key)
+    })
+
+  signedUrlRequests.set(key, request)
+  return request
+}
+
 /**
  * Resolve legacy public Storage URLs through consent-aware private-bucket RLS.
- * The database keeps the stable object URL; the browser receives a signed URL
- * after Storage authorizes the current viewer. On expiry, re-sign once; if
- * access was withdrawn, remove the image instead of rendering a broken icon.
+ * Identical object paths share one in-memory signing request/cache entry.
+ * The database keeps stable object URLs; the browser receives a short-lived
+ * signed URL only after Storage confirms that this viewer may read the object.
  */
 export default function StorageImage({
   src,
+  onError,
+  alt,
+  className,
+  style,
   ...imageProps
 }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
   src?: string | null
 }) {
-  const [signedResult, setSignedResult] = useState<{ source: string; url: string | null } | null>(null)
-  const [failedSource, setFailedSource] = useState<string | null>(null)
-  const retryAttempted = useRef(false)
-
-  const reference = src ? privateStorageReference(src) : null
-  const bucket = reference?.bucket
-  const objectPath = reference?.path
-  const resolvedSrc = reference
-    ? signedResult && signedResult.source === src ? signedResult.url ?? undefined : undefined
-    : src ?? undefined
-  const unavailable = !!src && failedSource === src
+  const [resolvedSrc, setResolvedSrc] = useState<string | undefined>()
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    retryAttempted.current = false
+    setFailed(false)
 
-    if (!src || !bucket || !objectPath) return
+    if (!src) {
+      setResolvedSrc(undefined)
+      return
+    }
 
-    void getSignedStorageUrl(bucket, objectPath).then((url) => {
-      if (cancelled) return
-      setSignedResult({ source: src, url })
-      if (!url) setFailedSource(src)
-    })
+    const reference = privateStorageReference(src)
+    if (!reference) {
+      setResolvedSrc(src)
+      return
+    }
+
+    setResolvedSrc(undefined)
+
+    void getSignedStorageUrl(reference.bucket, reference.path)
+      .then((signedUrl) => {
+        if (!cancelled) setResolvedSrc(signedUrl)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : 'unknown Storage error'
+        console.warn('[StorageImage] private media could not be signed:', message)
+        setFailed(true)
+      })
 
     return () => {
       cancelled = true
     }
-  }, [src, bucket, objectPath])
+  }, [src])
 
   function handleImageError(event: SyntheticEvent<HTMLImageElement, Event>) {
-    imageProps.onError?.(event)
-
-    if (!src || !reference || retryAttempted.current) {
-      if (src) setFailedSource(src)
-      return
-    }
-
-    retryAttempted.current = true
-
-    void getSignedStorageUrl(reference.bucket, reference.path, true).then((url) => {
-      setSignedResult({ source: src, url })
-      if (!url) setFailedSource(src)
-    })
+    setFailed(true)
+    onError?.(event)
   }
 
-  if (!src || unavailable) return null
+  if (!resolvedSrc || failed) {
+    return (
+      <span
+        role={alt ? 'img' : undefined}
+        aria-label={alt || undefined}
+        aria-hidden={alt ? undefined : true}
+        className={`${className ?? ''} bg-cream-warm/60`.trim()}
+        style={style}
+      />
+    )
+  }
 
   return (
     <img
       {...imageProps}
-      alt={imageProps.alt ?? ''}
       src={resolvedSrc}
+      alt={alt ?? ''}
+      className={className}
+      style={style}
       onError={handleImageError}
     />
   )
