@@ -657,3 +657,18 @@ The actual `.github/workflows/apply-migrations.yml` was `workflow_dispatch`-only
 Branch `fix/auto-apply-db-migrations` adds a main-push trigger for newly added SQL migrations only. Modified/deleted released migrations fail closed. A one-time marker points to the already merged Stage 4 migration. The existing checksum registry skips previously applied files. The workflow now fetches full Git history, uses `github.event.before` for the diff and performs Stage 4 production assertions (private profile columns, RLS policy count, private media buckets, and RPC count). Web quality is configured to lint this workflow and trigger on its marker/workflow changes.
 
 This separate PR is not merged and has not changed production. No live user rows or media were modified. Stage 4 remains pending until the PR CI is green, merged, and the `Apply DB migrations` production workflow reports success.
+
+
+## 2026-11-23 — B12 Stage 4 production deployment and read-only verification
+
+PR #86 was merged as `1a8e309548f40ebc719c6f06c748dd957c822fdc`. The missing automatic migration path was fixed in PR #87, merged as `cdc0a6987defe010d9372f589c21cb885538699e`. Production `Apply DB migrations` run `45144789825` completed successfully, including its Stage 4 postcondition step; production health smoke `45144789629` passed for both `bukleb.ru` and the Layero domain.
+
+Read-only production schema inspection confirmed migration registry row `20261213_distribution_consent_withdrawal.sql` (checksum prefix `53f6cf42022a3163`), 3 private profile marker columns, profiles/posts policies, 4 child-table policies, 2 private buckets, and 3 user-scoped RPCs. For the legacy state/decision/revoke-all RPCs, anon EXECUTE is false and authenticated EXECUTE is true.
+
+A read-only transaction under `SET LOCAL ROLE anon` returned 0 visible profiles/posts/comments/likes/post_images/post_tags/avatar objects. The private `post-images` bucket exposed 127 objects through consent-aware Storage RLS; a separate query verified 127 referenced book covers and 0 visible objects not referenced by `books.cover_url`. The transaction was rolled back; no user content or Storage objects were modified.
+
+Aggregate live state: 19 profiles, 11 posts, no currently public profiles/posts, no active profile_public consent, 2 active publication scopes, and 9 authors still awaiting the one-time legacy decision. This is fail-closed: no old profile/post becomes public without the appropriate consent/legacy choice; nothing is deleted.
+
+Code inspection confirms `StorageImage` is wired into comment avatars, post images/author avatars, conversation-list avatars and book covers. It batches signatures by bucket/viewer: 20 unique comment avatars can produce up to 20 signed URL values in one Storage API batch request; duplicate paths share an in-flight signature. Image load error triggers one re-sign attempt; continuing RLS denial leaves a neutral placeholder. `Header.tsx` has no avatar image element; it displays a generic User icon and username.
+
+Browser-level visual verification of the exact five user-requested images remains pending: this execution environment has no authenticated Layero browser session or website screenshot/browser-control capability. HTTP smoke and SQL/RLS checks are not reported as visual proof, and no production test account/content was created. The privacy policy Stage 5 update remains deferred until that visual check is genuinely available.
