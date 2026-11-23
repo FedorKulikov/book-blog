@@ -579,3 +579,12 @@ PR #83 merged: `2024275a5078e178f6cc95556d28010a77675046`. Web quality 4/4 jobs 
 **Registry/security:** Stage 3 checksum зарегистрирован в `ops.applied_migrations` (1 строка). `notifications_muted` direct SELECT denied anon/authenticated; profile helper EXECUTE denied anon, enabled authenticated; trigger present.
 
 **Оговорка:** live smoke использует настоящие Supabase Auth/JWT/PostgREST для проверки DB/Storage/RLS/trigger; Next.js PATCH/service helper покрыт unit/CI, но отдельный ручной браузерный проход Layero UI не выполнялся.
+
+
+## 2026-11-23 — B12-fix: profiles SELECT regression guard
+
+**Initial inspection:** `main` was at `44365579214f01f075103106f6c5c9d58ebab7b1`; migration `20261212_profile_public_consent_guard.sql` exists. A repository code search over direct `from('profiles')` call chains found no `select('*')`. The three named client components already select explicit allowed columns. Other direct profile reads found in app/lib/scripts/tests also use explicit column lists; profile joins nested under queries on other tables select named fields only. `notifications_muted` is read through `my_profile_notification_settings()`.
+
+**Changes:** added `scripts/check-profile-selects.mjs` using the TypeScript AST, `npm run check:profile-selects`, and a required Web quality CI step. It scans `app/`, `lib/`, `scripts/`, and `tests/`, catching a root wildcard selector on a `from('profiles')` chain while avoiding unrelated-table and nested-relation wildcards. Added `scripts/**` to the workflow path filter. Admin bootstrap now distinguishes a profile-read error from a non-staff account and renders an error instead of redirecting on query failure. The owner profile page reports read failure. The edit form fails closed when profile loading fails and prevents submission with an empty username.
+
+**Verification boundaries:** the production REST 42501 behavior is treated as owner-confirmed and was not re-requested. No authenticated Layero browser session is available through the connected GitHub tools, so the requested live `/profile`, `/profile/edit`, and `/admin` smoke cannot honestly be marked complete yet. No migration, grants, Storage policy, privacy/recovery, Hook, mailer setting, or secret was changed. CI will provide the AST regression result on the PR.
