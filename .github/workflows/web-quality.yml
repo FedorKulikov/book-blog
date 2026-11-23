@@ -654,7 +654,7 @@ jobs:
           GRANT SELECT ON public.books TO anon, authenticated;
           CREATE POLICY books_read_all ON public.books
             FOR SELECT TO public USING (true);
-          GRANT UPDATE ON public.profiles TO authenticated;
+          GRANT UPDATE (username, bio, avatar_url, notifications_muted) ON public.profiles TO authenticated;
           CREATE POLICY profiles_update_own_test ON public.profiles
             FOR UPDATE TO authenticated
             USING ((SELECT auth.uid()) = id)
