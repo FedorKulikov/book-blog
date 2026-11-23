@@ -540,7 +540,7 @@
 
 - PR #89 merged as `41948d0154b68b89a99140dc1e7a6539ae54033b`; the production apply-migrations workflow registered `20261214_legacy_distribution_default_visibility.sql` at 12:11:33 UTC with checksum `6066b9ddf1f7858bdd675db39ef5fd6cf612781c45730625cf5c42edd6d17d7c`.
 - The post-deploy anonymous read check found SQLSTATE `42501` on `private.can_read_distribution_profile(uuid)`. Production ACL inspection showed that both public RLS predicates (`can_read_distribution_profile` and `can_read_distribution_post`) were executable only by `postgres`, while the public policies target `anon, authenticated`. The verification transaction was rolled back; the failed check did not change post counters or user data.
-- Prepared `20261215_distribution_read_helper_acl.sql`: revoke helper execution from `PUBLIC` and `service_role`, grant only to `anon` and `authenticated`. CI now applies it twice and the SQL test asserts all four role/function combinations. Follow-up PR and production verification remain pending.
+- PR #90 merged as `36d3ef8cfcd5e0f12954cfba83f32208b8a6312b`; production applied `20261215_distribution_read_helper_acl.sql` at 12:17:26 UTC with checksum `ca983c1082ef0b6b5b77c64396ff70c8093b86e5cd6c2043c537be472807a858`. `anon` and `authenticated` can execute only the two public RLS predicates; `PUBLIC` and `service_role` remain denied. Production RLS returns 19 profiles and 9 approved posts; counter verification under `anon` was rolled back, leaving the stored count unchanged.
 - No consent records were created or backfilled; no existing user or smoke-account rows were changed.
 
 
