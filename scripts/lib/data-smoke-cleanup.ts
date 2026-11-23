@@ -161,6 +161,62 @@ export async function getDataSmokeInventory(
   `)
 }
 
+async function assertNoForeignContentWouldBeCascadeDeleted(
+  projectRef: string,
+  accessToken: string,
+): Promise<void> {
+  const rows = await managementReadOnlyQuery<{
+    mixed_conversations: number
+    foreign_comments: number
+    foreign_likes: number
+    foreign_bookmarks: number
+    foreign_reports: number
+    foreign_notifications: number
+    foreign_ticket_messages: number
+  }>(projectRef, accessToken, `
+    with smoke_users as (
+      select id from auth.users
+       where lower(email) like 'data-smoke-%@example.com'
+    ),
+    smoke_posts as (
+      select p.id from public.posts p join smoke_users u on u.id = p.user_id
+    ),
+    smoke_tickets as (
+      select t.id from public.tickets t join smoke_users u on u.id = t.user_id
+    )
+    select
+      (select count(*)::int from public.conversations c
+        where (c.user1_id in (select id from smoke_users) and c.user2_id not in (select id from smoke_users))
+           or (c.user2_id in (select id from smoke_users) and c.user1_id not in (select id from smoke_users))) as mixed_conversations,
+      (select count(*)::int from public.comments c
+        where c.post_id in (select id from smoke_posts)
+          and c.user_id not in (select id from smoke_users)) as foreign_comments,
+      (select count(*)::int from public.likes l
+        where l.post_id in (select id from smoke_posts)
+          and l.user_id not in (select id from smoke_users)) as foreign_likes,
+      (select count(*)::int from public.bookmarks b
+        where b.post_id in (select id from smoke_posts)
+          and b.user_id not in (select id from smoke_users)) as foreign_bookmarks,
+      (select count(*)::int from public.reports r
+        where r.post_id in (select id from smoke_posts)
+          and r.reporter_id not in (select id from smoke_users)) as foreign_reports,
+      (select count(*)::int from public.notifications n
+        where n.post_id in (select id from smoke_posts)
+          and n.user_id not in (select id from smoke_users)) as foreign_notifications,
+      (select count(*)::int from public.ticket_messages tm
+        where tm.ticket_id in (select id from smoke_tickets)
+          and tm.sender_id not in (select id from smoke_users)) as foreign_ticket_messages;
+  `)
+  if (rows.length !== 1) {
+    throw new Error('Could not verify cross-account cleanup safety')
+  }
+  const risks = rows[0]
+  const riskTotal = Object.values(risks).reduce((sum, count) => sum + count, 0)
+  if (riskTotal > 0) {
+    throw new Error(`cleanup blocked: non-data-smoke content would be cascade-deleted (${JSON.stringify(risks)})`)
+  }
+}
+
 export async function cleanupDataSmokeUsers(
   admin: AdminClient,
   projectRef: string,
@@ -175,6 +231,8 @@ export async function cleanupDataSmokeUsers(
   if (ids.length === 0) {
     return verifyDataSmokeCleanup(projectRef, accessToken, ids)
   }
+
+  await assertNoForeignContentWouldBeCascadeDeleted(projectRef, accessToken)
 
   // Storage objects must be removed through the Storage API before Auth deletion.
   const storageRows = await managementReadOnlyQuery<StorageRow>(
