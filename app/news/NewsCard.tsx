@@ -17,7 +17,6 @@ import {
   formatDeadline,
   formatNewsDate,
   isDeadlinePassed,
-  isNewsCategory,
   type PortalNewsItem,
 } from './newsQuery'
 
