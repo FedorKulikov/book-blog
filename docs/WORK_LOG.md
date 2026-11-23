@@ -599,3 +599,16 @@ PR #83 merged: `2024275a5078e178f6cc95556d28010a77675046`. Web quality 4/4 jobs 
 **Application changes:** added StorageImage to exchange stored legacy public URLs for 60-second signed URLs after Storage RLS authorizes the current viewer. Replaced private image consumers in profile, post, comments, search, notification, admin and chat UI; public metadata/JSON-LD use the stable site fallback image, not user-media object URLs. EditProfileClient contains the one-time prompt and revoke confirmation UI. Already issued signed links can continue until their 60-second expiry; stored user data and media remain intact.
 
 **Verification pending:** the PostgreSQL 17 CI job now creates the related table/storage fixtures, reapplies the new migration twice, and tests visibility, owner/chat access, one-time decisions, revocation, private media and public book covers. The CI also lints the updated media consumers. The migration has not been applied to production; Stage 5 privacy policy update is intentionally postponed until Stage 4 is deployed and live-verified. No live user data or objects have been changed.
+
+
+## 2026-11-23 — B12 Stage 4 follow-up: CI trigger, legacy cutoff and signed image behavior
+
+Added the requested empty commit `chore(ci): trigger checks` with the exact same tree as its parent and pushed it fast-forward to the PR branch. Web quality and Chat security workflow runs were observed for the PR head; later implementation commits also refreshed checks.
+
+Kept PR #86 as a single deployment unit: publishing RLS withdrawal without private buckets leaves old public object URLs outside RLS, while privatizing buckets before updating image consumers breaks live images. Added explicit signed-URL risks and this no-split rationale to the PR body.
+
+Added `profiles.legacy_distribution_cutoff_at DEFAULT now()` and restricted legacy prompt state/decision checks to approved posts created at or before that per-profile cutoff. This prevents new profiles or posts from being incorrectly presented as pre-existing content. The cutoff and handled-marker columns remain outside user column grants; SQL coverage includes a post newer than cutoff.
+
+Updated `StorageImage`: identical object paths share one in-memory signed URL request/cache per viewer, with a 5-second safety margin before 60-second expiry. The cache is not persisted and is partitioned by viewer ID. A failed/expired/unauthorized image displays a neutral placeholder via `onError` rather than a broken image; the page remains usable.
+
+Documented the sizing check: 20 unique root-comment avatars can generate up to 20 signed URLs, with repeated object paths deduplicated; visible replies and other unique page images add their own signatures. Confirmed post/profile/book Open Graph, Twitter and JSON-LD use `/og-default.jpg`; sitemap has no image URLs and is dynamically filtered by RLS. CI and production visual verification are still pending; do not merge before green checks.
