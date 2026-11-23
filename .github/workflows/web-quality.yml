@@ -166,6 +166,10 @@ jobs:
             app/messages/'[id]'/page.tsx \
             app/components/MessageBubble.tsx \
             app/components/StorageImage.tsx \
+            app/profile/ProfileClient.tsx \
+            app/admin/AdminClient.tsx \
+            app/news/NewsCard.tsx \
+            app/sitemap.ts \
             app/components/PostCard.tsx \
             app/components/AvatarLightbox.tsx \
             app/components/TopAuthors.tsx \
