@@ -197,12 +197,11 @@ export default function WelcomeClient() {
               {' '}Вы можете подтвердить их дальнейшее распространение или скрыть. При скрытии записи и файлы
               останутся в аккаунте и не будут удалены.
             </p>
-            {legacyPromptState.publication_active && (
-              <p className="mt-2 text-sm leading-6 text-brown-dark/80">
-                Отдельное согласие на новые публикации останется действовать. Этот выбор не откроет
-                старые публикации повторно после скрытия.
-              </p>
-            )}
+            <p className="mt-2 text-sm leading-6 text-brown-dark/80">
+              {legacyPromptState.publication_active
+                ? 'Отдельное согласие на новые публикации останется действовать, даже если вы скроете старые материалы.'
+                : 'Этот выбор касается только ранее созданных данных; новые публикации по-прежнему требуют отдельного согласия.'}
+            </p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <button
                 type="button"
