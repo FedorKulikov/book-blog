@@ -133,6 +133,8 @@ jobs:
             app/books/add/page.tsx \
             app/profile/page.tsx \
             app/profile/ProfileClient.tsx \
+            app/admin/AdminClient.tsx \
+            app/components/UnreadMessagesBadge.tsx \
             app/profile/edit/page.tsx \
             app/profile/edit/EditProfileClient.tsx \
             app/support/'[id]'/page.tsx \
