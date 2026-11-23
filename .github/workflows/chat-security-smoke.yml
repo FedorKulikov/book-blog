@@ -12,13 +12,6 @@ on:
       - 'scripts/test-client-write-security.ts'
       - 'scripts/cleanup-data-smoke-users.ts'
       - 'scripts/lib/**'
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/cleanup-data-smoke-users.ts'
-      - 'scripts/lib/**'
-      - '.github/workflows/chat-security-smoke.yml'
       - '.github/workflows/chat-security-smoke.yml'
       - 'supabase/migrations/**'
       - 'app/signup/page.tsx'
@@ -28,6 +21,13 @@ on:
       - 'app/welcome/**'
       - 'app/auth/reset/page.tsx'
       - 'lib/errors.ts'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/cleanup-data-smoke-users.ts'
+      - 'scripts/lib/**'
+      - '.github/workflows/chat-security-smoke.yml'
   workflow_run:
     workflows:
       - Apply DB migrations
