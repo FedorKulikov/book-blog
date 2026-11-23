@@ -54,7 +54,7 @@ jobs:
       - name: Apply migrations
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          FILES: ${{ inputs.files }}
+          FILES: ${{ github.event.inputs.files || '' }}
         run: |
           set -euo pipefail
           if [ -z "${DB_URL:-}" ]; then
@@ -142,7 +142,7 @@ jobs:
       - name: Verify schema
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          FILES: ${{ inputs.files }}
+          FILES: ${{ github.event.inputs.files || '' }}
         run: |
           set -euo pipefail
           echo "::group::колонки external_news"
