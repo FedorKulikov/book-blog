@@ -319,8 +319,8 @@ $hidden_legacy_not_public$;
 
 reset role;
 
--- A genuine user-scoped consent grant overrides the prior hidden legacy choice
--- for its own scope; this is a real test-user action through the public RPC.
+-- A later user-scoped grant applies to future publications and the current profile,
+-- but must not override the one-time hidden decision for pre-cutoff posts.
 set local role authenticated;
 select pg_catalog.set_config('request.jwt.claim.sub', '55555555-5555-4555-8555-555555555555', true);
 select public.record_my_distribution_consent(
