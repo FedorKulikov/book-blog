@@ -19,6 +19,7 @@ export default function AdminPage() {
   const [newWord, setNewWord] = useState('')
   const [loading, setLoading] = useState(true)
   const [me, setMe] = useState<any>(null)
+  const [accessError, setAccessError] = useState<string | null>(null)
 
   useEffect(() => {
     async function init() {
@@ -28,11 +29,18 @@ export default function AdminPage() {
         return
       }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('id, role')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
+
+      if (profileError) {
+        console.error('[admin] failed to load current profile:', profileError)
+        setAccessError('Не удалось проверить права доступа к панели. Обновите страницу и попробуйте ещё раз.')
+        setLoading(false)
+        return
+      }
 
       if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator')) {
         router.push('/')
@@ -183,6 +191,15 @@ export default function AdminPage() {
 
   if (loading) {
     return <main className="p-4 md:p-8 max-w-7xl mx-auto">Загрузка…</main>
+  }
+
+  if (accessError) {
+    return (
+      <main className="p-4 md:p-8 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-emerald-dark mb-2">Не удалось открыть панель</h1>
+        <p role="alert" className="text-sm text-wine">{accessError}</p>
+      </main>
+    )
   }
 
   return (
