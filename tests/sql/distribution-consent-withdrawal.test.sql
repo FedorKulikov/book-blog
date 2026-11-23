@@ -100,6 +100,12 @@ begin
      or not has_function_privilege('authenticated', 'public.revoke_my_all_distribution_consents()', 'EXECUTE') then
     raise exception 'user-scoped consent decision RPC grants are incorrect';
   end if;
+
+  if not has_function_privilege('anon', 'public.get_publication_author_details(uuid[])', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.get_publication_author_details(uuid[])', 'EXECUTE')
+     or pg_get_function_identity_arguments('public.get_publication_author_details(uuid[])'::regprocedure) ilike '%user_id%' then
+    raise exception 'publication author RPC grants or signature are incorrect';
+  end if;
 end;
 $column_and_bucket_privileges$;
 
@@ -276,17 +282,40 @@ begin
   end if;
 
   if (select count(*) from public.profiles) <> 1
+     or (select count(*) from public.profiles where id='33333333-3333-4333-8333-333333333333') <> 0
      or (select count(*) from public.posts) <> 2
      or (select count(*) from public.comments) <> 2
      or (select count(*) from public.likes) <> 2
      or (select count(*) from public.post_images) <> 2
      or (select count(*) from public.post_tags) <> 2 then
-    raise exception 'guest can see hidden rows or cannot see consented A/new C rows';
+    raise exception 'guest can see hidden profile fields or cannot see consented A/new C rows';
   end if;
 
-  if (select count(*) from storage.objects where bucket_id = 'avatars') <> 1
+  if (select count(*) from storage.objects where bucket_id = 'avatars') <> 2
      or (select count(*) from storage.objects where bucket_id = 'post-images') <> 3 then
-    raise exception 'guest Storage visibility did not follow consent (post-images includes A, new C, and public book cover)';
+    raise exception 'guest Storage visibility did not follow consent (A profile + C publication avatar; A/C images and public book cover)';
+  end if;
+
+  if not exists (
+    select 1
+      from public.get_publication_author_details(
+        array['cccccccc-cccc-4ccc-8ccc-ccccccccccc3']::uuid[]
+      ) author
+     where author.user_id='33333333-3333-4333-8333-333333333333'
+       and author.username='visibility_c'
+       and author.avatar_url like '%/avatars/33333333-3333-4333-8333-333333333333/avatar.jpg'
+       and author.can_read_profile is false
+  ) then
+    raise exception 'publication-only author did not receive narrow username/avatar details';
+  end if;
+
+  if exists (
+    select 1
+      from public.get_publication_author_details(
+        array['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2']::uuid[]
+      )
+  ) then
+    raise exception 'hidden legacy publication exposed author details';
   end if;
 
   if (select count(*) from public.posts where id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2') <> 0 then
@@ -529,9 +558,21 @@ begin
      or (select count(*) from public.post_tags) <> 1 then
     raise exception 'A and B legacy rows must stay hidden while new C remains visible';
   end if;
-  if (select count(*) from storage.objects where bucket_id='avatars') <> 0
+  if (select count(*) from storage.objects where bucket_id='avatars') <> 1
      or (select count(*) from storage.objects where bucket_id='post-images') <> 2 then
-    raise exception 'A/B media remains available after revoke (only new C image and public book cover should remain)';
+    raise exception 'A/B media remains available after revoke (only new C publication avatar/image and public book cover should remain)';
+  end if;
+
+  if (select count(*) from public.profiles where id='33333333-3333-4333-8333-333333333333') <> 0
+     or not exists (
+       select 1
+         from public.get_publication_author_details(
+           array['cccccccc-cccc-4ccc-8ccc-ccccccccccc3']::uuid[]
+         ) author
+        where author.username='visibility_c'
+          and author.can_read_profile is false
+     ) then
+    raise exception 'publication author details stopped being available or full profile became visible after A revoke';
   end if;
 end;
 $anonymous_after_revoke$;
