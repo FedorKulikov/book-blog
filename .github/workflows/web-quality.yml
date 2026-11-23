@@ -543,3 +543,54 @@ jobs:
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/distribution-consent-publication-guard.test.sql
 
+      - name: Create profile and Storage fixtures, apply profile-consent guard
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE public.profiles (
+            id uuid PRIMARY KEY REFERENCES auth.users(id),
+            username text NOT NULL,
+            bio text,
+            avatar_url text,
+            created_at timestamptz DEFAULT now(),
+            role text DEFAULT 'user',
+            notifications_muted boolean DEFAULT false
+          );
+          ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+          GRANT UPDATE ON public.profiles TO authenticated;
+          CREATE POLICY profiles_update_own_test ON public.profiles
+            FOR UPDATE TO authenticated
+            USING ((SELECT auth.uid()) = id)
+            WITH CHECK ((SELECT auth.uid()) = id);
+
+          CREATE SCHEMA storage;
+          CREATE TABLE storage.objects (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            bucket_id text NOT NULL,
+            name text NOT NULL
+          );
+          ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+          GRANT USAGE ON SCHEMA storage TO authenticated;
+          GRANT INSERT, UPDATE ON storage.objects TO authenticated;
+
+          CREATE FUNCTION storage.foldername(name text)
+          RETURNS text[]
+          LANGUAGE sql
+          IMMUTABLE
+          SET search_path = ''
+          AS $function$
+            SELECT pg_catalog.string_to_array(name, '/')
+          $function$;
+          GRANT EXECUTE ON FUNCTION storage.foldername(text) TO authenticated;
+          SQL
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261212_profile_public_consent_guard.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261212_profile_public_consent_guard.sql
+
+      - name: Verify public profile fields and avatar Storage require consent
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/profile-public-consent-guard.test.sql
+
