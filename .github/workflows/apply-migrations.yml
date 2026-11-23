@@ -77,10 +77,13 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             # Используем high-water mark из реестра. Это намеренно не
             # backfill-ит старые файлы, если у них нет исторической записи.
-            last_applied="$(psql "$DB_URL" -v ON_ERROR_STOP=1 -tA -c               "select coalesce(max(filename), '') from ops.applied_migrations")"
+            last_applied="$(
+              psql "$DB_URL" -v ON_ERROR_STOP=1 -tA \
+                -c "select coalesce(max(filename), '') from ops.applied_migrations"
+            )"
             FILES="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)"
             if [[ -n "$last_applied" ]]; then
-              FILES="$(printf '%s\\n' "$FILES" | LC_ALL=C awk -v last="$last_applied" 'length($0) && $0 > last')"
+              FILES="$(printf '%s\n' "$FILES" | LC_ALL=C awk -v last="$last_applied" 'length($0) && $0 > last')"
             fi
             if [[ -z "$FILES" ]]; then
               echo "No new migration files after $last_applied"
