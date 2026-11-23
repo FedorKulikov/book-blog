@@ -4,7 +4,6 @@ type CurrentProfile = {
   username: string
   bio: string | null
   avatar_url: string | null
-  notifications_muted: boolean
 }
 
 export type UpdateProfileInput = {
@@ -50,9 +49,9 @@ function belongsToOwnAvatarBucket(
  * This function is called only after the route verifies auth.getUser().
  * It never accepts or reads a user_id from the request body.
  *
- * Private preferences can be saved without a profile_public grant. A change
- * to username, bio or avatar_url requires an active grant read back from the
- * auth.uid()-scoped RPC. The database trigger independently enforces this.
+ * Private preferences can be saved without a profile_public grant. The
+ * notifications_muted value is obtained from the auth.uid()-scoped RPC,
+ * not the public profiles table. Public-field changes require an active grant.
  */
 export async function updateProfileWithConsent(
   supabase: SupabaseClient,
@@ -86,11 +85,17 @@ export async function updateProfileWithConsent(
     return { status: 422, body: { error: 'Некорректная настройка уведомлений.' } }
   }
 
-  const { data: current, error: readError } = await supabase
-    .from('profiles')
-    .select('username, bio, avatar_url, notifications_muted')
-    .eq('id', verifiedUserId)
-    .single()
+  const [
+    { data: current, error: readError },
+    { data: currentNotificationsMuted, error: settingsError },
+  ] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('username, bio, avatar_url')
+      .eq('id', verifiedUserId)
+      .single(),
+    supabase.rpc('my_profile_notification_settings'),
+  ])
 
   if (readError || !current) {
     return {
@@ -99,12 +104,19 @@ export async function updateProfileWithConsent(
     }
   }
 
+  if (settingsError || typeof currentNotificationsMuted !== 'boolean') {
+    return {
+      status: 503,
+      body: { error: 'Не удалось загрузить приватную настройку уведомлений. Изменения не сохранены.' },
+    }
+  }
+
   const profile = current as unknown as CurrentProfile
   const usernameChanged = username !== profile.username
   const bioChanged = bio !== profile.bio
   const avatarChanged = avatarUrl !== profile.avatar_url
   const publicFieldsChanged = usernameChanged || bioChanged || avatarChanged
-  const notificationsChanged = notificationsMuted !== profile.notifications_muted
+  const notificationsChanged = notificationsMuted !== currentNotificationsMuted
 
   if (avatarChanged && avatarUrl !== null &&
       !belongsToOwnAvatarBucket(avatarUrl, verifiedUserId, supabaseUrl)) {
