@@ -657,7 +657,11 @@ async function main() {
       objectsByBucket.set(object.bucket, paths)
     }
     for (const [bucket, paths] of objectsByBucket) {
-      await admin.storage.from(bucket).remove(paths)
+      const { error } = await admin.storage.from(bucket).remove(paths)
+      if (error) {
+        failed++
+        console.error(`CLEANUP FAIL — remove ${bucket} objects :: ${error.message}`)
+      }
     }
 
     for (const user of users) {
@@ -768,21 +772,42 @@ async function main() {
 
     // Check that synthetic application data is gone. auth.users rows are
     // deliberately retained; deleting Auth users is outside this smoke's scope.
-    const [remainingLegacyProfiles, remainingLegacyPosts, remainingLegacyBooks] = await Promise.all([
+    const currentUserIds = users.map(user => user.id)
+    const [remainingLegacyProfiles, remainingLegacyPosts, remainingLegacyBooks, remainingCurrentProfiles, remainingCurrentPosts, remainingCurrentPost, remainingCurrentBook] = await Promise.all([
       admin.from('profiles').select('id').in('id', legacyUserIds),
       admin.from('posts').select('id').in('id', legacyPostIds),
       admin.from('books').select('id').in('id', legacyBookIds),
+      currentUserIds.length
+        ? admin.from('profiles').select('id').in('id', currentUserIds)
+        : Promise.resolve({ data: [], error: null }),
+      currentUserIds.length
+        ? admin.from('posts').select('id').in('user_id', currentUserIds)
+        : Promise.resolve({ data: [], error: null }),
+      postId
+        ? admin.from('posts').select('id').eq('id', postId)
+        : Promise.resolve({ data: [], error: null }),
+      bookId
+        ? admin.from('books').select('id').eq('id', bookId)
+        : Promise.resolve({ data: [], error: null }),
     ])
-    if (
-      remainingLegacyProfiles.error || remainingLegacyPosts.error || remainingLegacyBooks.error ||
-      (remainingLegacyProfiles.data?.length ?? 0) > 0 ||
-      (remainingLegacyPosts.data?.length ?? 0) > 0 ||
-      (remainingLegacyBooks.data?.length ?? 0) > 0
-    ) {
+    const cleanupChecks = [
+      remainingLegacyProfiles,
+      remainingLegacyPosts,
+      remainingLegacyBooks,
+      remainingCurrentProfiles,
+      remainingCurrentPosts,
+      remainingCurrentPost,
+      remainingCurrentBook,
+    ]
+    const cleanupFailed = cleanupChecks.some(result =>
+      Boolean(result.error) || (result.data?.length ?? 0) > 0,
+    )
+
+    if (cleanupFailed) {
       failed++
-      console.error('CLEANUP FAIL — legacy synthetic rows remain after cleanup')
+      console.error('CLEANUP FAIL — synthetic profiles/posts/books remain after cleanup')
     } else {
-      console.log('CLEANUP PASS — removed only previously identified synthetic profiles, posts, books and storage objects; auth.users retained')
+      console.log('CLEANUP PASS — removed synthetic profiles, posts, books and Storage objects; auth.users retained')
     }
   }
 
