@@ -94,7 +94,7 @@ export default async function BookPage({
             : undefined,
           datePublished: data.book.year ? String(data.book.year) : undefined,
           description: toPlainText(data.book.description ?? '') || undefined,
-          image: data.book.cover_url || undefined,
+          image: `${SITE_URL}/og-default.jpg`,
           inLanguage: 'ru-RU',
           workExample: {
             '@type': 'CreativeWork',
