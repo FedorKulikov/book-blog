@@ -271,17 +271,17 @@ begin
   return query
   select
     exists (
-      select 1 from public.posts p
-       where p.user_id = v_user_id
-         and p.status = 'approved'
-         and p.created_at <= p.legacy_distribution_cutoff_at
+      select 1 from public.posts post
+       where post.user_id = v_user_id
+         and post.status = 'approved'
+         and post.created_at <= profile.legacy_distribution_cutoff_at
     ),
-    p.legacy_distribution_prompted_at is not null,
+    profile.legacy_distribution_prompted_at is not null,
     private.has_active_distribution_consent(v_user_id, 'profile_public'),
     private.has_active_distribution_consent(v_user_id, 'publication'),
-    p.legacy_distribution_choice
-  from public.profiles p
-  where p.id = v_user_id;
+    profile.legacy_distribution_choice
+  from public.profiles profile
+  where profile.id = v_user_id;
 end;
 $function$;
 
