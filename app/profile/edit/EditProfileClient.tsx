@@ -47,6 +47,8 @@ export default function EditProfilePage() {
   const [legacyPromptState, setLegacyPromptState] = useState<LegacyPromptState | null>(null)
   const [legacyPromptBusy, setLegacyPromptBusy] = useState(false)
   const [legacyPromptError, setLegacyPromptError] = useState<string | null>(null)
+  const [restoreLegacyBusy, setRestoreLegacyBusy] = useState(false)
+  const [restoreLegacyError, setRestoreLegacyError] = useState<string | null>(null)
   const [showRevokeDialog, setShowRevokeDialog] = useState(false)
   const [consentLoading, setConsentLoading] = useState(false)
   const [avatarUploading, setAvatarUploading] = useState(false)
@@ -217,6 +219,52 @@ export default function EditProfilePage() {
       setLegacyPromptError('Не удалось отправить выбор. Проверьте соединение и попробуйте ещё раз.')
     } finally {
       setLegacyPromptBusy(false)
+    }
+  }
+
+
+  async function restoreLegacyMaterials() {
+    if (restoreLegacyBusy || legacyPromptState?.legacy_choice !== 'hidden') return
+
+    setRestoreLegacyBusy(true)
+    setRestoreLegacyError(null)
+
+    try {
+      const response = await fetch('/api/profile/restore-legacy', {
+        method: 'POST',
+        cache: 'no-store',
+      })
+      const result = (await response.json()) as {
+        restored?: boolean
+        legacyChoice?: 'granted' | 'hidden' | null
+        publicationGrantedAt?: string | null
+        profilePublicGrantedAt?: string | null
+        error?: string
+      }
+
+      if (!response.ok || !result.restored || result.legacyChoice !== 'granted') {
+        setRestoreLegacyError(result.error ?? 'Не удалось вернуть материалы. Попробуйте ещё раз.')
+        return
+      }
+
+      setLegacyPromptState(previous => previous
+        ? {
+            ...previous,
+            legacy_choice: 'granted',
+            publication_active: Boolean(result.publicationGrantedAt),
+            profile_public_active: Boolean(result.profilePublicGrantedAt),
+          }
+        : previous)
+      setPublicationConsentActive(Boolean(result.publicationGrantedAt))
+      if (result.profilePublicGrantedAt) {
+        setProfileConsentActive(true)
+        setProfileConsentGrantedAt(result.profilePublicGrantedAt)
+      }
+      router.refresh()
+    } catch {
+      setRestoreLegacyError('Не удалось отправить запрос. Проверьте соединение и попробуйте ещё раз.')
+    } finally {
+      setRestoreLegacyBusy(false)
     }
   }
 
@@ -474,6 +522,26 @@ export default function EditProfilePage() {
                 ? 'Старые публикации остаются видимыми до вашего решения. Новые публикации отдельно требуют согласия.'
                 : 'Согласие на распространение публикаций не действует. Скрытые старые публикации не видны посетителям; новые публикации отдельно запросят согласие.'}
           </p>
+
+            {legacyPromptState?.legacy_choice === 'hidden' && (
+              <div className="mt-4 border-t border-emerald-dark/10 pt-4">
+                <p className="mb-3 text-sm leading-relaxed text-brown-dark">
+                  Ранее скрытые материалы можно вернуть отдельным явным действием.
+                  Для публикаций и публичных полей профиля будут записаны необходимые согласия с датой.
+                </p>
+                <button
+                  type="button"
+                  disabled={restoreLegacyBusy}
+                  onClick={() => void restoreLegacyMaterials()}
+                  className="rounded-full bg-emerald-mid px-4 py-2 text-sm text-cream hover:bg-emerald-dark disabled:opacity-50"
+                >
+                  {restoreLegacyBusy ? 'Возвращаем…' : 'Вернуть материалы'}
+                </button>
+                {restoreLegacyError && (
+                  <p role="alert" className="mt-2 text-sm text-wine">{restoreLegacyError}</p>
+                )}
+              </div>
+            )}
         </section>
 
         {(profileConsentActive || publicationConsentActive) && (

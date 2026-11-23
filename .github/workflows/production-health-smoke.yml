@@ -48,6 +48,7 @@ jobs:
         env:
           SITE_LABEL: ${{ matrix.label }}
           SITE_URL: ${{ matrix.url }}
+          EXPECTED_PRIVACY_EDITION: '1.2'
         run: |
           set -euo pipefail
           body="$RUNNER_TEMP/site.html"
@@ -99,15 +100,20 @@ jobs:
               echo "::error::Production /privacy must return HTTP 200 (received $privacy_status)."
               exit 1
             fi
-            if ! grep -Fq 'Редакция 1.1 от 23 ноября 2026 года' "$privacy_body"; then
-              echo "::error::Production /privacy does not contain the expected 1.1 edition marker."
+            actual_privacy_edition="$(grep -oE 'Редакция[[:space:]]+[0-9]+\.[0-9]+' "$privacy_body" | head -n 1 | sed -E 's/^Редакция[[:space:]]+//' || true)"
+            if [[ -z "$actual_privacy_edition" ]]; then
+              echo "::error::Production /privacy does not contain a readable 'Редакция X.Y' marker."
+              exit 1
+            fi
+            if [[ "$actual_privacy_edition" != "$EXPECTED_PRIVACY_EDITION" ]]; then
+              echo "::error::Production /privacy edition mismatch: expected $EXPECTED_PRIVACY_EDITION, received $actual_privacy_edition."
               exit 1
             fi
             if grep -Eiq 'резервн(ый|ые|ого|ых)[[:space:]]+код' "$privacy_body"; then
               echo "::error::Production /privacy still mentions retired recovery codes."
               exit 1
             fi
-            echo "Production /privacy returns HTTP 200, is edition 1.1, and has no retired recovery-code references."
+            echo "Production /privacy returns HTTP 200, is edition $actual_privacy_edition, and has no retired recovery-code references."
           fi
 
           check_guest_login_redirect() {
@@ -146,6 +152,17 @@ jobs:
           check_guest_login_redirect "/books/add" "%2Fbooks%2Fadd"
           check_guest_login_redirect "/news/new" "%2Fnews%2Fnew"
           check_guest_login_redirect "/welcome" "%2Fwelcome"
+
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" && "$SITE_URL" == "https://bukleb.ru" ]]; then
+            restore_guest_status="$(curl --silent --show-error --max-time 25 --request POST --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}/api/profile/restore-legacy" || true)"
+            if [[ "$restore_guest_status" != "401" ]]; then
+              echo "::error::Guest legacy-restore request must be rejected with HTTP 401 (received $restore_guest_status)."
+              exit 1
+            fi
+            echo "Guest legacy-restore request is rejected with HTTP 401."
+          else
+            echo "Skip restore-endpoint production check on PR or Layero alias; it runs against the custom domain after deployment."
+          fi
 
           for public_route in "/login" "/signup" "/forgot-password" "/support"; do
             public_status="$(curl --silent --show-error --location --max-time 25 --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${public_route}" || true)"
