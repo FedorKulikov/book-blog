@@ -426,6 +426,7 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     notificationsByActor,
     messagesInConversations,
     ticketMessages,
+    ticketMessagesBySmokeSender,
     postsOnSmokeBooks,
   ] = await Promise.all([
     selectByIds<CommentRow>(admin, 'comments', 'id,user_id,post_id', 'post_id', postIds),
@@ -439,6 +440,7 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     selectByIds<NotificationRow>(admin, 'notifications', 'id,user_id,actor_id,post_id,comment_id,message_id', 'actor_id', ids),
     selectByIds<MessageRow>(admin, 'messages', 'id,sender_id,conversation_id', 'conversation_id', conversationIds),
     selectByIds<TicketMessageRow>(admin, 'ticket_messages', 'id,sender_id,ticket_id', 'ticket_id', ticketIds),
+    selectByIds<TicketMessageRow>(admin, 'ticket_messages', 'id,sender_id,ticket_id', 'sender_id', ids),
     selectByIds<PostRow>(admin, 'posts', 'id,user_id,book_id', 'book_id', bookIds),
   ])
 
@@ -461,6 +463,7 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     foreign_notifications_on_smoke_messages: notificationsOnMessages.filter(row => !smokeIdSet.has(row.user_id)).length,
     foreign_recipients_of_smoke_actor_notifications: notificationsByActor.filter(row => !smokeIdSet.has(row.user_id)).length,
     foreign_ticket_messages: ticketMessages.filter(row => !smokeIdSet.has(row.sender_id)).length,
+    smoke_authored_messages_in_foreign_tickets: ticketMessagesBySmokeSender.filter(row => !new Set(ticketIds).has(row.ticket_id)).length,
     foreign_posts_referencing_smoke_books: postsOnSmokeBooks.filter(row => !smokeIdSet.has(row.user_id)).length,
   }
 
