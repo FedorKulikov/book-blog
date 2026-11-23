@@ -351,3 +351,28 @@
 - Добавлены отдельный SQL-тест и CI-шаг: две синтетические учётные записи A/B, вызовы без сессии, проверка отсутствия user_id в сигнатуре, чтение только собственных записей, отзыв только собственного scope, grants, SECURITY DEFINER/search_path/owner и STABLE.
 - На момент записи PR/CI ещё не завершены; production-миграция не применялась, данные пользователей не читались и не изменялись. Этап 2 до зелёного CI и выката этапа 1.5 не начинался.
 - Не менялись /privacy, recovery-таблицы и Edge Function, Send Email Hook, mailer_autoconfirm и Function Secrets. SUPABASE_SERVICE_ROLE_KEY в приложение не добавлялся.
+
+### 2026-11-23 — B12, этап 1.5: production rollout
+
+- PR #78 слит после полного CI: Web quality checks (4/4 jobs) и Chat security smoke (1/1); merge commit 2cd17657fbeddc892ab4bb5e59bfd92b03261839.
+- Миграция supabase/migrations/20261210_distribution_consent_user_rpcs.sql применена к активному production book-blog (PostgreSQL 17). Migration history содержит distribution_consent_user_rpcs; ops.applied_migrations заполнена SHA-256 0359005146960d6f0bb95f67d8e95015f7b363984137c38da99a062bd534a6f1, applied_by=postgres.
+- Проверены все три функции: owner postgres, SECURITY DEFINER, search_path пустой; my_distribution_consents STABLE. EXECUTE у authenticated и service_role; anon не имеет EXECUTE. Сигнатура record_my_distribution_consent содержит только p_scope, p_data_categories, p_document_version.
+- Прямые SELECT/INSERT на private.personal_data_consents отсутствуют у anon/authenticated/service_role; anon/authenticated не имеют USAGE на private. В таблице 0 строк после выката — production-согласия не создавались.
+- Security Advisor: ожидаемый INFO rls_enabled_no_policy для закрытой private-таблицы; предупреждения authenticated_security_definer_function_executable по трём собственным RPC ожидаемы, так как EXECUTE authenticated прямо задан этапом 1.5 и функции ограничены auth.uid(). Предупреждения по increment_book_views/increment_post_views и leaked-password protection существовали ранее и не изменялись.
+
+### 2026-11-23 — B12, этап 2: согласие при создании публикации (реализация в PR)
+
+- Требовалось: отдельная пустая по умолчанию галочка и понятная страница согласия; создание публикации через серверный маршрут; запись согласия через record_my_distribution_consent; без согласия HTTP 422 и без строки posts.
+- Добавлена страница /consent-distribution с описанием видимых категорий (текст/заголовок, изображения, теги, ссылка на книгу, имя/аватар автора и metadata новостей), публичной аудитории и способом отзыва через /privacy#contact.
+- Версия 1.0 и список data_categories находятся в одном модуле lib/distribution-consent.ts. Форма /news/new показывает самостоятельный checkbox, изначально false, отдельный от принятия правил.
+- Создание публикации перенесено из клиентского прямого INSERT в POST /api/posts. Серверный маршрут проверяет сессию через createSupabaseServerClient().auth.getUser(), валидирует входные данные и checkbox, применяет rate limit, вызывает record_my_distribution_consent с фиксированными scope/categories/version и только затем вставляет posts с user_id из проверенной сессии. Клиентский user_id игнорируется.
+- Дополнительно добавлен BEFORE INSERT guard в БД: прямой INSERT не проходит без активного собственного согласия. Триггерная функция SECURITY DEFINER с пустым search_path, закрыта от прямого EXECUTE API-ролям; чужое согласие использовать нельзя.
+- Добавлены unit-тесты серверного потока, PostgreSQL 17-тесты триггера с двумя пользователями и без сессии, а также обновлён ручной client-write security smoke. В CI результат пока ожидается; production-миграция этапа 2 не применялась, live-публикация не выполнялась.
+- /privacy не менялась. Не менялись recovery-таблицы/Edge Function, Send Email Hook, mailer_autoconfirm и Function Secrets; service-role key в приложение не добавлялся.
+
+### 2026-11-23 — B12, этап 2: уточнение защиты публичных изображений и smoke
+
+- Проверено в production: storage bucket post-images имеет public=true, а политика SELECT разрешает публичное чтение. Первоначальная загрузка изображения до отправки формы могла бы раскрыть его до сохранения записи согласия.
+- Поэтому checkbox перемещён перед ImageUploader. Загрузка отключена, пока пользователь явно не отметил согласие; во время загрузки checkbox и отправка формы заблокированы. Пока прикреплены публичные фото, снять checkbox нельзя — сначала их нужно удалить через Storage с проверкой результата; кнопка удаления удаляет сам объект, а не только локальный preview. Общий лимит ограничен пятью файлами на публикацию; при частичном сбое выполняется cleanup, а не удалённые/неудалённые пути не скрываются от пользователя.
+- Первый live Chat security smoke до выката этапа 2 проверял новый database trigger против production-схемы, в которой эта миграция ещё отсутствовала. Это был преждевременный assertion, а не дефект production. Он удалён из pre-deployment smoke; межпользовательская изоляция триггера остаётся в отдельном PostgreSQL 17 SQL job, где миграция применяется до теста.
+- Исправлены TypeScript типы forged-user теста. Повторный CI для последнего commit ожидается; production migration этапа 2 по-прежнему не применялась.

@@ -485,3 +485,27 @@
 **Проверки добавлены:** чистая PostgreSQL 17 fixture теперь предоставляет auth.uid(); отдельный SQL-тест проверяет поведение без сессии, отсутствие параметра user_id, изоляцию двух пользователей A/B, чтение только своих строк, невозможность отозвать чужую строку, разрешённые роли, владельца/SECURITY DEFINER/search_path и STABLE. Фактический результат CI пока ожидается.
 
 **Документация и границы:** перед этапом слит PR #77 после 4/4 успешных CI jobs (merge commit 37793c9ef8f77664b4018f0506bbabee08dc79ac). Текущий кодовый PR создаётся отдельно. Production-миграция ещё не применялась; пользовательские строки не создавались. Этап 2 не начинался. Не менялись /privacy, recovery, Hook, mailer_autoconfirm и secrets; service-role key в app не добавлялся.
+
+## 2026-11-23 — B12, этап 1.5: production rollout
+
+**Слияние и выкладка:** PR #78 прошёл 4/4 Web quality jobs и 1/1 Chat security smoke, затем слит (merge commit 2cd17657fbeddc892ab4bb5e59bfd92b03261839). Миграция 20261210_distribution_consent_user_rpcs.sql применена к production book-blog / PostgreSQL 17. Migration history и ops.applied_migrations подтверждены; SHA-256 файла: 0359005146960d6f0bb95f67d8e95015f7b363984137c38da99a062bd534a6f1.
+
+**Проверки:** три wrapper-функции owner=postgres, SECURITY DEFINER, пустой search_path; my_distribution_consents STABLE. EXECUTE выдан authenticated и service_role, anon не имеет EXECUTE. Нет прямых SELECT/INSERT на private.personal_data_consents у anon/authenticated/service_role; anon/authenticated не имеют USAGE private. В таблице 0 production-строк. Security Advisor содержит ожидаемые предупреждения authenticated для user-scoped SECURITY DEFINER RPC и существующие посторонние предупреждения по счётчикам просмотров/leaked-password protection.
+
+## 2026-11-23 — B12, этап 2: согласие при создании публикации (PR в работе)
+
+**Сделано:** добавлены /consent-distribution, единый document version/categories module, отдельный unchecked checkbox в NewsForm и POST /api/posts. Сервер проверяет cookie-session через auth.getUser(), не принимает user_id клиента, валидирует запрос/checkbox, проверяет rate limit, записывает согласие через record_my_distribution_consent и только после этого создаёт posts.
+
+**Защита БД:** добавлен SECURITY DEFINER trigger guard с пустым search_path, который отклоняет прямой INSERT без активного согласия текущего автора. Он не выдаёт прямых grants на private table и закрыт от прямого EXECUTE API-ролям.
+
+**Проверки добавлены:** unit-тесты server flow (422 без checkbox, отказ rate-limit/consent RPC, успешный insert с server-auth user, игнорирование клиентского user_id); PostgreSQL 17-тест с A/B, no-session, own consent, foreign-user isolation, revoke и повторным запретом; обновлён manual client-write smoke. CI ожидается. Production migration, live post, тестовую публикацию и изменения пользователя ещё не выполняли.
+
+**Границы:** /privacy и recovery/Hook/mailer_autoconfirm/secrets не менялись; SUPABASE_SERVICE_ROLE_KEY не добавлялся.
+
+## 2026-11-23 — B12, этап 2: дополнительная защита public storage
+
+**Обнаружено:** production bucket `post-images` имеет `public=true` и публичную SELECT policy. Значит, одной блокировки INSERT в `posts` недостаточно: само изображение становилось доступным по public URL при загрузке до отправки формы.
+
+**Исправлено:** отдельный consent checkbox расположен выше ImageUploader; загрузка разрешена только после установки флажка. На время загрузки блокируются checkbox и Submit. Пока публичные изображения прикреплены, снятие согласия блокируется до удаления каждого объекта из Storage. Удаление проверяет ошибку Storage; общий лимит — пять файлов на публикацию; при частичном сбое выполняется попытка cleanup, неубранные пути остаются доступны пользователю для удаления.
+
+**Smoke:** проверка триггера была преждевременно включена в live pre-deployment smoke, запускаемый до применения migration к production. Этот assertion убран из live smoke; то же поведение и изоляция A/B проверяются изолированным PostgreSQL 17 job. Сам production не модифицировался. Новый CI после последней правки ожидается.

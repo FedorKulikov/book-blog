@@ -83,6 +83,9 @@ jobs:
       - name: Chat media path tests
         run: npm run test:chat-media-paths
 
+      - name: Distribution consent flow tests
+        run: npm run test:distribution-consent
+
       - name: TypeScript
         run: npx tsc --noEmit
 
@@ -113,6 +116,11 @@ jobs:
             app/messages/'[id]'/page.tsx \
             app/news/new/page.tsx \
             app/news/new/NewsForm.tsx \
+            app/components/ImageUploader.tsx \
+            app/api/posts/route.ts \
+            app/consent-distribution/page.tsx \
+            lib/distribution-consent.ts \
+            lib/distribution-consent-server.ts \
             app/books/add/page.tsx \
             app/profile/page.tsx \
             app/profile/ProfileClient.tsx \
@@ -498,4 +506,31 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/personal-data-consents-user-rpcs.test.sql
+
+      - name: Create posts fixture and apply publication-consent guard
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE public.posts (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id uuid NOT NULL REFERENCES auth.users(id),
+            title text NOT NULL,
+            type text NOT NULL
+          );
+          ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+          GRANT INSERT ON public.posts TO authenticated;
+          CREATE POLICY posts_insert_own_test ON public.posts
+            FOR INSERT TO authenticated
+            WITH CHECK ((SELECT auth.uid()) = user_id);
+          SQL
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261211_distribution_consent_post_guard.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261211_distribution_consent_post_guard.sql
+
+      - name: Verify post creation requires user consent
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/distribution-consent-publication-guard.test.sql
 

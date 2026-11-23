@@ -10,16 +10,19 @@ import {
 
 type Props = {
   onUploaded: (urls: string[]) => void
+  enabled?: boolean
+  onUploadingChange?: (uploading: boolean) => void
 }
 
-export default function ImageUploader({ onUploaded }: Props) {
+export default function ImageUploader({ onUploaded, enabled = true, onUploadingChange }: Props) {
   const [uploading, setUploading] = useState(false)
   const [previews, setPreviews] = useState<string[]>([])
   const [urls, setUrls] = useState<string[]>([])
+  const [storagePaths, setStoragePaths] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
 
   async function handleFiles(files: FileList | null) {
-    if (!files || files.length === 0) return
+    if (!enabled || !files || files.length === 0) return
 
     setError(null)
 
@@ -37,51 +40,90 @@ export default function ImageUploader({ onUploaded }: Props) {
 
     if (accepted.length === 0) return
 
-    // Не больше 5 новых файлов за раз
-    const batch = accepted.slice(0, 5)
-
-    setUploading(true)
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      alert('Войдите, чтобы загрузить фото')
-      setUploading(false)
+    // Всего не больше пяти изображений для одной публикации.
+    const remaining = Math.max(0, 5 - urls.length)
+    const batch = accepted.slice(0, remaining)
+    if (batch.length === 0) {
+      setError('Для одной публикации можно прикрепить не более пяти фотографий.')
       return
     }
 
+    setUploading(true)
+    onUploadingChange?.(true)
     const newUrls: string[] = []
+    const newPaths: string[] = []
 
-    for (const file of batch) {
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-      const fileName = `${user.id}/${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}.${ext}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('post-images')
-        .upload(fileName, file, { contentType: file.type })
-
-      if (uploadError) {
-        setError('Ошибка загрузки: ' + uploadError.message)
-        continue
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('Войдите, чтобы загрузить фото')
+        return
       }
 
-      const { data } = supabase.storage
-        .from('post-images')
-        .getPublicUrl(fileName)
+      for (const file of batch) {
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+        const fileName = `${user.id}/${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}.${ext}`
 
-      newUrls.push(data.publicUrl)
+        const { error: uploadError } = await supabase.storage
+          .from('post-images')
+          .upload(fileName, file, { contentType: file.type })
+
+        if (uploadError) {
+          setError('Ошибка загрузки: ' + uploadError.message)
+          continue
+        }
+
+        const { data } = supabase.storage
+          .from('post-images')
+          .getPublicUrl(fileName)
+
+        newUrls.push(data.publicUrl)
+        newPaths.push(fileName)
+      }
+
+      setPreviews(prev => [...prev, ...newUrls])
+      setStoragePaths(prev => [...prev, ...newPaths])
+      const allUrls = [...urls, ...newUrls]
+      setUrls(allUrls)
+      onUploaded(allUrls)
+    } catch {
+      if (newPaths.length > 0) {
+        const { error: cleanupError } = await supabase.storage.from('post-images').remove(newPaths)
+        if (cleanupError) {
+          const allUrls = [...urls, ...newUrls]
+          setPreviews(allUrls)
+          setStoragePaths(prev => [...prev, ...newPaths])
+          setUrls(allUrls)
+          onUploaded(allUrls)
+          setError('Загрузка прервалась. Не удалось удалить часть файлов из публичного хранилища. Удалите оставшиеся фото кнопкой «×» перед снятием согласия.')
+        } else {
+          setError('Не удалось загрузить фотографии. Временные файлы удалены; попробуйте ещё раз.')
+        }
+      } else {
+        setError('Не удалось загрузить фотографии. Проверьте соединение и попробуйте ещё раз.')
+      }
+    } finally {
+      setUploading(false)
+      onUploadingChange?.(false)
     }
-
-    setPreviews(prev => [...prev, ...newUrls])
-    const allUrls = [...urls, ...newUrls]
-    setUrls(allUrls)
-    onUploaded(allUrls)
-    setUploading(false)
   }
 
-  function removeImage(index: number) {
+  async function removeImage(index: number) {
+    const path = storagePaths[index]
+    if (path) {
+      const { error: removeError } = await supabase.storage
+        .from('post-images')
+        .remove([path])
+      if (removeError) {
+        setError('Не удалось удалить фотографию. Попробуйте ещё раз.')
+        return
+      }
+    }
+
     const updated = urls.filter((_, i) => i !== index)
+    setStoragePaths(prev => prev.filter((_, i) => i !== index))
     setUrls(updated)
     setPreviews(updated)
     onUploaded(updated)
@@ -102,7 +144,7 @@ export default function ImageUploader({ onUploaded }: Props) {
           // Сбрасываем input: иначе повторный выбор того же файла не сработает
           e.currentTarget.value = ''
         }}
-        disabled={uploading}
+        disabled={!enabled || uploading}
         className="block w-full text-sm text-brown-dark file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-emerald-mid file:text-cream hover:file:bg-emerald-dark file:cursor-pointer cursor-pointer"
       />
 
@@ -110,6 +152,11 @@ export default function ImageUploader({ onUploaded }: Props) {
         JPG, PNG, WebP или GIF. До 5 МБ ({(MAX_IMAGE_BYTES / 1024 / 1024).toFixed(0)} МБ)
         на файл.
       </p>
+      {!enabled && (
+        <p className="mt-2 text-xs text-brown/60">
+          Чтобы изображения не становились публичными раньше согласия, сначала отметьте отдельный пункт согласия выше.
+        </p>
+      )}
 
       {uploading && (
         <p className="text-sm text-brown/60 mt-2">Загрузка фото…</p>
@@ -129,6 +176,7 @@ export default function ImageUploader({ onUploaded }: Props) {
               <button
                 type="button"
                 onClick={() => removeImage(i)}
+                disabled={!enabled}
                 className="absolute -top-2 -right-2 bg-wine text-white w-6 h-6 rounded-full text-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                 aria-label="Удалить фото"
               >
