@@ -417,6 +417,12 @@ export default function EditProfilePage() {
               {' '}Подтвердите их дальнейшее распространение или скройте. При скрытии записи и файлы
               останутся в аккаунте и не будут удалены.
             </p>
+            {legacyPromptState.publication_active && (
+              <p className="mb-3 text-sm leading-relaxed text-brown-dark">
+                Отдельное согласие на новые публикации останется действовать. Этот выбор касается
+                только материалов до даты перехода; согласие на будущие публикации можно отозвать отдельно.
+              </p>
+            )}
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 type="button"
@@ -459,7 +465,9 @@ export default function EditProfilePage() {
           </h2>
           <p className="text-sm text-brown-dark">
             {legacyPromptState?.legacy_choice === 'hidden' && legacyPromptState.has_approved_posts
-              ? 'Ранее одобренные публикации остаются скрытыми по вашему выбору. Новое согласие на будущие публикации не откроет старые записи.'
+              ? publicationConsentActive
+                ? 'Ранее одобренные публикации остаются скрытыми. Действующее согласие распространяется на новые публикации после даты перехода.'
+                : 'Ранее одобренные публикации остаются скрытыми по вашему выбору. Новое согласие на будущие публикации не откроет старые записи.'
               : publicationConsentActive
               ? 'Согласие на распространение ваших публикаций действует.'
               : legacyDecisionPending && legacyPromptState?.has_approved_posts
