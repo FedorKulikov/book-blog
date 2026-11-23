@@ -591,3 +591,13 @@
 - Added a final Management API read-only SQL check for remaining `data-smoke` Auth users, consent rows, profiles, posts, books, reports, notifications, Storage objects and external news.
 - Scope: only `data-smoke-*@example.com`; non-smoke accounts are not eligible. No production data was changed. CI/typecheck and integration into regular smoke/workflow remain for the next stage.
 
+## 2026-11-23 — Smoke account prefix unification and dry-run gate
+
+- Centralized the explicit smoke email prefixes (`data-smoke-`, `chat-smoke-`) in `scripts/lib/smoke-account-config.ts`; both test-account generators and SQL selectors derive from this single config.
+- Expanded the inventory to show consent history (active and revoked) and all related app/Storage records for every matching Auth account.
+- Expanded the safety guard: it refuses cleanup if non-smoke users would lose comments, likes, bookmarks, reports, notifications, support replies, mixed-user conversations, or posts linked to smoke-created books.
+- Auth deletion removes the complete consent history by FK cascade; no consent revoke/insert is used by cleanup. Books and external news are explicitly handled because their creator FK uses `SET NULL`; Storage is removed through the Storage API.
+- Changed chat/client smoke `finally` blocks to fail on cleanup errors. Client-write smoke is blocked against the production project because it writes consent rows; the workflow no longer invokes that production-write step.
+- The chat security workflow now validates the presence of the publishable key, secret key and Management API access token without printing them, then runs a production dry-run only. It does not invoke deletion.
+- No production data was changed. Next gate is to inspect CI's actual dry-run list and foreign-content guard before enabling `--delete`.
+
