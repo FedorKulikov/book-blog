@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { DISTRIBUTION_CONSENT_VERSION } from '@/lib/distribution-consent'
+import { DISTRIBUTION_CONSENT_VERSION, PROFILE_PUBLIC_CONSENT_VERSION } from '@/lib/distribution-consent'
 
 export const metadata: Metadata = {
   title: 'Согласие на распространение данных',
@@ -23,7 +23,7 @@ export default function ConsentDistributionPage() {
             Распространение персональных данных
           </h1>
           <p className="text-sm text-brown/60">
-            Версия документа {DISTRIBUTION_CONSENT_VERSION}
+            Версия согласия на публикации: {DISTRIBUTION_CONSENT_VERSION}. Версия согласия на публичные поля профиля: {PROFILE_PUBLIC_CONSENT_VERSION}.
           </p>
           <p className="leading-relaxed text-brown-dark">
             Ниже перечислено, какие данные становятся доступными другим людям,
