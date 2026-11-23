@@ -64,6 +64,7 @@ type InventoryRow = {
 
 export type CleanupResiduals = {
   smoke_users_remaining: number
+  target_auth_users_remaining: number
   consent_rows_remaining: number
   active_consents_remaining: number
   profiles_remaining: number
@@ -578,6 +579,7 @@ export async function verifySmokeCleanup(
 ): Promise<CleanupResiduals> {
   assertSmokeUsers(deletedUsers)
   const currentSmokeUsers = await listDataSmokeUsers(admin)
+  const targetAuthUsers = await getAuthUsersByIds(admin, deletedUsers.map(user => user.id))
   const inventory = await getDataSmokeInventory(admin, deletedUsers)
 
   const sum = (field: keyof InventoryRow) =>
@@ -585,6 +587,7 @@ export async function verifySmokeCleanup(
 
   return {
     smoke_users_remaining: currentSmokeUsers.length,
+    target_auth_users_remaining: targetAuthUsers.size,
     consent_rows_remaining: sum('consents'),
     active_consents_remaining: sum('active_consents'),
     profiles_remaining: sum('profiles'),
