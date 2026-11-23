@@ -148,7 +148,7 @@ jobs:
             applied=$((applied + 1))
           done
 
-          echo "### Миграции: применено $applied, пропущено $skipped" >> $GITHUB_STEP_SUMMARY
+          printf '### Миграции: применено %s, пропущено %s\n' "$applied" "$skipped" >> "$GITHUB_STEP_SUMMARY"
 
       - name: История миграций
         env:
