@@ -575,7 +575,7 @@ jobs:
           );
           ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
           GRANT USAGE ON SCHEMA storage TO authenticated;
-          GRANT INSERT, UPDATE ON storage.objects TO authenticated;
+          GRANT SELECT, INSERT, UPDATE ON storage.objects TO authenticated;
 
           CREATE FUNCTION storage.foldername(name text)
           RETURNS text[]
