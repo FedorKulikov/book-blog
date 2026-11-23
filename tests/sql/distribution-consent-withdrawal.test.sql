@@ -14,10 +14,15 @@ values
   ('22222222-2222-4222-8222-222222222222', 'visibility_b', 'https://project.supabase.co/storage/v1/object/public/avatars/22222222-2222-4222-8222-222222222222/avatar.jpg'),
   ('33333333-3333-4333-8333-333333333333', 'visibility_c', 'https://project.supabase.co/storage/v1/object/public/avatars/33333333-3333-4333-8333-333333333333/avatar.jpg');
 
+-- Seed pre-existing legacy posts before the consent INSERT trigger is active.
+alter table public.posts disable trigger posts_require_distribution_consent;
+
 insert into public.posts (id, user_id, title, type, status) values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '11111111-1111-4111-8111-111111111111', 'Legacy A', 'creative', 'approved'),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '22222222-2222-4222-8222-222222222222', 'Legacy B', 'creative', 'approved'),
   ('cccccccc-cccc-4ccc-8ccc-ccccccccccc3', '33333333-3333-4333-8333-333333333333', 'Legacy C', 'creative', 'approved');
+
+alter table public.posts enable trigger posts_require_distribution_consent;
 
 insert into public.comments (id, post_id, user_id, text) values
   ('aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '11111111-1111-4111-8111-111111111111', 'A comment'),
