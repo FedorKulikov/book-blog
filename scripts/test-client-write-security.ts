@@ -231,8 +231,29 @@ async function main() {
     })
     check('post status and created_at cannot be supplied on INSERT', Boolean(forgedPost.error), safeError(forgedPost.error))
 
-    // The database guard is exercised by the isolated PostgreSQL 17 migration test.
-    // This smoke also runs against production before the stage-2 migration is deployed.
+    // Production rollout smoke: a second authenticated user has no grant and
+    // must not create a post or read Alice's consent history.
+    const bobConsentsBefore = await otherClient.rpc('my_distribution_consents')
+    check(
+      'new authenticated user starts with no distribution consent rows',
+      !bobConsentsBefore.error && (bobConsentsBefore.data?.length ?? 0) === 0,
+      safeError(bobConsentsBefore.error),
+    )
+
+    const bobWithoutConsent = await otherClient.from('posts').insert({
+      user_id: bob.id,
+      title: `post-without-consent-${stamp}`,
+      content: 'This post must be rejected by the production database guard.',
+      type: 'creative',
+    }).select('id').single()
+    check(
+      'another authenticated user cannot create a post without their own consent',
+      Boolean(bobWithoutConsent.error),
+      safeError(bobWithoutConsent.error),
+    )
+    if (bobWithoutConsent.data?.id) {
+      await admin.from('posts').delete().eq('id', bobWithoutConsent.data.id)
+    }
 
     const publicationConsent = await client.rpc('record_my_distribution_consent', {
       p_scope: 'publication',
@@ -240,6 +261,46 @@ async function main() {
       p_document_version: DISTRIBUTION_CONSENT_VERSION,
     })
     check('author can record their own publication consent', !publicationConsent.error && Boolean(publicationConsent.data), safeError(publicationConsent.error))
+
+    const aliceConsents = await client.rpc('my_distribution_consents')
+    const ownPublicationConsent = (aliceConsents.data ?? []).find((row: {
+      scope: string
+      document_version: string
+      data_categories: string[]
+      revoked_at: string | null
+    }) => row.scope === 'publication' &&
+      row.document_version === DISTRIBUTION_CONSENT_VERSION &&
+      row.revoked_at === null &&
+      JSON.stringify(row.data_categories) === JSON.stringify([...DISTRIBUTION_CONSENT_CATEGORIES]))
+    check(
+      'publication consent is stored and visible in author own consent history',
+      !aliceConsents.error && Boolean(ownPublicationConsent),
+      safeError(aliceConsents.error),
+    )
+
+    const bobConsentsAfterAliceGrant = await otherClient.rpc('my_distribution_consents')
+    check(
+      'another user cannot read the author own consent history',
+      !bobConsentsAfterAliceGrant.error && (bobConsentsAfterAliceGrant.data?.length ?? 0) === 0,
+      safeError(bobConsentsAfterAliceGrant.error),
+    )
+
+    const bobRevokeAlice = await otherClient.rpc('revoke_my_distribution_consent', {
+      p_scope: 'publication',
+    })
+    const aliceConsentsAfterBobRevoke = await client.rpc('my_distribution_consents')
+    const aliceConsentStillActive = (aliceConsentsAfterBobRevoke.data ?? []).some((row: {
+      scope: string
+      document_version: string
+      revoked_at: string | null
+    }) => row.scope === 'publication' &&
+      row.document_version === DISTRIBUTION_CONSENT_VERSION &&
+      row.revoked_at === null)
+    check(
+      'another user cannot revoke the author own consent',
+      !bobRevokeAlice.error && !aliceConsentsAfterBobRevoke.error && aliceConsentStillActive,
+      safeError(bobRevokeAlice.error ?? aliceConsentsAfterBobRevoke.error),
+    )
 
     const post = await client.from('posts').insert({
       user_id: alice.id, title: `Data security smoke ${stamp}`,
@@ -433,7 +494,21 @@ async function main() {
     })
     check('create_ticket RPC still works with column-scoped INSERT', !ticket.error && Boolean(ticket.data), safeError(ticket.error))
   } finally {
-    for (const client of clients) await client.auth.signOut().catch(() => undefined)
+    // Preserve auth.users rows. Revoke any test consent and remove only the
+    // synthetic app profile/content created by this smoke.
+    for (const client of clients) {
+      const { data: current } = await client.auth.getUser()
+      if (current.user) {
+        const { error } = await client.rpc('revoke_my_distribution_consent', {
+          p_scope: 'publication',
+        })
+        if (error) {
+          failed++
+          console.error(`CLEANUP FAIL — revoke synthetic consent :: ${error.code ?? 'unknown'}`)
+        }
+      }
+      await client.auth.signOut().catch(() => undefined)
+    }
 
     const objectsByBucket = new Map<string, string[]>()
     for (const object of storageObjects) {
@@ -472,7 +547,103 @@ async function main() {
     if (postId) await admin.from('posts').delete().eq('id', postId)
     if (bookId) await admin.from('books').delete().eq('id', bookId)
 
-    for (const user of users) await admin.auth.admin.deleteUser(user.id).catch(() => undefined)
+
+    const legacyUserIds = [
+      '7a750d52-cc6f-49cc-925f-015fafae4c45',
+      'ba4e8aaa-92a6-4738-94aa-03a28506dda2',
+      '40acee41-4598-4943-be5c-774075667d62',
+      'f2d09893-cc49-4e1d-9911-24d4df9c24e2',
+      '6e14fafa-8c85-4b86-9979-ca4384fb030f',
+      '9d63e0d9-de24-4d6c-a735-b56a734da7b0',
+      'e0e48417-df02-44d3-ae30-72d9ef08eb2e',
+      'db8eb44d-8bf2-4633-989c-6b8dac113d63',
+      'e5e4750f-4670-4058-b6f0-05a5d4c3a493',
+      '69370792-ac51-4fb1-bb63-5e9efb086e8e',
+    ]
+    const legacyPostIds = [
+      '3cbe8421-0cbe-483e-964f-f749a652309a',
+      '40021e70-0627-44b4-aa18-15b83f5ea3d8',
+      'b8f2bed2-7c2f-486e-9cf6-b414af645ee7',
+      '6d4d50cc-e57c-47dc-a03c-9901e6a79340',
+      '6fbcb7e1-0025-4391-a4dd-9f4e502e1e54',
+    ]
+    const legacyBookIds = [
+      'ccda505a-7353-442c-a6a8-96a566f80765',
+      '8b2496a3-ebf9-4955-a9a6-bb0c768e87b5',
+      '65f5ea75-ab75-456b-a815-8896cf90ed3f',
+      '8705dcee-235f-44f9-93e5-e89d11cedc63',
+      '43a2c88a-b6f2-4861-b799-c4c1d4f1beec',
+    ]
+    const legacyStorageObjects = [
+      { bucket: 'avatars', path: 'f2d09893-cc49-4e1d-9911-24d4df9c24e2/storage-smoke-mwrcx7lx.png' },
+      { bucket: 'post-images', path: 'f2d09893-cc49-4e1d-9911-24d4df9c24e2/storage-smoke-mwrcx7lx.png' },
+      { bucket: 'chat-media', path: 'f2d09893-cc49-4e1d-9911-24d4df9c24e2/storage-smoke-mwrcx7lx.png' },
+      { bucket: 'avatars', path: '9d63e0d9-de24-4d6c-a735-b56a734da7b0/storage-smoke-mwrdr1l3.png' },
+      { bucket: 'post-images', path: '9d63e0d9-de24-4d6c-a735-b56a734da7b0/storage-smoke-mwrdr1l3.png' },
+      { bucket: 'chat-media', path: '9d63e0d9-de24-4d6c-a735-b56a734da7b0/storage-smoke-mwrdr1l3.png' },
+      { bucket: 'avatars', path: 'e0e48417-df02-44d3-ae30-72d9ef08eb2e/storage-smoke-mwsa888t.png' },
+      { bucket: 'post-images', path: 'e0e48417-df02-44d3-ae30-72d9ef08eb2e/storage-smoke-mwsa888t.png' },
+      { bucket: 'chat-media', path: 'e0e48417-df02-44d3-ae30-72d9ef08eb2e/storage-smoke-mwsa888t.png' },
+    ]
+
+    const legacyPathsByBucket = new Map<string, string[]>()
+    for (const object of legacyStorageObjects) {
+      const paths = legacyPathsByBucket.get(object.bucket) ?? []
+      paths.push(object.path)
+      legacyPathsByBucket.set(object.bucket, paths)
+    }
+    for (const [bucket, paths] of legacyPathsByBucket) {
+      const { error } = await admin.storage.from(bucket).remove(paths)
+      if (error) {
+        failed++
+        console.error(`CLEANUP FAIL — legacy ${bucket} objects :: ${error.message}`)
+      }
+    }
+
+    const legacyPostDelete = await admin.from('posts').delete().in('id', legacyPostIds)
+    if (legacyPostDelete.error) {
+      failed++
+      console.error(`CLEANUP FAIL — legacy posts :: ${legacyPostDelete.error.code ?? 'unknown'}`)
+    }
+
+    const legacyBookDelete = await admin.from('books').delete().in('id', legacyBookIds)
+    if (legacyBookDelete.error) {
+      failed++
+      console.error(`CLEANUP FAIL — legacy books :: ${legacyBookDelete.error.code ?? 'unknown'}`)
+    }
+
+    const legacyProfileDelete = await admin.from('profiles').delete().in('id', legacyUserIds)
+    if (legacyProfileDelete.error) {
+      failed++
+      console.error(`CLEANUP FAIL — legacy profiles :: ${legacyProfileDelete.error.code ?? 'unknown'}`)
+    }
+
+    const currentProfileDelete = users.length
+      ? await admin.from('profiles').delete().in('id', users.map(user => user.id))
+      : { error: null }
+    if (currentProfileDelete.error) {
+      failed++
+      console.error(`CLEANUP FAIL — current synthetic profiles :: ${currentProfileDelete.error.code ?? 'unknown'}`)
+    }
+
+    // Check that synthetic application data is gone. auth.users rows are
+    // deliberately retained; deleting Auth users is outside this smoke's scope.
+    const [remainingLegacyProfiles, remainingLegacyPosts, remainingLegacyBooks] = await Promise.all([
+      admin.from('profiles').select('id').in('id', legacyUserIds),
+      admin.from('posts').select('id').in('id', legacyPostIds),
+      admin.from('books').select('id').in('id', legacyBookIds),
+    ])
+    if (
+      remainingLegacyProfiles.error || remainingLegacyPosts.error || remainingLegacyBooks.error ||
+      (remainingLegacyProfiles.data?.length ?? 0) > 0 ||
+      (remainingLegacyPosts.data?.length ?? 0) > 0 ||
+      (remainingLegacyBooks.data?.length ?? 0) > 0
+    ) {
+      failed++
+      console.error('CLEANUP FAIL — legacy synthetic rows remain after cleanup')
+    } else {
+      console.log('CLEANUP PASS — removed only previously identified synthetic profiles, posts, books and storage objects; auth.users retained')
+    }
   }
 
   console.log(`\nClient data-integrity checks: ${passed} passed, ${failed} failed`)
