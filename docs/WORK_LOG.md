@@ -791,3 +791,15 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Production schema correction:** the first PostgREST dry-run read exposed that `public.likes` has composite primary key `(user_id, post_id)` and no `id` column. Updated inventory/guard selects to match the live schema. The failed attempt was read-only; no data changed.
 
 **Deployment ordering:** the production dry-run step now runs only from a successful `workflow_run` of `Apply DB migrations` on `main`. Pull-request CI still tests Auth/cleanup code but skips production inventory until the consent-inventory RPC is deployed. This avoids a predictable pre-migration PostgREST missing-function failure.
+
+## 2026-11-23 — Remove Management API from smoke cleanup inventory
+
+**Required:** replace the failed Management API read-only SQL dependency with Auth Admin, Storage API and service-role PostgREST; retain the cascade safety guard and run a production dry-run.
+
+**Implemented:** Auth Admin pagination now discovers candidate users and applies the centralized `data-smoke-` / `chat-smoke-` prefix filter client-side. Storage inventory uses the Storage API list operation and traverses only folders whose first path segment matches a selected Auth UUID. Related application records are read through PostgREST using the service-role client, which bypasses RLS. Consent aggregates are obtained through the existing `public.ops_smoke_consent_inventory(uuid[])` RPC; the underlying `private.personal_data_consents` table remains private/unexposed, and EXECUTE is restricted to `service_role`.
+
+**Safety:** kept `assertNoForeignContentWouldBeCascadeDeleted` and added a check for messages authored by smoke users inside tickets owned by non-smoke users. It continues to block mixed-user conversations and foreign messages, comments, likes, bookmarks, reports, notifications, ticket replies and posts referencing smoke-created books. No deletion was run.
+
+**Workflow:** removed the Management API password-posture step and all `SUPABASE_ACCESS_TOKEN` dependency from this smoke workflow. Production dry-run now runs in the PR workflow with the existing `SUPABASE_SECRET_KEY`; no new secrets are needed.
+
+**Validation:** CI is expected to run TypeScript and the production dry-run after this commit. Dry-run outcome and the per-account inventory are pending; `--delete` remains disabled.
