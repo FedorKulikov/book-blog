@@ -711,3 +711,9 @@
 - **Статус интерфейса:** карточка бакета показывает `Custom lifecycle rules`. Это подтверждает наличие пользовательской настройки в интерфейсе, но не доказывает, что старые объекты уже фактически удалены.
 - **Фактическая проверка запланирована на 2026-11-24:** зафиксировать размер бакета и проверить его реальное снижение после применения правила. Именно фактическое уменьшение размера, а не только наличие правила в интерфейсе, считается подтверждением результата. Исходный числовой размер бакета в этой записи не зафиксирован.
 - **Границы:** изменение касается настройки lifecycle в Backblaze B2 и её документирования; код, политика конфиденциальности и GitHub Actions workflow не менялись.
+
+Production dry-run reached guard; fix composite likes query
+
+- Following successful migration rollout, the production dry-run read the full inventory for 61 accounts using Auth Admin, Storage API and PostgREST. It reported 40 consent rows (2 active / 38 revoked), 2 posts, 2 books, 1 report, 10 notifications and 6 Storage objects; it also reported 9 profiles, 4 conversations, 2 messages, 1 ticket and 1 ticket message.
+- The safety guard stopped on a stale second `likes` query selecting nonexistent `id` from `public.likes`. The live schema has composite key `(user_id, post_id)`; corrected the guard select. No foreign-content check completed in that attempt and no production data changed.
+- Added a narrowly path-filtered `push: main` trigger for cleanup code/workflow updates so a code-only fix reruns the read-only dry-run after merge. `--delete` remains absent from the workflow.
