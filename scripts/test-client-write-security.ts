@@ -181,12 +181,12 @@ async function main() {
     const privateProfileEdit = await client.from('profiles')
       .update({ notifications_muted: true })
       .eq('id', alice.id)
-      .select('notifications_muted')
-      .single()
+    const privateNotificationSetting = await client.rpc('my_profile_notification_settings')
     check(
-      'private notification preference can be saved without profile consent',
-      !privateProfileEdit.error && privateProfileEdit.data?.notifications_muted === true,
-      safeError(privateProfileEdit.error),
+      'private notification preference can be saved and read by its owner without profile consent',
+      !privateProfileEdit.error && !privateNotificationSetting.error &&
+        privateNotificationSetting.data === true,
+      safeError(privateProfileEdit.error ?? privateNotificationSetting.error),
     )
 
     const bobProfileWithoutConsent = await otherClient.from('profiles')
@@ -252,14 +252,16 @@ async function main() {
     const profileEdit = await client.from('profiles').update({
       username: editedUsername,
       bio: `smoke-${stamp}`,
-    }).eq('id', alice.id).select('username, bio, notifications_muted').single()
+    }).eq('id', alice.id).select('username, bio').single()
+    const privateSettingAfterPublicEdit = await client.rpc('my_profile_notification_settings')
     check(
       'owner can save public profile fields after profile_public consent',
       !profileEdit.error &&
         profileEdit.data?.username === editedUsername &&
         profileEdit.data?.bio === `smoke-${stamp}` &&
-        profileEdit.data?.notifications_muted === true,
-      safeError(profileEdit.error),
+        !privateSettingAfterPublicEdit.error &&
+        privateSettingAfterPublicEdit.data === true,
+      safeError(profileEdit.error ?? privateSettingAfterPublicEdit.error),
     )
 
     const otherProfileEdit = await otherClient.from('profiles')
