@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import AdminTickets from './AdminTickets'
+import StorageImage from '../components/StorageImage'
 
 export default function AdminPage() {
   const router = useRouter()
@@ -427,7 +428,7 @@ export default function AdminPage() {
             >
               <div className="w-10 h-10 rounded-full bg-emerald-mid text-cream flex items-center justify-center font-bold flex-shrink-0 overflow-hidden">
                 {p.avatar_url ? (
-                  <img
+                  <StorageImage
                     src={p.avatar_url}
                     alt=""
                     className="w-full h-full object-cover"
