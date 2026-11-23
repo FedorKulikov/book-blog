@@ -558,6 +558,9 @@ jobs:
             avatar_url text,
             created_at timestamptz DEFAULT now(),
             role text DEFAULT 'user',
+            is_banned boolean DEFAULT false,
+            banned_until timestamptz,
+            onboarding_completed_at timestamptz,
             notifications_muted boolean DEFAULT false
           );
           ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
