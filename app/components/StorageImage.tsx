@@ -154,68 +154,59 @@ export default function StorageImage({
 }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
   src?: string | null
 }) {
-  const [resolvedSrc, setResolvedSrc] = useState<string | undefined>()
-  const [unavailable, setUnavailable] = useState(false)
+  const [signedResult, setSignedResult] = useState<{ source: string; url: string | null } | null>(null)
+  const [failedSource, setFailedSource] = useState<string | null>(null)
   const retryAttempted = useRef(false)
+
+  const reference = src ? privateStorageReference(src) : null
+  const bucket = reference?.bucket
+  const objectPath = reference?.path
+  const resolvedSrc = reference
+    ? signedResult?.source === src ? signedResult.url ?? undefined : undefined
+    : src ?? undefined
+  const unavailable = !!src && failedSource === src
 
   useEffect(() => {
     let cancelled = false
     retryAttempted.current = false
-    setUnavailable(false)
 
-    if (!src) {
-      setResolvedSrc(undefined)
-      return
-    }
+    if (!src || !bucket || !objectPath) return
 
-    const reference = privateStorageReference(src)
-    if (!reference) {
-      setResolvedSrc(src)
-      return
-    }
-
-    setResolvedSrc(undefined)
-
-    void getSignedStorageUrl(reference.bucket, reference.path).then((url) => {
+    void getSignedStorageUrl(bucket, objectPath).then((url) => {
       if (cancelled) return
-
-      if (!url) {
-        setUnavailable(true)
-        return
-      }
-
-      setResolvedSrc(url)
+      setSignedResult({ source: src, url })
+      if (!url) setFailedSource(src)
     })
 
     return () => {
       cancelled = true
     }
-  }, [src])
+  }, [src, bucket, objectPath])
 
   function handleImageError(event: SyntheticEvent<HTMLImageElement, Event>) {
     imageProps.onError?.(event)
 
-    const reference = src ? privateStorageReference(src) : null
-    if (!reference || retryAttempted.current) {
-      setUnavailable(true)
-      setResolvedSrc(undefined)
+    if (!src || !reference || retryAttempted.current) {
+      if (src) setFailedSource(src)
       return
     }
 
     retryAttempted.current = true
-    setResolvedSrc(undefined)
 
     void getSignedStorageUrl(reference.bucket, reference.path, true).then((url) => {
-      if (url) {
-        setUnavailable(false)
-        setResolvedSrc(url)
-      } else {
-        setUnavailable(true)
-      }
+      setSignedResult({ source: src, url })
+      if (!url) setFailedSource(src)
     })
   }
 
-  if (unavailable) return null
+  if (!src || unavailable) return null
 
-  return <img {...imageProps} src={resolvedSrc} onError={handleImageError} />
+  return (
+    <img
+      {...imageProps}
+      alt={imageProps.alt ?? ''}
+      src={resolvedSrc}
+      onError={handleImageError}
+    />
+  )
 }
