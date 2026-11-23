@@ -2,6 +2,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import {
   DISTRIBUTION_CONSENT_CATEGORIES,
   DISTRIBUTION_CONSENT_VERSION,
+  PROFILE_PUBLIC_CONSENT_CATEGORIES,
+  PROFILE_PUBLIC_CONSENT_VERSION,
 } from '../lib/distribution-consent'
 
 const URL = process.env.SUPABASE_URL ?? ''
@@ -106,12 +108,23 @@ async function main() {
     }
 
     const avatarPath = `${alice.id}/storage-smoke-${stamp}.png`
-    const avatarUpload = await uploadProbe(client, 'avatars', avatarPath)
-    check('owner can upload an avatar in their own folder', !avatarUpload, safeError(avatarUpload))
-    if (!avatarUpload) {
-      const avatarReplace = await uploadProbe(client, 'avatars', avatarPath, true)
-      check('owner can replace their own avatar with upsert', !avatarReplace, safeError(avatarReplace))
-    }
+    const avatarWithoutConsent = await uploadProbe(client, 'avatars', avatarPath)
+    check(
+      'profile owner cannot upload a public avatar without profile_public consent',
+      Boolean(avatarWithoutConsent),
+      safeError(avatarWithoutConsent),
+    )
+
+    const bobAvatarWithoutConsent = await uploadProbe(
+      otherClient,
+      'avatars',
+      `${bob.id}/avatar-without-profile-consent-${stamp}.png`,
+    )
+    check(
+      'second user cannot upload a public avatar without their own profile_public consent',
+      Boolean(bobAvatarWithoutConsent),
+      safeError(bobAvatarWithoutConsent),
+    )
 
     const postImageUpload = await uploadProbe(client, 'post-images', `${alice.id}/storage-smoke-${stamp}.png`)
     check('owner can upload a post image in their own folder', !postImageUpload, safeError(postImageUpload))
@@ -154,26 +167,151 @@ async function main() {
     const anonProfile = await anonymous.from('profiles').update({ bio: 'unauthorized' }).eq('id', alice.id)
     check('anon cannot update profiles', Boolean(anonProfile.error), safeError(anonProfile.error))
 
-    // Profile form writes its ordinary editable fields in one request.
+    // Stage 3 live production smoke: a public profile update and avatar upload
+    // must fail until the owner grants profile_public consent.
     const editedUsername = `data_edit_${stamp}`
+
+    const alicePublicFieldWithoutConsent = await client.from('profiles')
+      .update({ bio: `blocked-without-profile-consent-${stamp}` })
+      .eq('id', alice.id)
+      .select('id')
+    check(
+      'profile owner cannot change a public field without profile_public consent',
+      alicePublicFieldWithoutConsent.error?.code === '42501',
+      safeError(alicePublicFieldWithoutConsent.error),
+    )
+
+    const bobPublicFieldWithoutConsent = await otherClient.from('profiles')
+      .update({ bio: `bob-blocked-without-profile-consent-${stamp}` })
+      .eq('id', bob.id)
+      .select('id')
+    check(
+      'second user cannot change their own public profile field without consent',
+      bobPublicFieldWithoutConsent.error?.code === '42501',
+      safeError(bobPublicFieldWithoutConsent.error),
+    )
+
+    // notifications_muted is private: it remains writable without profile consent,
+    // but its value is read only through the auth.uid()-scoped RPC.
+    const privateProfileEdit = await client.from('profiles')
+      .update({ notifications_muted: true })
+      .eq('id', alice.id)
+    const privateNotificationSetting = await client.rpc('my_profile_notification_settings')
+    check(
+      'private notification preference can be saved and read by its owner without profile consent',
+      !privateProfileEdit.error &&
+        !privateNotificationSetting.error &&
+        privateNotificationSetting.data === true,
+      safeError(privateProfileEdit.error ?? privateNotificationSetting.error),
+    )
+
+    const profileConsent = await client.rpc('record_my_distribution_consent', {
+      p_scope: 'profile_public',
+      p_data_categories: [...PROFILE_PUBLIC_CONSENT_CATEGORIES],
+      p_document_version: PROFILE_PUBLIC_CONSENT_VERSION,
+    })
+    check(
+      'author can record profile_public consent through the user-scoped RPC',
+      !profileConsent.error && Boolean(profileConsent.data),
+      safeError(profileConsent.error),
+    )
+
+    const aliceProfileConsents = await client.rpc('my_distribution_consents')
+    const aliceProfileGrant = (aliceProfileConsents.data ?? []).find((row: {
+      scope: string
+      document_version: string
+      data_categories: string[]
+      revoked_at: string | null
+    }) => row.scope === 'profile_public' &&
+      row.document_version === PROFILE_PUBLIC_CONSENT_VERSION &&
+      row.revoked_at === null &&
+      JSON.stringify(row.data_categories) === JSON.stringify([...PROFILE_PUBLIC_CONSENT_CATEGORIES]))
+    check(
+      'profile_public consent is persisted and visible in the owner own consent history',
+      !aliceProfileConsents.error && Boolean(aliceProfileGrant),
+      safeError(aliceProfileConsents.error),
+    )
+
+    const bobProfileConsents = await otherClient.rpc('my_distribution_consents')
+    check(
+      'another user cannot read profile_public consent history',
+      !bobProfileConsents.error &&
+        !(bobProfileConsents.data ?? []).some((row: { scope: string }) => row.scope === 'profile_public'),
+      safeError(bobProfileConsents.error),
+    )
+
+    const bobRevokeProfile = await otherClient.rpc('revoke_my_distribution_consent', {
+      p_scope: 'profile_public',
+    })
+    const aliceProfileConsentsAfterBobRevoke = await client.rpc('my_distribution_consents')
+    const aliceProfileStillActive = (aliceProfileConsentsAfterBobRevoke.data ?? []).some((row: {
+      scope: string
+      document_version: string
+      revoked_at: string | null
+    }) => row.scope === 'profile_public' &&
+      row.document_version === PROFILE_PUBLIC_CONSENT_VERSION &&
+      row.revoked_at === null)
+    check(
+      'another user cannot revoke profile_public consent',
+      !bobRevokeProfile.error &&
+        !aliceProfileConsentsAfterBobRevoke.error &&
+        aliceProfileStillActive,
+      safeError(bobRevokeProfile.error ?? aliceProfileConsentsAfterBobRevoke.error),
+    )
+
+    // Avatar uploads are public, so the Storage policy must enforce the same consent.
+    const avatarUpload = await uploadProbe(client, 'avatars', avatarPath)
+    check('owner can upload a public avatar after profile_public consent', !avatarUpload, safeError(avatarUpload))
+    if (!avatarUpload) {
+      const avatarReplace = await uploadProbe(client, 'avatars', avatarPath, true)
+      check('owner can replace their public avatar after profile_public consent', !avatarReplace, safeError(avatarReplace))
+    }
+
+    const avatarUrl = client.storage.from('avatars').getPublicUrl(avatarPath).data.publicUrl
     const profileEdit = await client.from('profiles').update({
       username: editedUsername,
       bio: `smoke-${stamp}`,
-      avatar_url: null,
-      notifications_muted: true,
-    }).eq('id', alice.id).select('username, bio, avatar_url, notifications_muted').single()
+      avatar_url: avatarUrl,
+    }).eq('id', alice.id).select('username, bio, avatar_url').single()
+    const privateSettingAfterPublicEdit = await client.rpc('my_profile_notification_settings')
     check(
-      'owner can save the editable profile fields used by the profile form',
+      'owner can save public profile fields and avatar after profile_public consent',
       !profileEdit.error &&
         profileEdit.data?.username === editedUsername &&
         profileEdit.data?.bio === `smoke-${stamp}` &&
-        profileEdit.data?.notifications_muted === true,
-      safeError(profileEdit.error),
+        profileEdit.data?.avatar_url === avatarUrl &&
+        !privateSettingAfterPublicEdit.error &&
+        privateSettingAfterPublicEdit.data === true,
+      safeError(profileEdit.error ?? privateSettingAfterPublicEdit.error),
     )
 
     const otherProfileEdit = await otherClient.from('profiles')
       .update({ bio: 'unauthorized profile change' }).eq('id', alice.id).select('id')
     check('another user cannot edit an owned profile', !otherProfileEdit.error && (otherProfileEdit.data?.length ?? 0) === 0, safeError(otherProfileEdit.error))
+
+    const profileConsentRevoke = await client.rpc('revoke_my_distribution_consent', {
+      p_scope: 'profile_public',
+    })
+    const publicFieldAfterRevoke = await client.from('profiles')
+      .update({ bio: `blocked-after-profile-revoke-${stamp}` })
+      .eq('id', alice.id)
+      .select('id')
+    check(
+      'profile owner cannot change public fields after profile consent revocation',
+      !profileConsentRevoke.error && publicFieldAfterRevoke.error?.code === '42501',
+      safeError(publicFieldAfterRevoke.error ?? profileConsentRevoke.error),
+    )
+
+    const avatarAfterRevoke = await uploadProbe(
+      client,
+      'avatars',
+      `${alice.id}/avatar-after-profile-revoke-${stamp}.png`,
+    )
+    check(
+      'avatar Storage policy blocks uploads after profile consent revocation',
+      Boolean(avatarAfterRevoke),
+      safeError(avatarAfterRevoke),
+    )
 
     const roleEscalation = await client.from('profiles').update({ role: 'admin' }).eq('id', alice.id)
     const roleAfter = await client.from('profiles').select('role').eq('id', alice.id).single()
@@ -499,12 +637,14 @@ async function main() {
     for (const client of clients) {
       const { data: current } = await client.auth.getUser()
       if (current.user) {
-        const { error } = await client.rpc('revoke_my_distribution_consent', {
-          p_scope: 'publication',
-        })
-        if (error) {
-          failed++
-          console.error(`CLEANUP FAIL — revoke synthetic consent :: ${error.code ?? 'unknown'}`)
+        for (const scope of ['publication', 'profile_public'] as const) {
+          const { error } = await client.rpc('revoke_my_distribution_consent', {
+            p_scope: scope,
+          })
+          if (error) {
+            failed++
+            console.error(`CLEANUP FAIL — revoke synthetic ${scope} consent :: ${error.code ?? 'unknown'}`)
+          }
         }
       }
       await client.auth.signOut().catch(() => undefined)
@@ -517,7 +657,11 @@ async function main() {
       objectsByBucket.set(object.bucket, paths)
     }
     for (const [bucket, paths] of objectsByBucket) {
-      await admin.storage.from(bucket).remove(paths)
+      const { error } = await admin.storage.from(bucket).remove(paths)
+      if (error) {
+        failed++
+        console.error(`CLEANUP FAIL — remove ${bucket} objects :: ${error.message}`)
+      }
     }
 
     for (const user of users) {
@@ -628,21 +772,42 @@ async function main() {
 
     // Check that synthetic application data is gone. auth.users rows are
     // deliberately retained; deleting Auth users is outside this smoke's scope.
-    const [remainingLegacyProfiles, remainingLegacyPosts, remainingLegacyBooks] = await Promise.all([
+    const currentUserIds = users.map(user => user.id)
+    const [remainingLegacyProfiles, remainingLegacyPosts, remainingLegacyBooks, remainingCurrentProfiles, remainingCurrentPosts, remainingCurrentPost, remainingCurrentBook] = await Promise.all([
       admin.from('profiles').select('id').in('id', legacyUserIds),
       admin.from('posts').select('id').in('id', legacyPostIds),
       admin.from('books').select('id').in('id', legacyBookIds),
+      currentUserIds.length
+        ? admin.from('profiles').select('id').in('id', currentUserIds)
+        : Promise.resolve({ data: [], error: null }),
+      currentUserIds.length
+        ? admin.from('posts').select('id').in('user_id', currentUserIds)
+        : Promise.resolve({ data: [], error: null }),
+      postId
+        ? admin.from('posts').select('id').eq('id', postId)
+        : Promise.resolve({ data: [], error: null }),
+      bookId
+        ? admin.from('books').select('id').eq('id', bookId)
+        : Promise.resolve({ data: [], error: null }),
     ])
-    if (
-      remainingLegacyProfiles.error || remainingLegacyPosts.error || remainingLegacyBooks.error ||
-      (remainingLegacyProfiles.data?.length ?? 0) > 0 ||
-      (remainingLegacyPosts.data?.length ?? 0) > 0 ||
-      (remainingLegacyBooks.data?.length ?? 0) > 0
-    ) {
+    const cleanupChecks = [
+      remainingLegacyProfiles,
+      remainingLegacyPosts,
+      remainingLegacyBooks,
+      remainingCurrentProfiles,
+      remainingCurrentPosts,
+      remainingCurrentPost,
+      remainingCurrentBook,
+    ]
+    const cleanupFailed = cleanupChecks.some(result =>
+      Boolean(result.error) || (result.data?.length ?? 0) > 0,
+    )
+
+    if (cleanupFailed) {
       failed++
-      console.error('CLEANUP FAIL — legacy synthetic rows remain after cleanup')
+      console.error('CLEANUP FAIL — synthetic profiles/posts/books remain after cleanup')
     } else {
-      console.log('CLEANUP PASS — removed only previously identified synthetic profiles, posts, books and storage objects; auth.users retained')
+      console.log('CLEANUP PASS — removed synthetic profiles, posts, books and Storage objects; auth.users retained')
     }
   }
 
