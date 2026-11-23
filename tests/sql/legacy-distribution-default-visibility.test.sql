@@ -385,7 +385,7 @@ $staff_access$;
 
 reset role;
 
--- Only B's two explicit scope grants and F's profile-only grant may create consent records; no migration backfill.
+-- Only B's explicit grants, C's independent publication grant, and F's profile-only grant create fixture consent rows; no migration backfill.
 do $no_consent_backfill$
 begin
   if exists (
