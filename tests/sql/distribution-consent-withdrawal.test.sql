@@ -260,6 +260,11 @@ select public.revoke_my_all_distribution_consents();
 
 do $owner_after_revoke$
 begin
+  perform public.increment_post_views('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1');
+  if (select views_count from public.posts where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') <> 1 then
+    raise exception 'hidden post view counter changed after consent withdrawal';
+  end if;
+
   if (select count(*) from public.profiles) <> 1
      or (select count(*) from public.posts) <> 1
      or (select count(*) from public.post_images) <> 1 then
@@ -280,11 +285,6 @@ set local role anon;
 select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 do $anonymous_after_revoke$
 begin
-  perform public.increment_post_views('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1');
-  if (select views_count from public.posts where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') <> 1 then
-    raise exception 'hidden post view counter changed after consent withdrawal';
-  end if;
-
   if (select count(*) from public.profiles) <> 0
      or (select count(*) from public.posts) <> 0
      or (select count(*) from public.comments) <> 0
