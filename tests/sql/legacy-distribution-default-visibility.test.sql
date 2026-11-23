@@ -135,6 +135,20 @@ reset role;
 -- Profile-only legacy owners can resolve visibility without approved posts.
 set local role authenticated;
 select pg_catalog.set_config('request.jwt.claim.sub', '66666666-6666-4666-8666-666666666666', true);
+select public.record_my_distribution_consent(
+  'publication',
+  array[
+    'author_username',
+    'author_avatar',
+    'publication_title',
+    'publication_text',
+    'publication_images',
+    'publication_tags',
+    'linked_book',
+    'news_metadata'
+  ]::text[],
+  '1.0'
+);
 
 do $profile_only_legacy_state$
 begin
@@ -151,8 +165,11 @@ select public.resolve_my_legacy_distribution_prompt('hide_existing');
 do $profile_only_hidden$
 begin
   if (select legacy_choice from public.my_legacy_distribution_prompt_state()) <> 'hidden'
-     or exists (select 1 from public.my_distribution_consents()) then
-    raise exception 'profile-only hide must set the private choice without creating consent records';
+     or (select count(*) from public.my_distribution_consents()
+          where scope = 'publication' and revoked_at is null) <> 1
+     or exists (select 1 from public.my_distribution_consents()
+                 where scope = 'profile_public') then
+    raise exception 'profile-only hide must preserve unrelated publication consent and create no profile consent';
   end if;
 end;
 $profile_only_hidden$;
@@ -376,7 +393,6 @@ begin
       from private.personal_data_consents
      where user_id in (
        '44444444-4444-4444-8444-444444444444',
-       '66666666-6666-4666-8666-666666666666',
        '77777777-7777-4777-8777-777777777777',
        '88888888-8888-4888-8888-888888888888'
      )
@@ -388,6 +404,18 @@ begin
        where user_id = '55555555-5555-4555-8555-555555555555'
          and revoked_at is null) <> 2 then
     raise exception 'B must have exactly two active rows from its own explicit user RPC actions';
+  end if;
+
+  if (select count(*) from private.personal_data_consents
+       where user_id = '66666666-6666-4666-8666-666666666666'
+         and revoked_at is null
+         and scope = 'publication') <> 1
+     or exists (
+       select 1 from private.personal_data_consents
+        where user_id = '66666666-6666-4666-8666-666666666666'
+          and scope = 'profile_public'
+     ) then
+    raise exception 'profile-only hide must leave the independently granted publication scope active';
   end if;
 
   if (select count(*) from private.personal_data_consents
