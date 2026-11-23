@@ -22,13 +22,6 @@ on:
       - 'app/welcome/**'
       - 'app/auth/reset/page.tsx'
       - 'lib/errors.ts'
-  push:
-    branches:
-      - main
-    paths:
-      - 'scripts/cleanup-data-smoke-users.ts'
-      - 'scripts/lib/**'
-      - '.github/workflows/chat-security-smoke.yml'
   workflow_run:
     workflows:
       - Apply DB migrations
