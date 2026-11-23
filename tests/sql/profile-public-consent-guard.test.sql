@@ -132,6 +132,11 @@ do $user_a_without_consent$
 declare
   v_count integer;
 begin
+  if auth.uid() is distinct from '11111111-1111-4111-8111-111111111111'::uuid
+     or auth.role() <> 'authenticated' then
+    raise exception 'test JWT fixture mismatch: auth.uid=%, auth.role=%', auth.uid(), auth.role();
+  end if;
+
   begin
     update public.profiles set bio = 'must be blocked' where id = auth.uid();
     raise exception 'user A changed a public profile field without consent';
