@@ -692,3 +692,18 @@ PR #89 merged as `41948d0154b68b89a99140dc1e7a6539ae54033b`. The production migr
 The first post-deploy anonymous RLS read exposed a separate ACL gap: `private.can_read_distribution_profile(uuid)` and `private.can_read_distribution_post(uuid)`, which are invoked directly by public SELECT policies, had EXECUTE only for `postgres`. The attempted verification transaction failed with SQLSTATE `42501` and was rolled back before any counter update or data mutation. The schema already grants `USAGE` on `private`; no broad schema grant is needed.
 
 Prepared follow-up migration `20261215_distribution_read_helper_acl.sql` to revoke `PUBLIC`/service-role access and grant EXECUTE only to `anon` and `authenticated` on those two RLS predicates. Added explicit ACL assertions to the PostgreSQL regression test and an idempotent twice-applied step in Web quality CI. This follow-up is pending PR review/merge and production application; public read restoration is not yet verified. No consent rows or user data were created, updated, or deleted.
+
+
+## 2026-11-23 — B12-fix2 Stages 2–3: profile-only legacy choice and accurate disclosure
+
+Production verification after PR #90:
+- `20261215_distribution_read_helper_acl.sql` applied at 2026-11-23 12:17:26 UTC with checksum `ca983c1082ef0b6b5b77c64396ff70c8093b86e5cd6c2043c537be472807a858`.
+- Anonymous RLS read returned 19 profiles and 9 approved publications. A call to `increment_post_views(uuid)` under `anon` changed one legacy post from 8 to 9 inside a transaction; `ROLLBACK` restored the persisted value to 8.
+- The only active production consent rows remain the two pre-existing `data-smoke-a-*` test-account rows. Total consent history is 40 rows; no consent records were inserted or backfilled by either migration or verification.
+- Production health smoke run `45172846625` returned HTTP 200 from both configured domains but failed its separate expected homepage SEO-marker assertion. This is an independent deployment/metadata check.
+
+A source audit found that the legacy prompt was gated only by the presence of approved old posts, while `can_read_distribution_profile` also exposed an old profile until an explicit decision. A profile-only user therefore had no direct one-time hide action. The old profile-edit copy also incorrectly said pending legacy posts were already hidden.
+
+Prepared migration `20261216_legacy_profile_only_choice.sql` to expose a separate `has_legacy_profile` state and let the authenticated owner resolve profile-only legacy visibility. `grant_existing` records only `profile_public` for a profile-only owner (and only records `publication` when approved legacy posts exist); `hide_existing` creates no consent rows. Updated profile-edit wording and the public consent explanation. PostgreSQL 17 CI applies the migration twice and tests profile-only hide/grant behavior in a transaction that is rolled back.
+
+For this B12-fix2 PR, the production client-write smoke step is skipped because its harness intentionally writes production consent-history rows for generated accounts. The isolated PostgreSQL regression test exercises those explicit user-scoped actions without persisting anything. Remaining authenticated browser checks for `/profile`, `/profile/edit`, and `/admin` require the local session from `.env.local` and are not claimed as completed.
