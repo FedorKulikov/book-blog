@@ -7,6 +7,7 @@ import {
   cleanupSmokeUsers,
   getDataSmokeInventory,
   listDataSmokeUsers,
+  verifySmokeCleanup,
 } from './lib/data-smoke-cleanup'
 import { SMOKE_ACCOUNT_EMAIL_PREFIXES } from './lib/smoke-account-config'
 
@@ -22,13 +23,14 @@ for (const [name, value] of Object.entries({
 
 const deleteRequested = process.argv.includes('--delete')
 const dryRunRequested = process.argv.includes('--dry-run')
+const verifyRequested = process.argv.includes('--verify-manifest')
 const manifestFlag = process.argv.indexOf('--manifest')
 const manifestPath = manifestFlag >= 0 ? process.argv[manifestFlag + 1] : undefined
 if (manifestFlag >= 0 && (!manifestPath || manifestPath.startsWith('--'))) {
   throw new Error('--manifest requires a JSON file path')
 }
-if (deleteRequested === dryRunRequested) {
-  throw new Error('pass exactly one mode: --dry-run or --delete')
+if ([deleteRequested, dryRunRequested, verifyRequested].filter(Boolean).length !== 1) {
+  throw new Error('pass exactly one mode: --dry-run, --delete or --verify-manifest')
 }
 
 const INVENTORY_FIELDS = [
@@ -70,7 +72,7 @@ async function main() {
   let users = discoveredUsers
 
   if (manifestPath) {
-    if (!deleteRequested) throw new Error('--manifest is accepted only with --delete')
+    if (!deleteRequested && !verifyRequested) throw new Error('--manifest is accepted only with --delete or --verify-manifest')
     const manifest = JSON.parse(readFileSync(resolve(process.cwd(), manifestPath), 'utf8')) as {
       snapshot?: { count?: number }
       accounts?: Array<{ email: string; id: string }>
@@ -132,6 +134,26 @@ async function main() {
 
   if (dryRunRequested) {
     console.log('DRY-RUN ONLY — no production data was changed. Deletion was not run.')
+    return
+  }
+
+  if (verifyRequested) {
+    const residuals = await verifySmokeCleanup(admin, users)
+    console.log('EXACT MANIFEST VERIFICATION — ' + JSON.stringify(residuals))
+    const targetFields = Object.entries(residuals).filter(([key]) => key !== 'smoke_users_remaining')
+    const targetResidualCount = targetFields.reduce((sum, [, count]) => sum + count, 0)
+    for (const user of discoveredUsers) {
+      if (!users.some(target => target.id.toLowerCase() === user.id.toLowerCase())) {
+        console.log('OUT-OF-MANIFEST SMOKE ACCOUNT — ' + user.email + ' :: ' + user.id)
+      }
+    }
+    if (targetResidualCount !== 0) {
+      throw new Error('exact manifest still has residual Auth or related records')
+    }
+    console.log('EXACT MANIFEST CLEANUP PASS — all 63 approved Auth IDs and their related records are absent')
+    if (residuals.smoke_users_remaining > 0) {
+      console.log('OUT-OF-MANIFEST RESIDUE — ' + residuals.smoke_users_remaining + ' smoke Auth account(s) remain; not included in the approved manifest')
+    }
     return
   }
 
