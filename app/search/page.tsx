@@ -4,18 +4,26 @@ import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import PostCard from '../components/PostCard'
+import PostCard, { type PostCardData } from '../components/PostCard'
 import EmptyState from '../components/EmptyState'
 import StorageImage from '../components/StorageImage'
 import { Search, ChevronLeft, ChevronRight, User } from '../components/icons'
+
+type SearchPerson = {
+  id: string
+  username: string
+  avatar_url: string | null
+  bio: string | null
+  created_at: string | null
+}
 
 function SearchContent() {
   const searchParams = useSearchParams()
   const q = searchParams.get('q') || ''
   const [tab, setTab] = useState<'posts' | 'people'>('posts')
   const [query, setQuery] = useState(q)
-  const [posts, setPosts] = useState<any[]>([])
-  const [people, setPeople] = useState<any[]>([])
+  const [posts, setPosts] = useState<PostCardData[]>([])
+  const [people, setPeople] = useState<SearchPerson[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
 
@@ -64,7 +72,7 @@ function SearchContent() {
       .order('created_at', { ascending: false })
       .limit(50)
 
-    setPosts(data || [])
+    setPosts((data || []) as unknown as PostCardData[])
     setLoading(false)
   }
 
@@ -81,7 +89,7 @@ function SearchContent() {
       .or(`username.ilike.%${safe}%,bio.ilike.%${safe}%`)
       .limit(30)
 
-    setPeople(data || [])
+    setPeople((data || []) as unknown as SearchPerson[])
     setLoading(false)
   }
 
