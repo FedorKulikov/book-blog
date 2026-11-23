@@ -1,17 +1,22 @@
 name: Apply DB migrations
 
-# Одноразовый (но переиспользуемый) воркфлоу для применения SQL-миграций.
+# Автоматическое применение новых SQL-миграций после merge в main.
+# Также сохраняется ручной workflow_dispatch для точечного/полного запуска.
 #
-# Зачем: DDL нельзя выполнить через PostgREST (anon/service_role ключи
-# не умеют CREATE/ALTER). А секрет SUPABASE_DB_URL уже лежит в репозитории
-# и используется в backup.yml — значит подключение к базе из CI работает.
-# Здесь тот же секрет применяется к файлам миграций, и пароль никуда
-# не выводится: он живёт только в переменной окружения шага.
+# На push применяется только хвост файлов, идущий после последней записи
+# ops.applied_migrations. Это не переигрывает старые миграции, которые могли
+# быть применены до появления реестра. Новые миграции добавляются в конец
+# последовательности и должны быть идемпотентными.
 #
-# Файлы миграций написаны идемпотентно (if not exists / drop ... if exists),
-# поэтому повторный запуск безопасен.
+# DDL выполняется через SUPABASE_DB_URL (секрет); пароль не печатается.
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/apply-migrations.yml'
   workflow_dispatch:
     inputs:
       files:
@@ -57,12 +62,8 @@ jobs:
             exit 1
           fi
 
-          if [ "${FILES}" = "ALL" ]; then
-            FILES=$(ls supabase/migrations/*.sql | sort)
-          fi
-
           # Реестр применённых миграций: создаётся здесь же, чтобы первый
-          # запуск на чистой базе не падал
+          # запуск на чистой базе не падал.
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "
             create schema if not exists ops;
             create table if not exists ops.applied_migrations (
@@ -72,6 +73,22 @@ jobs:
               applied_by text default current_user
             );
           "
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            # Используем high-water mark из реестра. Это намеренно не
+            # backfill-ит старые файлы, если у них нет исторической записи.
+            last_applied="$(psql "$DB_URL" -v ON_ERROR_STOP=1 -tA -c               "select coalesce(max(filename), '') from ops.applied_migrations")"
+            FILES="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)"
+            if [[ -n "$last_applied" ]]; then
+              FILES="$(printf '%s\\n' "$FILES" | LC_ALL=C awk -v last="$last_applied" 'length($0) && $0 > last')"
+            fi
+            if [[ -z "$FILES" ]]; then
+              echo "No new migration files after $last_applied"
+              exit 0
+            fi
+          elif [[ -z "${FILES:-}" || "$FILES" == "ALL" ]]; then
+            FILES="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)"
+          fi
 
           applied=0
           skipped=0
