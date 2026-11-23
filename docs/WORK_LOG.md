@@ -787,3 +787,5 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Workflow:** cleanup CLI no longer accepts or calls the Management API token/endpoint. The Chat security workflow dry-run now requires only `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY`. The unrelated, optional Auth password-posture Management API check remains independent and may skip when its token is absent. No `--delete` command was run.
 
 **CI correction:** the first TypeScript run found that the typed PostgREST query builder was too narrow for the generic pagination helper and one post-image query omitted its filter-column argument. The helper now awaits the SDK thenable through a normalized result shape and the image query filters by `post_id`. The failed run stopped before any smoke or production request.
+
+**Production schema correction:** the first PostgREST dry-run read exposed that `public.likes` has composite primary key `(user_id, post_id)` and no `id` column. Updated inventory/guard selects to match the live schema. The failed attempt was read-only; no data changed.
