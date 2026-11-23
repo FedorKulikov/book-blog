@@ -791,3 +791,9 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 **Production schema correction:** the first PostgREST dry-run read exposed that `public.likes` has composite primary key `(user_id, post_id)` and no `id` column. Updated inventory/guard selects to match the live schema. The failed attempt was read-only; no data changed.
 
 **Deployment ordering:** the production dry-run step now runs only from a successful `workflow_run` of `Apply DB migrations` on `main`. Pull-request CI still tests Auth/cleanup code but skips production inventory until the consent-inventory RPC is deployed. This avoids a predictable pre-migration PostgREST missing-function failure.
+
+## 2026-11-23 — Fix second likes query in production safety guard
+
+**Production dry-run:** after PR #94 merge and migration deployment, Auth Admin/Storage/PostgREST inventory completed and reported 61 matched smoke accounts. Totals: 9 profiles, 2 posts, 2 books, 1 report, 10 notifications, 40 consents (2 active / 38 revoked), 6 Storage objects, 4 conversations, 2 messages, 1 ticket and 1 ticket message; other inventoried categories were 0. The cross-account guard then failed on a second `likes` select still requesting a nonexistent `id` column (PostgreSQL 42703). No delete or write occurred.
+
+**Correction:** changed that guard query to the live composite-key schema `likes(user_id, post_id)`. Added a main-branch push trigger restricted to cleanup script/config/workflow paths so the production dry-run reruns after this code-only fix, without rerunning the migration workflow. The production dry-run still executes only `--dry-run`.
