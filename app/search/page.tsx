@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import PostCard from '../components/PostCard'
 import EmptyState from '../components/EmptyState'
+import StorageImage from '../components/StorageImage'
 import { Search, ChevronLeft, ChevronRight, User } from '../components/icons'
 
 function SearchContent() {
@@ -197,7 +198,7 @@ function SearchContent() {
                 {/* Аватар */}
                 <div className="w-14 h-14 rounded-full bg-emerald-mid text-cream flex items-center justify-center font-bold text-lg overflow-hidden flex-shrink-0">
                   {p.avatar_url ? (
-                    <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
+                    <StorageImage src={p.avatar_url} alt="" className="w-full h-full object-cover" />
                   ) : (
                     (p.username?.[0] || '?').toUpperCase()
                   )}
