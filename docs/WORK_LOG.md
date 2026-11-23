@@ -935,3 +935,22 @@ Fix second likes query in production safety guard
 - Геометрия проверяется для viewport 1440 и 1920 px при desktop sidebar 256 px, main padding 32 px, max-width 1280 px, grid gap 32 px, sidebar track 300 px: на 1440 внутренняя ширина 1120 px (content 788 px + gap 32 px + sidebar 300 px); на 1920 max-width ограничивает внутреннюю ширину 1216 px (content 884 px + gap 32 px + sidebar 300 px). Незаполненного правого трека нет; карточки и заголовок имеют общий левый край.
 - Проверка фактических скриншотов в браузере не выполнена: репозиторий не удалось клонировать из-за отсутствия DNS-доступа к github.com в локальной среде. Проверка CI/сборки будет выполнена для PR.
 - Файлы: `app/HomeClient.tsx`, `app/components/Header.tsx`, `app/globals.css`; журналы обновлены. Серверная логика, данные, RLS/grants и production не менялись.
+
+
+## 2026-11-23 — Внешние миниатюры новостей и заглушки обложек книг
+
+**Что требовалось**
+- Убрать произвольные внешние миниатюры из Next Image optimizer без wildcard-host и ручного расширения allowlist.
+- Сделать заглушку для недоступных изображений и для книг без обложек; не менять приватные изображения постов и аватары.
+
+**Что сделано**
+- ExternalNewsCover больше не использует next/image: загружает внешний URL через обычный img с loading=lazy, decoding=async и referrerPolicy=no-referrer. При отсутствии URL или событии error показывает градиентную заглушку с иконкой; большие карточки дополнительно показывают название источника.
+- Удалены sizes из вызовов ExternalNewsCover: запросы /_next/image для этих внешних превью больше не формируются.
+- StorageImage получил необязательный fallback; без него прежнее поведение не меняется. Каталог книг передаёт заглушку с первой буквой названия при пустом URL, ошибке загрузки или недоступности подписанного URL.
+- Потоки изображений постов и аватаров используют StorageImage без нового fallback; их URL-подписание и обработка не менялись.
+
+**Проверка и ограничения**
+- Read-only production SQL: public.books содержит 127 строк; у всех 127 заполнен cover_url. RPC public.get_books_page возвращает cover_url в результате. Все URL имеют шаблон публичного объекта post-images; production data не изменялись.
+- Предыдущий Guest UX audit зафиксировал 5 HTTP 400 ошибок на /books и 15 на /news; источник пяти миниатюр в sidebar — ExternalNewsBlock с LIMIT = 5, использующий общий ExternalNewsCover. Ошибки не были Supabase Storage errors в окне логов.
+- Фактическая чистота браузерной консоли после публикации изменения требует повторного гостевого Playwright-прогона на deployed-коде. PR CI проверяет сборку и тесты; production не изменяется этим коммитом.
+- Изменены только компоненты внешних миниатюр, каталог книг и эти журналы; next.config.ts, migrations, policies, secrets, post images и avatars не менялись.
