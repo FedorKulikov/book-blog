@@ -26,7 +26,7 @@ as $function$
     pg_catalog.count(*) filter (where c.revoked_at is null)::integer as active_count,
     pg_catalog.count(*) filter (where c.revoked_at is not null)::integer as revoked_count
   from private.personal_data_consents as c
-  where c.user_id = any(pg_catalog.coalesce(p_user_ids, '{}'::uuid[]))
+  where c.user_id = any(coalesce(p_user_ids, '{}'::uuid[]))
   group by c.user_id;
 $function$;
 
