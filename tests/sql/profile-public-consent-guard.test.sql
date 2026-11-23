@@ -289,6 +289,25 @@ $user_b$;
 
 reset role;
 
+-- Trusted system updates execute without an end-user JWT. They are not
+-- distribution actions and must remain usable for maintenance workflows.
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
+update public.profiles
+   set bio = 'trusted system maintenance update'
+ where id = '33333333-3333-4333-8333-333333333333';
+
+do $system_update_assertion$
+begin
+  if not exists (
+    select 1 from public.profiles
+     where id = '33333333-3333-4333-8333-333333333333'
+       and bio = 'trusted system maintenance update'
+  ) then
+    raise exception 'system profile update without an end-user JWT was blocked';
+  end if;
+end;
+$system_update_assertion$;
+
 do $cross_user_assertion$
 declare
   v_a_active integer;
