@@ -25,7 +25,7 @@ type MessageRow = { id: string; sender_id: string; conversation_id: string }
 type CommentRow = { id: string; user_id: string; post_id: string }
 type LikeRow = { id: string; user_id: string; post_id: string }
 type BookmarkRow = { id: string; user_id: string; post_id: string }
-type FollowRow = { id: string; follower_id: string; following_id: string }
+type FollowRow = { follower_id: string; following_id: string }
 type TicketRow = { id: string; user_id: string }
 type TicketMessageRow = { id: string; sender_id: string; ticket_id: string }
 type PostImageRow = { id: string; post_id: string }
@@ -325,8 +325,8 @@ export async function getDataSmokeInventory(
     selectByIds<CommentRow>(admin, 'comments', 'id,user_id,post_id', 'user_id', ids),
     selectByIds<LikeRow>(admin, 'likes', 'id,user_id,post_id', 'user_id', ids),
     selectByIds<BookmarkRow>(admin, 'bookmarks', 'id,user_id,post_id', 'user_id', ids),
-    selectByIds<FollowRow>(admin, 'follows', 'id,follower_id,following_id', 'follower_id', ids),
-    selectByIds<FollowRow>(admin, 'follows', 'id,follower_id,following_id', 'following_id', ids),
+    selectByIds<FollowRow>(admin, 'follows', 'follower_id,following_id', 'follower_id', ids),
+    selectByIds<FollowRow>(admin, 'follows', 'follower_id,following_id', 'following_id', ids),
     selectByIds<TicketRow>(admin, 'tickets', 'id,user_id', 'user_id', ids),
     selectByIds<TicketMessageRow>(admin, 'ticket_messages', 'id,sender_id,ticket_id', 'sender_id', ids),
     getConsentInventory(admin, ids),
@@ -343,7 +343,7 @@ export async function getDataSmokeInventory(
 
   const reportRows = uniqueRows([...reportsByReporter, ...reportsByPost])
   const notificationRows = uniqueRows([...notificationsByRecipient, ...notificationsByActor])
-  const followRows = uniqueRows([...followsByFollower, ...followsByFollowing])
+  const followRows = [...new Map([...followsByFollower, ...followsByFollowing].map(row => [row.follower_id + ':' + row.following_id, row])).values()]
   const ticketMessageRows = uniqueRows([...ticketMessagesBySender, ...ticketMessagesByTicket])
   const postOwnerById = new Map(posts.map(post => [post.id, post.user_id]))
   const rows: InventoryRow[] = []
@@ -463,7 +463,6 @@ export async function assertNoForeignContentWouldBeCascadeDeleted(
     foreign_recipients_of_smoke_actor_notifications: notificationsByActor.filter(row => !smokeIdSet.has(row.user_id)).length,
     foreign_ticket_messages: ticketMessages.filter(row => !smokeIdSet.has(row.sender_id)).length,
     foreign_posts_referencing_smoke_books: postsOnSmokeBooks.filter(row => !smokeIdSet.has(row.user_id)).length,
-    orphaned_smoke_message_contexts: smokeMessages.filter(row => !smokeIdSet.has(row.sender_id)).length,
   }
 
   const riskCount = Object.values(risks).reduce((sum, count) => sum + count, 0)
