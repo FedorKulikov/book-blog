@@ -6,6 +6,11 @@ import { supabase } from '@/lib/supabase'
 import { BookOpen } from './icons'
 import StorageImage from './StorageImage'
 
+type AuthorPostRow = {
+  user_id: string
+  profiles: Pick<Author, 'id' | 'username' | 'avatar_url'> | null
+}
+
 type Author = {
   id: string
   username: string
@@ -44,7 +49,7 @@ export default function TopAuthors({ type }: { type?: PostType }) {
       }
 
       const map = new Map<string, Author>()
-      for (const p of posts as any[]) {
+      for (const p of posts as unknown as AuthorPostRow[]) {
         if (!p.profiles) continue
         const id = p.profiles.id
         const username = p.profiles.username
