@@ -646,3 +646,14 @@ Updated `tests/sql/distribution-consent-withdrawal.test.sql` to assert A's own p
 The PostgreSQL run exposed an incorrect test expectation: user B was expected not to read A's approved post even after A had explicitly granted active publication consent. That expectation contradicted the consent model; the post is publicly readable while A's publication grant is active.
 
 Updated the scenario: B can read A's approved post while the grant is active; B's `my_distribution_consents()` returns only B's rows; B's revoke-all action affects only B; a subsequent authenticated assertion as A confirms A's publication grant remains active. A's own later revoke continues to test actual public withdrawal. No production policy was weakened; only the SQL regression test changed. A new green PostgreSQL run on the final head is required.
+
+
+## 2026-11-23 — Production migration workflow gap and automatic deployment path
+
+After PR #86 merged to main (`1a8e309548f40ebc719c6f06c748dd957c822fdc`), a read-only production DB check found Stage 4 had not been applied: `ops.applied_migrations` contained 31 rows with `20261212_profile_public_consent_guard.sql` as the latest entry; `20261213_distribution_consent_withdrawal.sql` was absent; the three new profile columns, consent-aware policies/RPCs were absent and both user-media buckets remained public.
+
+The actual `.github/workflows/apply-migrations.yml` was `workflow_dispatch`-only. Web quality performs PostgreSQL migration tests on a local CI DB; it does not mutate production. The workflow therefore did not match the project's stated automatic-apply convention.
+
+Branch `fix/auto-apply-db-migrations` adds a main-push trigger for newly added SQL migrations only. Modified/deleted released migrations fail closed. A one-time marker points to the already merged Stage 4 migration. The existing checksum registry skips previously applied files. The workflow now fetches full Git history, uses `github.event.before` for the diff and performs Stage 4 production assertions (private profile columns, RLS policy count, private media buckets, and RPC count). Web quality is configured to lint this workflow and trigger on its marker/workflow changes.
+
+This separate PR is not merged and has not changed production. No live user rows or media were modified. Stage 4 remains pending until the PR CI is green, merged, and the `Apply DB migrations` production workflow reports success.

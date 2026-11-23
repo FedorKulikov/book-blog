@@ -17,6 +17,8 @@ on:
       - 'next.config.ts'
       - 'tsconfig.json'
       - '.github/workflows/web-quality.yml'
+      - '.github/workflows/apply-migrations.yml'
+      - '.github/ops/apply-migrations-once.marker'
       - '.github/workflows/layero-one-time-promote.yml'
 
 permissions:
@@ -62,6 +64,7 @@ jobs:
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           "$(go env GOPATH)/bin/actionlint" -color \
+            .github/workflows/apply-migrations.yml \
             .github/workflows/layero-one-time-promote.yml \
             .github/workflows/layero-deploy-main-once.yml \
             .github/workflows/web-quality.yml

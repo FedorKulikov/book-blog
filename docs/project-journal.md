@@ -501,3 +501,12 @@
 - PostgreSQL 17 прогон показал, что test user B ожидал скрыть публикацию A после того, как A явно выдал active publication consent. Это неверное ожидание: approved post должен быть доступен B, пока согласие A действует.
 - Исправлен сценарий: B видит approved post A при активном согласии; `my_distribution_consents()` под B не возвращает записи A; отзыв B действует только на собственные scopes; повторная проверка под A подтверждает, что его publication consent остался активен. Последующий revoke A отдельно проверяет прекращение публичного доступа.
 - Production-код и RLS-политики не ослаблялись; менялся только SQL regression test. Нужен повторный зелёный PostgreSQL run на итоговом head.
+
+
+## 2026-11-23 — Production migration workflow gap and automatic deployment path
+
+- После merge PR #86 в main `1a8e309548f40ebc719c6f06c748dd957c822fdc` production read-only проверка показала, что Stage 4 ещё не применена: в `ops.applied_migrations` 31 запись, последняя `20261212_profile_public_consent_guard.sql`, записи `20261213_distribution_consent_withdrawal.sql` нет; три новые profile columns отсутствовали, consent-aware policies/RPC отсутствовали, buckets avatars/post-images оставались public.
+- Причина: `.github/workflows/apply-migrations.yml` был только `workflow_dispatch`; Web quality выполняет PostgreSQL migration tests на локальной БД, но не применяет SQL в production. Условия авто-применения в описании проекта не соответствовали фактической конфигурации.
+- На ветке `fix/auto-apply-db-migrations` добавлен push trigger для main: автоматически применяются только новые файлы `supabase/migrations/*.sql`; изменение/удаление уже выпущенной миграции останавливается с ошибкой. Одноразовый marker `.github/ops/apply-migrations-once.marker` задаёт конкретный ранее слитый файл `20261213_distribution_consent_withdrawal.sql` для первого применения.
+- Сохранён существующий checksum registry `ops.applied_migrations`: повторно совпадающие миграции пропускаются. Added `fetch-depth: 0` и использование `github.event.before` для diff. Добавлен production post-apply assertion на 3 private profile columns, 6 consent-aware policies, 2 private buckets и 3 RPC. Web quality запускается на workflow/marker изменения и actionlint включает workflow apply-migrations.
+- Это отдельный PR, ещё не слит и ничего не применил в production. Production schema и пользовательские данные не менялись. Для Stage 4 остаётся дождаться зелёного CI PR, merge и фактического успешного workflow `Apply DB migrations` на main.
