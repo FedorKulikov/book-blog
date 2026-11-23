@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { smokeAccountEmailLikeSql, smokeAccountEmailMatches } from './smoke-account-config'
 
 export type DataSmokeUser = {
   id: string
@@ -20,6 +21,15 @@ type InventoryRow = {
   revoked_consents: number
   storage_objects: number
   external_news: number
+  conversations: number
+  messages: number
+  comments: number
+  likes: number
+  bookmarks: number
+  follows: number
+  tickets: number
+  ticket_messages: number
+  post_images: number
 }
 
 type StorageRow = { bucket_id: string; name: string }
@@ -42,7 +52,7 @@ const PAGE_SIZE = 1000
 
 function assertDataSmokeUsers(users: DataSmokeUser[]): void {
   for (const user of users) {
-    if (!DATA_SMOKE_EMAIL.test(user.email)) {
+    if (!smokeAccountEmailMatches(user.email)) {
       throw new Error(`refusing to clean non-data-smoke account: ${user.email}`)
     }
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) {
@@ -113,7 +123,7 @@ export async function listDataSmokeUsers(admin: AdminClient): Promise<DataSmokeU
     if (error) throw new Error(`could not list Auth users (${error.status ?? 'unknown'})`)
 
     for (const user of data.users) {
-      if (user.email && DATA_SMOKE_EMAIL.test(user.email)) {
+      if (user.email && smokeAccountEmailMatches(user.email)) {
         users.push({ id: user.id, email: user.email })
       }
     }
@@ -154,14 +164,24 @@ export async function getDataSmokeInventory(
       (select count(*)::int from private.personal_data_consents c
         where c.user_id = u.id and c.revoked_at is not null) as revoked_consents,
       (select count(*)::int from storage.objects o where o.owner_id = u.id::text) as storage_objects,
-      (select count(*)::int from public.external_news e where e.created_by = u.id) as external_news
+      (select count(*)::int from public.external_news e where e.created_by = u.id) as external_news,
+      (select count(*)::int from public.conversations c where c.user1_id = u.id or c.user2_id = u.id) as conversations,
+      (select count(*)::int from public.messages m where m.sender_id = u.id) as messages,
+      (select count(*)::int from public.comments c where c.user_id = u.id) as comments,
+      (select count(*)::int from public.likes l where l.user_id = u.id) as likes,
+      (select count(*)::int from public.bookmarks b where b.user_id = u.id) as bookmarks,
+      (select count(*)::int from public.follows f where f.follower_id = u.id or f.following_id = u.id) as follows,
+      (select count(*)::int from public.tickets t where t.user_id = u.id) as tickets,
+      (select count(*)::int from public.ticket_messages tm where tm.sender_id = u.id) as ticket_messages,
+      (select count(*)::int from public.post_images i
+        where i.post_id in (select p.id from public.posts p where p.user_id = u.id)) as post_images
     from auth.users u
     where u.id = any(${ids})
     order by u.email;
   `)
 }
 
-async function assertNoForeignContentWouldBeCascadeDeleted(
+export async function assertNoForeignContentWouldBeCascadeDeleted(
   projectRef: string,
   accessToken: string,
 ): Promise<void> {
@@ -176,7 +196,7 @@ async function assertNoForeignContentWouldBeCascadeDeleted(
   }>(projectRef, accessToken, `
     with smoke_users as (
       select id from auth.users
-       where lower(email) like 'data-smoke-%@example.com'
+       where ${smokeAccountEmailLikeSql('lower(email)')}
     ),
     smoke_posts as (
       select p.id from public.posts p join smoke_users u on u.id = p.user_id
@@ -217,7 +237,7 @@ async function assertNoForeignContentWouldBeCascadeDeleted(
   }
 }
 
-export async function cleanupDataSmokeUsers(
+export async function cleanupSmokeUsers(
   admin: AdminClient,
   projectRef: string,
   accessToken: string,
@@ -229,7 +249,7 @@ export async function cleanupDataSmokeUsers(
   const idsTextSql = textArray(ids)
 
   if (ids.length === 0) {
-    return verifyDataSmokeCleanup(projectRef, accessToken, ids)
+    return verifySmokeCleanup(projectRef, accessToken, ids)
   }
 
   await assertNoForeignContentWouldBeCascadeDeleted(projectRef, accessToken)
@@ -279,10 +299,10 @@ export async function cleanupDataSmokeUsers(
     }
   }
 
-  return verifyDataSmokeCleanup(projectRef, accessToken, ids)
+  return verifySmokeCleanup(projectRef, accessToken, ids)
 }
 
-export async function verifyDataSmokeCleanup(
+export async function verifySmokeCleanup(
   projectRef: string,
   accessToken: string,
   deletedUserIds: string[],
@@ -293,7 +313,7 @@ export async function verifyDataSmokeCleanup(
   const rows = await managementReadOnlyQuery<CleanupResiduals>(projectRef, accessToken, `
     select
       (select count(*)::int from auth.users u
-        where lower(u.email) like 'data-smoke-%@example.com') as smoke_users_remaining,
+        where ${smokeAccountEmailLikeSql('lower(u.email)')}) as smoke_users_remaining,
       (select count(*)::int from private.personal_data_consents c
         where c.user_id = any(${ids})) as consent_rows_remaining,
       (select count(*)::int from private.personal_data_consents c
