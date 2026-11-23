@@ -35,10 +35,10 @@ export async function generateMetadata({
     200,
   )
 
-  const images: { url: string; alt: string; width?: number; height?: number }[] =
-    data.profile.avatar_url
-      ? [{ url: data.profile.avatar_url, alt: name }]
-      : [{ url: FALLBACK_OG_IMAGE, width: 1200, height: 630, alt: 'Хлеба и букв' }]
+  // Profile avatars live in a private bucket and are not crawler URLs.
+  const images: { url: string; alt: string; width?: number; height?: number }[] = [
+    { url: FALLBACK_OG_IMAGE, width: 1200, height: 630, alt: 'Хлеба и букв' },
+  ]
 
   return {
     title,

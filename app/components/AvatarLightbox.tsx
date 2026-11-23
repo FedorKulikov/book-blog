@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, ZoomIn, ZoomOut } from './icons'
+import StorageImage from './StorageImage'
 
 const MIN_SCALE = 1
 const MAX_SCALE = 4
@@ -165,7 +166,7 @@ export default function AvatarLightbox({ src, username, onClose }: Props) {
         className="relative flex h-full w-full items-center justify-center"
         onClick={(event) => event.stopPropagation()}
       >
-        <img
+        <StorageImage
           src={src}
           alt={`Фото профиля ${username}`}
           draggable={false}

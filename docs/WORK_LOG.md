@@ -588,3 +588,61 @@ PR #83 merged: `2024275a5078e178f6cc95556d28010a77675046`. Web quality 4/4 jobs 
 **Changes:** added `scripts/check-profile-selects.mjs` using the TypeScript AST, `npm run check:profile-selects`, and a required Web quality CI step. It scans `app/`, `lib/`, `scripts/`, and `tests/`, catching a root wildcard selector on a `from('profiles')` chain while avoiding unrelated-table and nested-relation wildcards. Added `scripts/**` to the workflow path filter. Admin bootstrap now distinguishes a profile-read error from a non-staff account and renders an error instead of redirecting on query failure. The owner profile page reports read failure. The edit form fails closed when profile loading fails and prevents submission with an empty username.
 
 **Verification boundaries:** the production REST 42501 behavior is treated as owner-confirmed and was not re-requested. No authenticated Layero browser session is available through the connected GitHub tools, so the requested live `/profile`, `/profile/edit`, and `/admin` smoke cannot honestly be marked complete yet. No migration, grants, Storage policy, privacy/recovery, Hook, mailer setting, or secret was changed. CI will provide the AST regression result on the PR.
+
+
+## 2026-11-23 — B12 Stage 4: consent withdrawal and distribution stop
+
+**Production inspection (read-only):** verified current schema columns and SELECT policy names in public.profiles, posts, comments, likes, post_images, post_tags, books, conversations, plus storage.objects. Before the new migration, public policies allowed all profile rows, approved posts, all post child rows, and both avatars / post-images bucket objects. Production has 14 profile rows, 9 posts, and zero active profile_public / publication consent scopes at inspection time; two authors had approved legacy posts. No user content or storage objects were changed during inspection.
+
+**Implementation in branch feat/b12-distribution-consent-withdrawal:** added migration 20261213_distribution_consent_withdrawal.sql to enforce consent-aware RLS for profiles, posts, comments, likes, post images and tags; preserve owner, staff and existing conversation-participant access; mark both media buckets private; replace public object reads with an RLS-backed signed-URL path; and keep book covers public when referenced by books.cover_url. Added profiles.legacy_distribution_prompted_at without granting users direct column SELECT/UPDATE. Added three auth.uid()-scoped RPCs for reading legacy prompt state, handling one irreversible one-time choice (grant_existing / hide_existing), and atomically revoking both scopes. Invalid/NULL decisions are rejected.
+
+**Application changes:** added StorageImage to exchange stored legacy public URLs for 60-second signed URLs after Storage RLS authorizes the current viewer. Replaced private image consumers in profile, post, comments, search, notification, admin and chat UI; public metadata/JSON-LD use the stable site fallback image, not user-media object URLs. EditProfileClient contains the one-time prompt and revoke confirmation UI. Already issued signed links can continue until their 60-second expiry; stored user data and media remain intact.
+
+**Verification pending:** the PostgreSQL 17 CI job now creates the related table/storage fixtures, reapplies the new migration twice, and tests visibility, owner/chat access, one-time decisions, revocation, private media and public book covers. The CI also lints the updated media consumers. The migration has not been applied to production; Stage 5 privacy policy update is intentionally postponed until Stage 4 is deployed and live-verified. No live user data or objects have been changed.
+
+
+## 2026-11-23 — B12 Stage 4 follow-up: CI trigger, legacy cutoff and signed image behavior
+
+Added the requested empty commit `chore(ci): trigger checks` with the exact same tree as its parent and pushed it fast-forward to the PR branch. Web quality and Chat security workflow runs were observed for the PR head; later implementation commits also refreshed checks.
+
+Kept PR #86 as a single deployment unit: publishing RLS withdrawal without private buckets leaves old public object URLs outside RLS, while privatizing buckets before updating image consumers breaks live images. Added explicit signed-URL risks and this no-split rationale to the PR body.
+
+Added `profiles.legacy_distribution_cutoff_at DEFAULT now()` and restricted legacy prompt state/decision checks to approved posts created at or before that per-profile cutoff. This prevents new profiles or posts from being incorrectly presented as pre-existing content. The cutoff and handled-marker columns remain outside user column grants; SQL coverage includes a post newer than cutoff.
+
+Updated `StorageImage`: identical object paths share one in-memory signed URL request/cache per viewer, with a 5-second safety margin before 60-second expiry. The cache is not persisted and is partitioned by viewer ID. A failed/expired/unauthorized image displays a neutral placeholder via `onError` rather than a broken image; the page remains usable.
+
+Documented the sizing check: 20 unique root-comment avatars can generate up to 20 signed URLs, with repeated object paths deduplicated; visible replies and other unique page images add their own signatures. Confirmed post/profile/book Open Graph, Twitter and JSON-LD use `/og-default.jpg`; sitemap has no image URLs and is dynamically filtered by RLS. CI and production visual verification are still pending; do not merge before green checks.
+
+
+## 2026-11-23 — B12 Stage 4 CI correction: legacy cutoff SQL fixture
+
+The first PostgreSQL 17 run exposed a fixture mismatch: the CI `public.posts` table lacked production's `created_at` column. Added `created_at timestamptz NOT NULL DEFAULT now()` to the workflow fixture.
+
+A second issue was identified in `my_legacy_distribution_prompt_state()`: the cutoff comparison used the posts alias instead of the profile alias. Corrected it to `post.created_at <= profile.legacy_distribution_cutoff_at`.
+
+Preserved explicit `legacy_distribution_choice` behavior and regression coverage: future publication consent must not republish content previously hidden by the one-time legacy decision or a later revoke-all; a new post created after the cutoff remains visible with active consent. The PostgreSQL CI test covers these scenarios. The corrections still require a green run on the current head; production migration has not been applied.
+
+
+## 2026-11-23 — Stage 4 hardening: persistent legacy choice and batched signed media
+
+Added a per-profile migration cutoff and a server-side `legacy_distribution_choice` (`granted` / `hidden`). The one-time prompt now classifies only approved posts at or before the cutoff as legacy; future posts do not trigger the prompt. Public post RLS, post-image Storage authorization and the public view counter now all require the appropriate current publication consent and, for pre-cutoff posts, an explicit `granted` legacy choice. A `hidden` choice persists after later publication grants.
+
+Replaced the original user-scoped `revoke_my_distribution_consent(text)` implementation in the new migration so revoking `publication` records `hidden`; the all-scopes wrapper does the same. This closes the path where a later new-content grant might otherwise re-publish old posts. No caller-supplied user_id was introduced. The new marker/cutoff/choice fields remain outside anon/authenticated column grants.
+
+StorageImage batches unique paths into one `createSignedUrls` request per bucket and viewer; 20 distinct comment avatars mean up to 20 signed URL values in one Storage batch call. Viewer lookup is shared; in-flight request keys include user ID; signed bearer URLs are not cached across renders or accounts. On an expired image URL the component retries signing once and omits the image if current RLS denies access.
+
+Read-only production grants show `authenticated` cannot update `posts.created_at`, so clients cannot move an old publication past the cutoff. Regression SQL now distinguishes legacy A/B from future C, checks publication consent and future grant after hide, checks all three private marker columns for no direct anon/authenticated SELECT/UPDATE, and tests counters after revoke. Current PR CI remains the deployment gate; migration has not been applied to production.
+
+
+## 2026-11-23 — B12 Stage 4 test correction: conversation-scoped profile access
+
+The PostgreSQL test exposed `profiles = 2` for owner A. This is intentional: A and B share an existing private conversation, so the current profile policy allows both participants to read the counterpart's profile without granting public distribution consent. Unrelated user C remains hidden.
+
+Updated `tests/sql/distribution-consent-withdrawal.test.sql` to assert A's own profile = 1, chat counterpart B = 1, unrelated C = 0, own post = 1, and own post image = 1. No production policy was weakened or changed. A fresh PostgreSQL 17 run on the latest PR head is required; do not merge before green CI.
+
+
+## 2026-11-23 — B12 Stage 4 test correction: granted post visibility and user-scoped revoke
+
+The PostgreSQL run exposed an incorrect test expectation: user B was expected not to read A's approved post even after A had explicitly granted active publication consent. That expectation contradicted the consent model; the post is publicly readable while A's publication grant is active.
+
+Updated the scenario: B can read A's approved post while the grant is active; B's `my_distribution_consents()` returns only B's rows; B's revoke-all action affects only B; a subsequent authenticated assertion as A confirms A's publication grant remains active. A's own later revoke continues to test actual public withdrawal. No production policy was weakened; only the SQL regression test changed. A new green PostgreSQL run on the final head is required.

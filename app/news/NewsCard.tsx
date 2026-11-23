@@ -10,13 +10,13 @@
 import Link from 'next/link'
 import { BookOpen, ExternalLink } from '@/app/components/icons'
 import ExternalNewsCover from '@/app/components/ExternalNewsCover'
+import StorageImage from '@/app/components/StorageImage'
 import {
   NEWS_CATEGORY_BADGE,
   NEWS_CATEGORY_LABEL,
   formatDeadline,
   formatNewsDate,
   isDeadlinePassed,
-  isNewsCategory,
   type PortalNewsItem,
 } from './newsQuery'
 
@@ -66,7 +66,7 @@ function CardCover({
     return <ExternalNewsCover url={item.cover} alt="" sizes={sizes} />
   }
 
-  return <img src={item.cover} alt="" loading="lazy" className={className} />
+  return <StorageImage src={item.cover} alt="" loading="lazy" className={className} />
 }
 
 /** Дата + дедлайн (посты) или источник и кнопка «Читать» (внешние новости) */

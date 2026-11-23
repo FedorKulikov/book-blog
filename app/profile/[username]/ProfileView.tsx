@@ -9,6 +9,7 @@ import PostCard from '@/app/components/PostCard'
 import FollowButton from '@/app/components/FollowButton'
 import ShareProfileButton from '@/app/components/ShareProfileButton'
 import AvatarLightbox from '@/app/components/AvatarLightbox'
+import StorageImage from '@/app/components/StorageImage'
 import { Mail, UserX, UserCheck } from '@/app/components/icons'
 import type { ProfilePageData } from './getProfile'
 
@@ -139,7 +140,7 @@ export default function ProfileView({
               aria-label={`Увеличить фото профиля ${profile.username}`}
               title="Открыть фото"
             >
-              <img
+              <StorageImage
                 src={profile.avatar_url}
                 alt={`Фото профиля ${profile.username}`}
                 className="w-20 h-20 md:w-28 md:h-28 rounded-full object-cover border-4 border-cream shadow-lg transition-transform group-hover:scale-[1.03]"

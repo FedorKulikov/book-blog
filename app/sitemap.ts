@@ -6,6 +6,9 @@ import { supabase } from '@/lib/supabase'
 // Регулярка убирает случайный слэш в конце значения.
 import { SITE_URL } from '@/lib/site'
 
+// Re-evaluate RLS-filtered entries after a consent grant or withdrawal.
+export const dynamic = 'force-dynamic'
+
 type ProfileRow = {
   id: string
   username: string | null

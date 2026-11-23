@@ -449,3 +449,55 @@
 - В `AdminClient` ошибка чтения собственного профиля больше не приводит к редиректу на главную: показывается понятное сообщение, а подтверждённый пользователь без staff-роли по-прежнему перенаправляется. В `ProfileClient` ошибка чтения выводится явно. В `EditProfileClient` ошибка чтения блокирует отображение формы сохранения, а дополнительная проверка не позволяет отправить пустой username. Приватная настройка уведомлений остаётся только через RPC.
 - Production 42501 и доступность публичных полей принимаются как ранее подтверждённые владельцем факты; повторный REST-запрос не выполнялся. Авторизованная browser smoke-проверка Layero требует действующей пользовательской сессии, которой у рабочего GitHub-коннектора нет; это не отмечается как пройденная проверка.
 - Гранты, миграции, Storage policies, `/privacy`, recovery, Auth Hook, `mailer_autoconfirm` и секреты не менялись.
+
+
+## 2026-11-23 — B12 Stage 4: отзыв согласия и прекращение распространения
+
+- Начата реализация на ветке feat/b12-distribution-consent-withdrawal от production main SHA fb091a94500fc5874efd3b97f0b11fd66c75484f. До применения новой миграции public RLS разрешал читать все профили, все approved posts, а также все комментарии, лайки, изображения и теги; buckets avatars и post-images были public. Production-схема и имена политик проверены read-only запросами.
+- Добавлена миграция supabase/migrations/20261213_distribution_consent_withdrawal.sql: RLS ограничивает видимость профилей scope profile_public, а публикаций и их связанных строк — scope publication; владельцы, staff и участники личного диалога сохраняют необходимый доступ. Пользовательские строки/файлы не удаляются.
+- В миграции оба bucket (avatars, post-images) переводятся в private и public-read политики удаляются. Создана consent-aware Storage SELECT policy. Обложки книг остаются читаемыми, если объект действительно указан в books.cover_url; пользовательские медиа выдаются через signed URL на 60 секунд. Уже выданный signed URL может оставаться действительным до истечения TTL.
+- Добавлены auth.uid()-scoped RPC для просмотра состояния legacy prompt, одноразового выбора grant_existing / hide_existing и атомарного отзыва обоих scopes. Признак legacy_distribution_prompted_at добавлен в profiles без прямых SELECT/UPDATE grants; CI fixture оставляет только колоночные UPDATE grants существующих полей.
+- В EditProfileClient добавлены одноразовое предложение по существующим одобренным публикациям, отображение статуса двух scopes и подтверждающий диалог Скрыть всё / Отозвать позже. На клиенте обновление изображений переведено на StorageImage, которая запрашивает краткоживущие signed URL через Storage RLS; metadata/JSON-LD больше не выдают private object URLs.
+- Добавлены PostgreSQL regression tests для отсутствия доступа без согласия, доступа владельца и участника чата, grant/hide одноразового выбора, отзыва без удаления контента, приватности Storage buckets и публичных обложек книг. CI fixture и шаг повторного применения миграции добавлены. Stage 5 (/privacy v1.2) не менялся до production deployment и проверки Stage 4.
+- Миграция ещё не применена в production; тесты и CI ожидаются в PR. Никакие production rows/objects не менялись и не удалялись. Auth Hook, mailer_autoconfirm, recovery, секреты и миграции 20261209–20261212 не редактировались.
+
+
+## 2026-11-23 — B12 Stage 4 follow-up: CI trigger, legacy cutoff and signed image behavior
+
+- По запросу владельца в PR #86 добавлен и отправлен пустой коммит `chore(ci): trigger checks` с неизменённым tree; после последующих изменений branch head также получил отдельные Web quality и Chat security workflow runs.
+- PR не разделён на два: миграция отзыва и приватизация бакетов должны попасть в production вместе. Иначе публичные object URLs продолжат обходить RLS после отзыва либо изображения перестанут работать до внедрения signed URL consumers. В PR body добавлены самостоятельные разделы о рисках signed URLs и причинах единого PR.
+- Добавлен `legacy_distribution_cutoff_at` со значением default now(): RPC предлагает legacy-решение только для approved posts, созданных не позднее cutoff профиля; новые профили и новые posts не классифицируются как старый контент. Прямого SELECT/UPDATE grants на cutoff нет. SQL-тест проверяет свежую публикацию за cutoff.
+- `StorageImage` теперь кэширует одинаковый объект в памяти на срок меньше TTL, разделяя cache по user id; разные пользователи не переиспользуют одну cache entry. При ошибке/истечении signed URL отображается нейтральный placeholder; страница остаётся доступной. Cache не записывается в localStorage.
+- В PR body зафиксированы расчёт до 20 уникальных аватаров для 20 корневых комментариев (видимые ответы и остальные уникальные изображения добавляют дополнительные объекты), metadata fallback `/og-default.jpg`, отсутствие image URL в sitemap и окно действительности уже выданной signed URL до 60 секунд.
+- Проверка после merge и визуальный production smoke ещё не выполнены; merge запрещён до зелёного CI.
+
+
+## 2026-11-23 — B12 Stage 4 CI correction: legacy cutoff SQL fixture
+
+- Первый PostgreSQL 17 прогон нашёл отсутствие `posts.created_at` в CI fixture; production-таблица имеет это поле. Добавлен `created_at timestamptz NOT NULL DEFAULT now()` в fixture.
+- При разборе функции `my_legacy_distribution_prompt_state()` обнаружена отдельная ошибка alias: сравнение даты post ошибочно ссылалось на поле cutoff у posts вместо profile. RPC исправлен на `post.created_at <= profile.legacy_distribution_cutoff_at`.
+- Сохранены более строгие проверки `legacy_distribution_choice`: после `hide_existing` повторная выдача согласия на новые публикации не открывает старый контент; после общего отзыва последующий publication grant также не публикует legacy-строки. Новый пост после cutoff с активным согласием остаётся видимым. Проверки уже включены в `tests/sql/distribution-consent-withdrawal.test.sql`.
+- Исправления ещё не подтверждены зелёным CI на текущем head; production migration не применялась.
+
+
+## 2026-11-23 — Stage 4 hardening: persistent legacy decision and signed-media batching
+
+- Уточнена миграционная граница: profiles.legacy_distribution_cutoff_at фиксирует момент включения отдельного согласия. Legacy prompt учитывает только approved posts, созданные не позже cutoff; новые публикации после cutoff не попадают в одноразовое предложение.
+- Добавлено закрытое поле profiles.legacy_distribution_choice (granted/hidden). Публичный RLS, Storage-доступ к изображениям и счётчик просмотров согласуются с этим выбором. При hide_existing или отзыве publication scope старые публикации остаются скрытыми даже после последующего согласия для новых публикаций; owner/staff доступ не меняется. Никакие прямые grants на prompted_at, cutoff_at и choice не выдаются.
+- Обновлён scope-specific RPC revoke_my_distribution_consent(text): отзыв publication также фиксирует legacy choice=hidden. revoke_my_all_distribution_consents делает то же для общего отзыва. Пользовательские функции по-прежнему получают владельца только из auth.uid().
+- StorageImage объединяет batch подписи по bucket и viewer. Для 20 уникальных аватаров комментариев создаётся до 20 signed URL в одном batch-вызове Storage; общий session lookup разделён, подписанные URL не кешируются между компонентами/аккаунтами. Истёкший URL обновляется один раз; если текущая RLS-проверка запрещает доступ, изображение скрывается.
+- Production read-only проверка подтвердила, что authenticated не имеет UPDATE-права на posts.created_at. PostgreSQL 17 regression fixture проверяет новые/legacy публикации, выбор hide, последующий grant, общий и scope-specific отзыв, а также отсутствие прямых прав на служебные поля. CI на текущем head ожидается; production migration ещё не применялась.
+
+
+## 2026-11-23 — B12 Stage 4 test correction: conversation-scoped profile access
+
+- PostgreSQL 17 test log показал `profiles = 2` для владельца A. Это корректное поведение: A и B состоят в существующем личном диалоге, поэтому `private.can_read_distribution_profile()` разрешает обоим видеть профиль собеседника, даже без публичного согласия. Доступ постороннего пользователя C остаётся закрытым.
+- Исправлен `tests/sql/distribution-consent-withdrawal.test.sql`: вместо общего ожидания одной строки profiles отдельно проверяются own profile = 1, профиль собеседника в общем диалоге = 1, unrelated profile C = 0, own post = 1 и own post image = 1. Производственная политика не ослаблялась и не менялась.
+- Нужен повторный PostgreSQL 17 прогон на текущем head; PR не сливать до зелёного CI.
+
+
+## 2026-11-23 — B12 Stage 4 test correction: granted post visibility and user-scoped revoke
+
+- PostgreSQL 17 прогон показал, что test user B ожидал скрыть публикацию A после того, как A явно выдал active publication consent. Это неверное ожидание: approved post должен быть доступен B, пока согласие A действует.
+- Исправлен сценарий: B видит approved post A при активном согласии; `my_distribution_consents()` под B не возвращает записи A; отзыв B действует только на собственные scopes; повторная проверка под A подтверждает, что его publication consent остался активен. Последующий revoke A отдельно проверяет прекращение публичного доступа.
+- Production-код и RLS-политики не ослаблялись; менялся только SQL regression test. Нужен повторный зелёный PostgreSQL run на итоговом head.

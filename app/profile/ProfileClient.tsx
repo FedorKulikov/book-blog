@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import PostCard, { type PostCardData } from '../components/PostCard'
+import StorageImage from '../components/StorageImage'
 import ShareProfileButton from '../components/ShareProfileButton'
 import {
   Pencil,
@@ -192,7 +193,7 @@ export default function ProfileClient({ initialUserId }: { initialUserId: string
 
         <div className="absolute bottom-4 left-4 right-4 md:bottom-6 md:left-6 md:right-6 flex items-end gap-4 md:gap-5">
           {profile?.avatar_url ? (
-            <img
+            <StorageImage
               src={profile.avatar_url}
               alt=""
               className="w-20 h-20 md:w-28 md:h-28 rounded-full object-cover flex-shrink-0 border-4 border-cream shadow-lg"

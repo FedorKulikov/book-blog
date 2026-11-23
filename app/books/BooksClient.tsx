@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import StorageImage from '@/app/components/StorageImage'
 import { supabase } from '@/lib/supabase/client'
 import Hero from '../components/Hero'
 import EmptyState from '../components/EmptyState'
@@ -161,7 +162,7 @@ export default function BooksClient({
               {/* Обложка */}
               <div className="aspect-[2/3] rounded-xl overflow-hidden bg-emerald-mid/10 mb-3 group-hover:opacity-90 transition-opacity relative">
                 {book.cover_url ? (
-                  <img
+                  <StorageImage
                     src={book.cover_url}
                     alt={book.title ?? ''}
                     className="w-full h-full object-cover"

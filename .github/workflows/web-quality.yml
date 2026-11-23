@@ -165,6 +165,26 @@ jobs:
             lib/chat-media-path.ts \
             app/messages/'[id]'/page.tsx \
             app/components/MessageBubble.tsx \
+            app/components/StorageImage.tsx \
+            app/profile/ProfileClient.tsx \
+            app/admin/AdminClient.tsx \
+            app/news/NewsCard.tsx \
+            app/sitemap.ts \
+            app/components/PostCard.tsx \
+            app/components/AvatarLightbox.tsx \
+            app/components/TopAuthors.tsx \
+            app/components/ChatUserPanel.tsx \
+            app/components/comments/CommentNode.tsx \
+            app/profile/'[username]'/ProfileView.tsx \
+            app/profile/'[username]'/page.tsx \
+            app/post/'[id]'/PostView.tsx \
+            app/post/'[id]'/layout.tsx \
+            app/books/BooksClient.tsx \
+            app/books/add/AddBookForm.tsx \
+            app/book/'[id]'/BookView.tsx \
+            app/search/page.tsx \
+            app/components/NotificationBell.tsx \
+            app/messages/'[id]'/page.tsx \
             proxy.ts \
             next.config.ts
       - name: Production build
@@ -554,10 +574,16 @@ jobs:
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id uuid NOT NULL REFERENCES auth.users(id),
             title text NOT NULL,
-            type text NOT NULL
+            type text NOT NULL,
+            status text NOT NULL DEFAULT 'approved',
+            views_count integer NOT NULL DEFAULT 0,
+            created_at timestamptz NOT NULL DEFAULT now()
           );
           ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
-          GRANT INSERT ON public.posts TO authenticated;
+          GRANT SELECT, INSERT ON public.posts TO anon, authenticated;
+          CREATE POLICY posts_read_approved_or_own ON public.posts
+            FOR SELECT TO public
+            USING (status = 'approved' OR user_id = auth.uid());
           CREATE POLICY posts_insert_own_test ON public.posts
             FOR INSERT TO authenticated
             WITH CHECK ((SELECT auth.uid()) = user_id);
@@ -590,7 +616,67 @@ jobs:
             notifications_muted boolean DEFAULT false
           );
           ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-          GRANT UPDATE ON public.profiles TO authenticated;
+          CREATE POLICY profiles_read_all ON public.profiles
+            FOR SELECT TO public USING (true);
+
+          CREATE TABLE public.conversations (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            user1_id uuid NOT NULL,
+            user2_id uuid NOT NULL
+          );
+
+          CREATE TABLE public.comments (
+            id uuid PRIMARY KEY,
+            post_id uuid NOT NULL REFERENCES public.posts(id),
+            user_id uuid NOT NULL REFERENCES auth.users(id),
+            parent_id uuid,
+            text text NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now()
+          );
+          ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+          GRANT SELECT ON public.comments TO anon, authenticated;
+          CREATE POLICY comments_read_all ON public.comments
+            FOR SELECT TO public USING (true);
+
+          CREATE TABLE public.likes (
+            id uuid PRIMARY KEY,
+            post_id uuid NOT NULL REFERENCES public.posts(id),
+            user_id uuid NOT NULL REFERENCES auth.users(id)
+          );
+          ALTER TABLE public.likes ENABLE ROW LEVEL SECURITY;
+          GRANT SELECT ON public.likes TO anon, authenticated;
+          CREATE POLICY likes_read_all ON public.likes
+            FOR SELECT TO public USING (true);
+
+          CREATE TABLE public.post_images (
+            id uuid PRIMARY KEY,
+            post_id uuid NOT NULL REFERENCES public.posts(id),
+            url text NOT NULL
+          );
+          ALTER TABLE public.post_images ENABLE ROW LEVEL SECURITY;
+          GRANT SELECT ON public.post_images TO anon, authenticated;
+          CREATE POLICY post_images_read_all ON public.post_images
+            FOR SELECT TO public USING (true);
+
+          CREATE TABLE public.post_tags (
+            id uuid PRIMARY KEY,
+            post_id uuid NOT NULL REFERENCES public.posts(id)
+          );
+          ALTER TABLE public.post_tags ENABLE ROW LEVEL SECURITY;
+          GRANT SELECT ON public.post_tags TO anon, authenticated;
+          CREATE POLICY post_tags_read_all ON public.post_tags
+            FOR SELECT TO public USING (true);
+
+          CREATE TABLE public.books (
+            id uuid PRIMARY KEY,
+            title text NOT NULL,
+            cover_url text
+          );
+          ALTER TABLE public.books ENABLE ROW LEVEL SECURITY;
+          GRANT SELECT ON public.books TO anon, authenticated;
+          CREATE POLICY books_read_all ON public.books
+            FOR SELECT TO public USING (true);
+          GRANT UPDATE (username, bio, avatar_url, notifications_muted) ON public.profiles TO authenticated;
           CREATE POLICY profiles_update_own_test ON public.profiles
             FOR UPDATE TO authenticated
             USING ((SELECT auth.uid()) = id)
@@ -600,17 +686,30 @@ jobs:
             USING ((SELECT auth.uid()) = id);
 
           CREATE SCHEMA storage;
+          CREATE TABLE storage.buckets (
+            id text PRIMARY KEY,
+            public boolean NOT NULL DEFAULT true
+          );
+          INSERT INTO storage.buckets (id, public) VALUES
+            ('avatars', true),
+            ('post-images', true);
           CREATE TABLE storage.objects (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             bucket_id text NOT NULL,
             name text NOT NULL
           );
           ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-          GRANT USAGE ON SCHEMA storage TO authenticated;
-          GRANT SELECT, INSERT, UPDATE ON storage.objects TO authenticated;
-          CREATE POLICY avatars_public_read_test ON storage.objects
+          GRANT USAGE ON SCHEMA storage TO anon, authenticated;
+          GRANT SELECT, INSERT, UPDATE ON storage.objects TO anon, authenticated;
+          CREATE POLICY avatars_public_read ON storage.objects
             FOR SELECT TO anon, authenticated
             USING (bucket_id = 'avatars');
+          CREATE POLICY "Public read" ON storage.objects
+            FOR SELECT TO public
+            USING (bucket_id = 'post-images');
+          CREATE POLICY "public read covers" ON storage.objects
+            FOR SELECT TO public
+            USING (bucket_id = 'post-images');
 
           CREATE FUNCTION storage.foldername(name text)
           RETURNS text[]
@@ -630,4 +729,17 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/profile-public-consent-guard.test.sql
+
+      - name: Apply consent withdrawal and legacy prompt migration twice
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261213_distribution_consent_withdrawal.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261213_distribution_consent_withdrawal.sql
+
+      - name: Verify consent-aware visibility, private media, and legacy prompt
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/distribution-consent-withdrawal.test.sql
 

@@ -4,6 +4,12 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { BookOpen } from './icons'
+import StorageImage from './StorageImage'
+
+type AuthorPostRow = {
+  user_id: string
+  profiles: Pick<Author, 'id' | 'username' | 'avatar_url'> | null
+}
 
 type Author = {
   id: string
@@ -43,7 +49,7 @@ export default function TopAuthors({ type }: { type?: PostType }) {
       }
 
       const map = new Map<string, Author>()
-      for (const p of posts as any[]) {
+      for (const p of posts as unknown as AuthorPostRow[]) {
         if (!p.profiles) continue
         const id = p.profiles.id
         const username = p.profiles.username
@@ -82,7 +88,7 @@ export default function TopAuthors({ type }: { type?: PostType }) {
               className="group flex items-center gap-3 transition-colors"
             >
               {a.avatar_url ? (
-                <img
+                <StorageImage
                   src={a.avatar_url}
                   alt=""
                   className="w-8 h-8 rounded-full object-cover flex-shrink-0"

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { Bell } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
+import StorageImage from './StorageImage'
 import type { User } from '@supabase/supabase-js'
 
 type Notification = {
@@ -71,10 +72,13 @@ function notifHref(n: NotificationItem): string {
 }
 
 export default function NotificationBell() {
+  const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
-  const [open, setOpen] = useState(false)
+  const [openPath, setOpenPath] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const open = openPath === pathname
+  const setOpen = useCallback((next: boolean) => setOpenPath(next ? pathname : null), [pathname])
 
   const wrapRef = useRef<HTMLDivElement | null>(null)
   // Ref для open: Realtime-канал не пересоздаётся при каждом toggle меню,
@@ -145,7 +149,6 @@ export default function NotificationBell() {
       window.removeEventListener('scroll', reposition, true)
     }
   }, [open, computeMenuPosition])
-  const pathname = usePathname()
 
   // Точный счётчик непрочитанных — независимо от лимита 10 в списке.
   const fetchUnreadCount = useCallback(async () => {
@@ -361,11 +364,9 @@ export default function NotificationBell() {
     return () => window.removeEventListener('focus', onFocus)
   }, [fetchNotifications, fetchUnreadCount])
 
-  // Закрытие дропдауна: клик вне / смена страницы.
-  // openRef обновляем синхронно: Realtime-INSERT в том же тике должен видеть
-  // актуальное значение, не дожидаясь useEffect.
+  // open derives from pathname, so a route change hides the menu without
+  // scheduling a synchronous React state update inside an effect.
   useEffect(() => {
-    setOpen(false)
     openRef.current = false
   }, [pathname])
 
@@ -385,7 +386,7 @@ export default function NotificationBell() {
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
-  }, [open])
+  }, [open, setOpen])
 
   async function markAllRead() {
     const uid = userIdRef.current
@@ -495,8 +496,7 @@ export default function NotificationBell() {
                   >
                     <div className="shrink-0 w-9 h-9 rounded-full overflow-hidden bg-emerald-mid/20 flex items-center justify-center text-emerald-dark text-sm font-semibold">
                       {n.actor_avatar ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <StorageImage
                           src={n.actor_avatar}
                           alt={n.actor_username || ''}
                           className="w-full h-full object-cover"

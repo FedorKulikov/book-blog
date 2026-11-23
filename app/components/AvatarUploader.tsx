@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Upload } from './icons'
 import { IMAGE_ACCEPT_ATTR, validateImageFile } from './imageValidation'
 import AvatarCropper from './AvatarCropper'
+import StorageImage from './StorageImage'
 
 type Props = {
   currentUrl?: string | null
@@ -85,7 +86,7 @@ export default function AvatarUploader({
       <div className="flex items-center gap-4">
         <div className="w-20 h-20 rounded-full overflow-hidden bg-emerald-mid text-cream flex items-center justify-center text-2xl font-bold flex-shrink-0 border border-emerald-dark/10">
           {preview ? (
-            <img src={preview} alt="" className="w-full h-full object-cover" />
+            <StorageImage src={preview} alt="" className="w-full h-full object-cover" />
           ) : (
             '?'
           )}

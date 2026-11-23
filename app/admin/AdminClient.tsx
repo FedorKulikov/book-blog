@@ -6,19 +6,51 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { humanizeError } from '@/lib/errors'
 import AdminTickets from './AdminTickets'
+import StorageImage from '../components/StorageImage'
+
+type ReportRow = {
+  id: string
+  created_at: string
+  reason: string
+  post_id: string | null
+  profiles: { username: string | null } | null
+  posts: { title: string | null } | null
+}
+
+type PendingPostRow = {
+  id: string
+  user_id: string
+  title: string
+  content: string
+  profiles: { username: string | null } | null
+  books: { title: string; author: string | null } | null
+}
+
+type StopWordRow = { id: string; word: string }
+
+type AdminUserRow = {
+  id: string
+  username: string | null
+  avatar_url: string | null
+  role: string | null
+  is_banned: boolean | null
+  created_at: string | null
+}
+
+type CurrentAdmin = { id: string; role: string | null }
 
 export default function AdminPage() {
   const router = useRouter()
   const [tab, setTab] = useState<
     'reports' | 'pending' | 'words' | 'users' | 'tickets'
   >('reports')
-  const [reports, setReports] = useState<any[]>([])
-  const [pending, setPending] = useState<any[]>([])
-  const [words, setWords] = useState<any[]>([])
-  const [users, setUsers] = useState<any[]>([])
+  const [reports, setReports] = useState<ReportRow[]>([])
+  const [pending, setPending] = useState<PendingPostRow[]>([])
+  const [words, setWords] = useState<StopWordRow[]>([])
+  const [users, setUsers] = useState<AdminUserRow[]>([])
   const [newWord, setNewWord] = useState('')
   const [loading, setLoading] = useState(true)
-  const [me, setMe] = useState<any>(null)
+  const [me, setMe] = useState<CurrentAdmin | null>(null)
   const [accessError, setAccessError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -47,7 +79,7 @@ export default function AdminPage() {
         return
       }
 
-      setMe(profile)
+      setMe(profile as CurrentAdmin)
       loadAll()
       setLoading(false)
     }
@@ -60,26 +92,26 @@ export default function AdminPage() {
       .select('*, profiles!reports_reporter_id_fkey(username), posts(title)')
       .eq('status', 'open')
       .order('created_at', { ascending: false })
-    setReports(r || [])
+    setReports((r || []) as unknown as ReportRow[])
 
     const { data: p } = await supabase
       .from('posts')
       .select('*, profiles!posts_user_id_fkey(username), books(id, title, author)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
-    setPending(p || [])
+    setPending((p || []) as unknown as PendingPostRow[])
 
     const { data: w } = await supabase
       .from('stop_words')
       .select('*')
       .order('word')
-    setWords(w || [])
+    setWords((w || []) as unknown as StopWordRow[])
 
     const { data: u } = await supabase
       .from('profiles')
       .select('id, username, avatar_url, role, is_banned, created_at')
       .order('created_at', { ascending: false })
-    setUsers(u || [])
+    setUsers((u || []) as unknown as AdminUserRow[])
   }
 
   async function setRole(userId: string, newRole: 'user' | 'moderator' | 'admin') {
@@ -427,7 +459,7 @@ export default function AdminPage() {
             >
               <div className="w-10 h-10 rounded-full bg-emerald-mid text-cream flex items-center justify-center font-bold flex-shrink-0 overflow-hidden">
                 {p.avatar_url ? (
-                  <img
+                  <StorageImage
                     src={p.avatar_url}
                     alt=""
                     className="w-full h-full object-cover"

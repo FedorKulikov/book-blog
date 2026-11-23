@@ -9,6 +9,7 @@ import MessageBubble, { ChatMessage } from '@/app/components/MessageBubble'
 import ConversationList from '@/app/components/ConversationList'
 import ChatUserPanel from '@/app/components/ChatUserPanel'
 import ImageLightbox from '@/app/components/ImageLightbox'
+import StorageImage from '@/app/components/StorageImage'
 import ChatMuteButton from '@/app/components/ChatMuteButton'
 import { signChatMediaMessages } from '@/lib/chat-media'
 import {
@@ -629,7 +630,7 @@ export default function ConversationPage() {
         >
           <div className="w-9 h-9 rounded-full bg-cream/15 flex items-center justify-center font-bold overflow-hidden flex-shrink-0">
             {otherUser?.avatar_url ? (
-              <img
+              <StorageImage
                 src={otherUser.avatar_url}
                 alt=""
                 className="w-full h-full object-cover"
