@@ -769,3 +769,13 @@ smoke cleanup runs after success and failure
 - Production read-only verification: books — 127 строк, cover_url заполнен у всех; функция get_books_page возвращает столбец cover_url. Все ссылки ведут на публичные объекты post-images. База не изменялась.
 - Предыдущий гостевой browser run показывал 5 ошибок HTTP 400 на /books и 15 на /news; /books имеет sidebar с пятью ExternalNewsBlock обложками, которые также используют ExternalNewsCover. Ошибки в Supabase Storage logs на время этого прогона отсутствовали.
 - Проверка console/image load после merge/deploy ещё не выполнена; для неё требуется повторный guest Playwright run против нового production-кода. next.config.ts, migrations, policies, secrets, постовые изображения, аватары и production data не менялись.
+
+Workflow гостевого UX-аудита
+- Создан .github/workflows/ux-audit.yml, запускаемый через workflow_dispatch и pull_request в main.
+- В едином массиве заданы 10 публичных маршрутов и три динамических селектора; post/book/profile URL берутся из sitemap.xml, а не зашиваются в workflow.
+- Playwright управляет системным Chromium, который определяется через google-chrome / chromium / chromium-browser; пакет устанавливается только во временный каталог Actions, package.json проекта не изменён.
+- По каждой открытой странице workflow логирует HTTP-статус и конечный URL с цепочкой редиректов, title, видимый текст до 1500 символов, ссылки /post/, /book/, /profile/, пустые состояния и console/page errors.
+- Для каждой открытой страницы предусмотрены full-page screenshots 1440×900 и 390×844; артефакт ux-audit-screenshots хранится 7 дней. Ошибка открытия одной страницы не останавливает остальные.
+- /signup только инспектируется: считываются метаданные видимых полей, кнопок и ссылок на /rules и /privacy; значения полей не читаются, отправки/клики не выполняются.
+- Существующий production-health-smoke.yml не изменялся; он использует CDP напрямую, а новый workflow использует Playwright с тем же обнаружением системного Chromium.
+- На момент создания PR результаты CI ещё не получены; фактические страницы и скриншоты будут подтверждены только самим Actions-run. Код приложения, база, policies, secrets и production не изменялись.
