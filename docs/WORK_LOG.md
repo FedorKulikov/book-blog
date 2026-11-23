@@ -621,3 +621,14 @@ The first PostgreSQL 17 run exposed a fixture mismatch: the CI `public.posts` ta
 A second issue was identified in `my_legacy_distribution_prompt_state()`: the cutoff comparison used the posts alias instead of the profile alias. Corrected it to `post.created_at <= profile.legacy_distribution_cutoff_at`.
 
 Preserved explicit `legacy_distribution_choice` behavior and regression coverage: future publication consent must not republish content previously hidden by the one-time legacy decision or a later revoke-all; a new post created after the cutoff remains visible with active consent. The PostgreSQL CI test covers these scenarios. The corrections still require a green run on the current head; production migration has not been applied.
+
+
+## 2026-11-23 — Stage 4 hardening: persistent legacy choice and batched signed media
+
+Added a per-profile migration cutoff and a server-side `legacy_distribution_choice` (`granted` / `hidden`). The one-time prompt now classifies only approved posts at or before the cutoff as legacy; future posts do not trigger the prompt. Public post RLS, post-image Storage authorization and the public view counter now all require the appropriate current publication consent and, for pre-cutoff posts, an explicit `granted` legacy choice. A `hidden` choice persists after later publication grants.
+
+Replaced the original user-scoped `revoke_my_distribution_consent(text)` implementation in the new migration so revoking `publication` records `hidden`; the all-scopes wrapper does the same. This closes the path where a later new-content grant might otherwise re-publish old posts. No caller-supplied user_id was introduced. The new marker/cutoff/choice fields remain outside anon/authenticated column grants.
+
+StorageImage batches unique paths into one `createSignedUrls` request per bucket and viewer; 20 distinct comment avatars mean up to 20 signed URL values in one Storage batch call. Viewer lookup is shared; in-flight request keys include user ID; signed bearer URLs are not cached across renders or accounts. On an expired image URL the component retries signing once and omits the image if current RLS denies access.
+
+Read-only production grants show `authenticated` cannot update `posts.created_at`, so clients cannot move an old publication past the cutoff. Regression SQL now distinguishes legacy A/B from future C, checks publication consent and future grant after hide, checks all three private marker columns for no direct anon/authenticated SELECT/UPDATE, and tests counters after revoke. Current PR CI remains the deployment gate; migration has not been applied to production.
