@@ -46,7 +46,9 @@ function privateStorageReference(source: string): { bucket: PrivateBucket; path:
 }
 
 async function getSignedStorageUrl(bucket: PrivateBucket, path: string): Promise<string> {
-  const key = `${bucket}:${path}`
+  const { data: { session } } = await supabase.auth.getSession()
+  const viewerKey = session?.user.id ?? 'anon'
+  const key = `${viewerKey}:${bucket}:${path}`
   const now = Date.now()
   const cached = signedUrlCache.get(key)
 
