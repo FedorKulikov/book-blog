@@ -792,7 +792,96 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 
 **Deployment ordering:** the production dry-run step now runs only from a successful `workflow_run` of `Apply DB migrations` on `main`. Pull-request CI still tests Auth/cleanup code but skips production inventory until the consent-inventory RPC is deployed. This avoids a predictable pre-migration PostgREST missing-function failure.
 
-## 2026-11-23 — Fix second likes query in production safety guard
+## 2026-11-23 — Remove Management API from smoke cleanup inventory
+
+**Required:** replace the failed Management API read-only SQL dependency with Auth Admin, Storage API and service-role PostgREST; retain the cascade safety guard and run a production dry-run.
+
+**Implemented:** Auth Admin pagination now discovers candidate users and applies the centralized `data-smoke-` / `chat-smoke-` prefix filter client-side. Storage inventory uses the Storage API list operation and traverses only folders whose first path segment matches a selected Auth UUID. Related application records are read through PostgREST using the service-role client, which bypasses RLS. Consent aggregates are obtained through the existing `public.ops_smoke_consent_inventory(uuid[])` RPC; the underlying `private.personal_data_consents` table remains private/unexposed, and EXECUTE is restricted to `service_role`.
+
+**Safety:** kept `assertNoForeignContentWouldBeCascadeDeleted` and added a check for messages authored by smoke users inside tickets owned by non-smoke users. It continues to block mixed-user conversations and foreign messages, comments, likes, bookmarks, reports, notifications, ticket replies and posts referencing smoke-created books. No deletion was run.
+
+**Workflow:** removed the Management API password-posture step and all `SUPABASE_ACCESS_TOKEN` dependency from this smoke workflow. Production dry-run now runs in the PR workflow with the existing `SUPABASE_SECRET_KEY`; no new secrets are needed.
+
+**Validation:** CI is expected to run TypeScript and the production dry-run after this commit. Dry-run outcome and the per-account inventory are pending; `--delete` remains disabled.
+
+**Dry-run iteration:** Auth Admin, Storage and inventory reads succeeded and printed the matching accounts plus aggregate counts. The relationship guard then failed before completing because the query selected a non-existent `likes.id`; the production table has composite key `(user_id, post_id)`. Corrected the PostgREST projection to select those existing columns. No deletion or other production write occurred; the guard result remains pending rerun.
+
+**Production dry-run completed (PR #96, Chat security run 45205225391):** found 63 Auth accounts matching the explicit prefixes: 58 `data-smoke-*` and 5 `chat-smoke-*`. Inventory totals: 9 profiles, 2 posts, 2 books, 1 report, 10 notifications, 40 consent rows (2 active / 38 revoked), 6 Storage objects, 4 conversations, 2 messages, 1 ticket and 1 ticket message; other inventoried relation counts were zero. The foreign-content cascade guard completed with `CLEANUP SAFETY PASS`. Dry-run ended with `DRY-RUN ONLY`; no production writes/deletions occurred. Chat security and Web quality CI both passed. Full per-account list and counts are preserved in the workflow log.
+
+## 2026-11-23 — Exact-snapshot smoke cleanup execution
+
+**Scope lock:** created `scripts/cleanup-data-smoke-users-2026-11-23.json` from the successful production dry-run log (workflow run 45205225391, job 137799043533). It contains exactly 63 unique Auth ID/email pairs: 58 `data-smoke-*` and 5 `chat-smoke-*`. The deletion CLI now supports `--manifest`, requires exactly 63 entries for this approved snapshot, validates each ID/email against live Auth Admin, and passes only those entries to inventory, guard and cleanup. It prints every deletion email and Auth ID under `AUDIT DELETE TARGETS` before deleting.
+
+**Automation:** PR #96 workflow conditionally invokes the exact manifest only for PR #96. For subsequent successful production `workflow_run` smoke executions, a separate post-smoke step runs prefix-scoped cleanup with the same foreign-content guard and strict residual verification. PR dry-runs do not invoke the broad cleanup step.
+
+**Status:** code and workflow committed; production deletion has not yet been confirmed. Await the CI execution result. No real-user records or consent records are inserted/updated by this change.
+
+**First exact-manifest attempt:** stopped before any deletion because Auth Admin no longer returned one snapshot ID (`data-smoke-a-mwsm717y`). This was treated as a hard mismatch; no account or related content was deleted by that attempt. Adjusted manifest validation to distinguish a truly absent Auth ID (which is still inventoried/cleaned by that exact ID) from an existing ID whose email changed (which remains a hard stop). The cleanup helper now re-fetches each Auth ID, skips only a confirmed 404, verifies the live email before deletion, and refuses an identity mismatch.
+
+**Deletion attempt result (run 45208454878):** the exact manifest printed all 63 targets and passed the foreign-content guard. Auth Admin confirmed one manifest ID (`data-smoke-a-mwsm717y`) was already absent; the other 62 Auth accounts were removed. Post-cleanup targeted residuals were all zero: consent rows, profiles, posts, books, reports, notifications, Storage objects, conversations, messages, comments, likes, bookmarks, follows, tickets, ticket messages and post images. The global prefix check found one additional smoke Auth account outside the 63-ID manifest, so the command correctly exited nonzero rather than expanding scope. The one-time manifest-delete workflow step has been removed to prevent accidental repeat execution. A read-only dry-run is being used to identify the out-of-manifest account; it will not be deleted in this task.
+
+**Correction to first post-delete interpretation:** the one remaining account is not outside the manifest; it is the manifest target `data-smoke-a-mwsm717y@example.com` / `ce277934-bdfb-4c56-88f0-03af0edb4f76`. A single-user `getUserById` lookup returned 404 while paginated `listUsers` still returned that exact Auth identity, so treating the 404 as proof of absence was unsafe. Its remaining inventory is one revoked consent and zero profiles/posts/books/reports/notifications/Storage/conversations/messages. Replaced single-ID lookups with paginated Auth Admin listing for both manifest validation and deletion identity checks. Retrying only this same 63-ID manifest; no out-of-manifest account is eligible.
+
+**Final exact-snapshot verification — 2026-11-23:** all 63 original manifest Auth IDs are absent (`target_auth_users_remaining=0`) and all related rows/objects are zero: consents 0, profiles 0, posts 0, books 0, reports 0, notifications 0, Storage 0, conversations 0, messages 0, comments/likes/bookmarks/follows/tickets/ticket_messages/post_images 0. The cleanup deleted 62 Auth accounts; the remaining original ID was already absent when deletion began. Verification was performed through paginated Supabase Auth Admin ID listing, service-role PostgREST inventory, the service-role-only consent RPC and Storage API. The verification job passed (Chat security run 45210625721).
+
+**Out-of-manifest exception:** one account with the same email as a manifest entry now exists under a different Auth UUID (`data-smoke-a-mwsm717y@example.com`, ID `ce277934-bdfb-4c56-88f0-03d2d554b4f76`) and has one revoked consent; all its other inventoried relations are zero. It is not one of the 63 approved IDs and was deliberately not deleted. Therefore global prefix smoke account count is 1, while the exact 63-ID snapshot and its related content are fully clear. The regular production smoke workflow now performs guarded prefix cleanup after successful smoke runs; PR runs remain read-only apart from the fixed one-time cleanup already completed.
+
+
+## 2026-11-23 — Восстановление ранее скрытых legacy-материалов
+
+- **Требовалось:** дать владельцу возможность вернуть legacy-публикации после явного выбора «скрыть», не создавая фиктивные согласия и не меняя поведение пользователей с ещё не принятым решением.
+- **Изменено:** добавлены серверный маршрут `POST /api/profile/restore-legacy`, кнопка «Вернуть материалы» в настройках профиля (только при `legacy_choice = hidden`) и миграция `20261218_restore_hidden_legacy_distribution.sql`.
+- **Как работает:** маршрут получает пользователя через серверный `auth.getUser()`; клиент не передаёт UUID, scope, категории или флаг. Сервер вызывает self-scoped PostgreSQL RPC, доступный только роли `authenticated`; функция сама берёт владельца из `auth.uid()`, блокирует профиль, проверяет `hidden` и вызывает существующий `record_my_distribution_consent` для publication и/или profile_public только при наличии соответствующего legacy-контента и отсутствии активного согласия. Затем меняет только `legacy_distribution_choice` на `granted`; исходная дата решения сохраняется. Прямые UPDATE/доступ к закрытому полю не выдаются.
+- **Проверки добавлены:** SQL-сценарий скрытия и последующего восстановления проверяет настоящие consent rows с `granted_at`, гостевую видимость legacy-профиля и публикации, сохранение старой даты решения и прежний отказ новой публикации без consent. Миграция запускается дважды в Web quality CI; production health smoke проверяет, что гость получает 401 на restore endpoint.
+- **Границы:** политика конфиденциальности, Edge Functions, Hook, секреты и production-данные не меняются.
+
+
+## 2026-11-23 — Исправление SQL-теста закрытых legacy-полей
+
+- **Причина:** regression test восстановления читал `profiles.legacy_distribution_prompted_at` под ролью `authenticated`, хотя эта колонка намеренно закрыта.
+- **Изменено:** проверка перенесена на `public.my_legacy_distribution_prompt_state()` и поле `already_prompted`; проверка выполняется от имени того же пользователя и не требует ослабления grants.
+- **Сохранено:** отдельные assertions для `legacy_choice = granted`, двух активных consent rows, непустых `granted_at`, версий документов `1.0` / `1.1`, гостевой видимости legacy-поста и профиля, а также отказа новой публикации без согласия.
+- **Поиск по всем 9 файлам `tests/sql/`:** единственное чтение закрытого значения от роли `authenticated` было в указанной проверке. Остальные упоминания трёх колонок — проверки отсутствия SELECT/UPDATE grants либо тестовая подготовка/сравнение cutoff до переключения на `anon` / `authenticated`; других обращений к значениям закрытых колонок из этих ролей не найдено.
+- **Границы:** миграции, grants, приложение, политика, Edge Functions, Hook, secrets и production не менялись.
+
+Privacy policy 1.2: separate consent and legacy visibility
+
+- **Требовалось:** привести публичную политику в соответствие с фактическим механизмом согласий для новых публикаций и публичных полей профиля, а также с переходным режимом ранее созданных материалов.
+- **Изменено:** только `app/privacy/page.tsx`: версия 1.2, дата редакции 23 ноября 2026 года; разделы 3, 4 и 9 уточнены. Описаны обязательные независимые согласия, видимость legacy-материалов до явного решения, предложение выбора при входе, отзыв в настройках профиля и скрытие без удаления.
+- **Ограничение отражено честно:** повторное согласие на новые публикации не восстанавливает публикации до cutoff, ранее скрытые выбором владельца или отзывом; это следует из текущего `legacy_distribution_choice` и SQL predicate. Для профиля повторное согласие может вернуть публичность.
+- **Проверка:** статически просмотрены текст политики и связанная реализация `EditProfileClient`, `WelcomeClient`, миграции переходного режима и отзыва. Устаревшее утверждение, что серверная фиксация согласий ещё не реализована, удалено.
+- **Не менялось:** код приложения вне текста политики, миграции, Edge Functions, Hook, секреты, другие юридические документы и production-данные.
+- **CI:** workflow на новый документационный commit автоматически не запустился; предыдущие проверки PR #97 относятся к другому SHA.
+
+
+## 2026-11-23 — Уточнение политики 1.2: возврат скрытых legacy-материалов
+
+- **Требовалось:** убрать устаревшее утверждение о невосстановимости ранее скрытых legacy-публикаций и описать обратимость скрытия без удаления материалов.
+- **Изменено:** только раздел 4 и история изменений раздела 9 в `app/privacy/page.tsx`. Указано, что возврат доступен в настройках профиля отдельным действием только после выбора скрытия; необходимые согласия publication/profile_public фиксируются с датой, отозванная запись не активируется повторно, уже действующее согласие не дублируется.
+- **Сверка:** `app/profile/edit/EditProfileClient.tsx` (отзыв обоих согласий, перевод legacy choice в hidden, кнопка возврата только при hidden); `app/api/profile/restore-legacy/route.ts` (серверная авторизация и перечитывание согласий); `supabase/migrations/20261218_restore_hidden_legacy_distribution.sql` (self-scoped RPC, запись отсутствующих активных согласий через `record_my_distribution_consent`, затем choice=granted). SQL-регрессия PR #99 проверяет timestamped consent rows и гостевую видимость.
+- **Дополнительно проверено:** в тексте политики больше не осталось утверждений о невозможности возврата; версия 1.2 и дата 23 ноября 2026 года не менялись. Другие юридические документы не затронуты.
+- **Границы:** код, миграции, grants, Edge Functions, Hook, secrets и production не менялись.
+- **CI:** документационное изменение; статус CI проверяется после push.
+
+
+## 2026-11-23 — Синхронизация production smoke и правил с политикой 1.2
+
+- **Требовалось:** убрать устаревшую проверку политики 1.1 в production smoke и заменить обещание будущей публикации политики в `/rules`.
+- **Изменено:** workflow получает единственную константу `EXPECTED_PRIVACY_EDITION=1.2`, извлекает из HTML `/privacy` маркер `Редакция X.Y`, падает при отсутствии маркера, HTTP-коде не 200 или несовпадении версий. Проверка отсутствия упоминаний резервных кодов сохранена.
+- **Изменено:** в `app/rules/page.tsx` указано, что политика уже опубликована; добавлена прямая ссылка `/privacy` и действующая редакция 1.2 от 23 ноября 2026 года.
+- **Границы:** сама политика не изменялась; из кода приложения изменён только `app/rules/page.tsx`. Другие функции, миграции, grants, Edge Functions, secrets и production-данные не затрагивались.
+- **Проверка:** после push запустить production health smoke на живом домене и проверить успешное прохождение проверки редакции 1.2; CI зафиксировать по новому SHA.
+
+
+## 2026-11-23 — Backblaze B2 lifecycle для резервных копий БД
+
+- **Требовалось:** зафиксировать настройку срока хранения резервных копий, чтобы она соответствовала обещанию политики конфиденциальности «не более 30 календарных дней».
+- **Зафиксировано:** владелец настроил в бакете `hleba-backups-fedor` lifecycle-правило для префикса `db/` (`backup.yml` записывает копии в `s3://${S3_BUCKET}/db/`): `Days Till Hide = 29`, `Days Till Delete = 1`. Расчёт 29 + 1 выбран вместо 30 + 1, чтобы удаление приходилось на 30-й, а не 31-й день.
+- **Проверка результата:** интерфейс бакета показывает `Custom lifecycle rules`, однако это только подтверждение настройки. На 2026-11-24 запланирована проверка фактического уменьшения размера бакета; до неё выполнение удаления не считается подтверждённым. Исходный размер в этой записи не указан.
+- **Границы:** изменены только `docs/project-journal.md` и `docs/WORK_LOG.md`. Код, политика конфиденциальности, workflow, данные и настройки приложения не менялись.
+- **CI:** проверяется после push; поскольку изменены только документационные файлы, запуск CI не предполагается без соответствующего workflow trigger.
+
+Fix second likes query in production safety guard
 
 **Production dry-run:** after PR #94 merge and migration deployment, Auth Admin/Storage/PostgREST inventory completed and reported 61 matched smoke accounts. Totals: 9 profiles, 2 posts, 2 books, 1 report, 10 notifications, 40 consents (2 active / 38 revoked), 6 Storage objects, 4 conversations, 2 messages, 1 ticket and 1 ticket message; other inventoried categories were 0. The cross-account guard then failed on a second `likes` select still requesting a nonexistent `id` column (PostgreSQL 42703). No delete or write occurred.
 

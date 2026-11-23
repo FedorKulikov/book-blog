@@ -767,6 +767,13 @@ jobs:
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261216_legacy_profile_only_choice.sql
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261216_legacy_profile_only_choice.sql
 
+      - name: Apply hidden legacy restore migration twice
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261218_restore_hidden_legacy_distribution.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261218_restore_hidden_legacy_distribution.sql
+
       - name: Verify legacy default visibility, explicit hide, and consent
         env:
           PGPASSWORD: postgres
