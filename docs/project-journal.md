@@ -470,3 +470,11 @@
 - `StorageImage` теперь кэширует одинаковый объект в памяти на срок меньше TTL, разделяя cache по user id; разные пользователи не переиспользуют одну cache entry. При ошибке/истечении signed URL отображается нейтральный placeholder; страница остаётся доступной. Cache не записывается в localStorage.
 - В PR body зафиксированы расчёт до 20 уникальных аватаров для 20 корневых комментариев (видимые ответы и остальные уникальные изображения добавляют дополнительные объекты), metadata fallback `/og-default.jpg`, отсутствие image URL в sitemap и окно действительности уже выданной signed URL до 60 секунд.
 - Проверка после merge и визуальный production smoke ещё не выполнены; merge запрещён до зелёного CI.
+
+
+## 2026-11-23 — B12 Stage 4 CI correction: legacy cutoff SQL fixture
+
+- Первый PostgreSQL 17 прогон нашёл отсутствие `posts.created_at` в CI fixture; production-таблица имеет это поле. Добавлен `created_at timestamptz NOT NULL DEFAULT now()` в fixture.
+- При разборе функции `my_legacy_distribution_prompt_state()` обнаружена отдельная ошибка alias: сравнение даты post ошибочно ссылалось на поле cutoff у posts вместо profile. RPC исправлен на `post.created_at <= profile.legacy_distribution_cutoff_at`.
+- Сохранены более строгие проверки `legacy_distribution_choice`: после `hide_existing` повторная выдача согласия на новые публикации не открывает старый контент; после общего отзыва последующий publication grant также не публикует legacy-строки. Новый пост после cutoff с активным согласием остаётся видимым. Проверки уже включены в `tests/sql/distribution-consent-withdrawal.test.sql`.
+- Исправления ещё не подтверждены зелёным CI на текущем head; production migration не применялась.
