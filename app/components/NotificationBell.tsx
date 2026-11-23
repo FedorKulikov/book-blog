@@ -78,7 +78,7 @@ export default function NotificationBell() {
   const [openPath, setOpenPath] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const open = openPath === pathname
-  const setOpen = (next: boolean) => setOpenPath(next ? pathname : null)
+  const setOpen = useCallback((next: boolean) => setOpenPath(next ? pathname : null), [pathname])
 
   const wrapRef = useRef<HTMLDivElement | null>(null)
   // Ref для open: Realtime-канал не пересоздаётся при каждом toggle меню,
@@ -386,7 +386,7 @@ export default function NotificationBell() {
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
-  }, [open])
+  }, [open, setOpen])
 
   async function markAllRead() {
     const uid = userIdRef.current
