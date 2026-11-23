@@ -21,7 +21,9 @@ insert into public.profiles (
   ('55555555-5555-4555-8555-555555555555', 'legacy_hidden', now() - interval '10 minutes', now() - interval '5 minutes', 'user'),
   ('66666666-6666-4666-8666-666666666666', 'legacy_profile_new_post', now() - interval '10 minutes', now() - interval '5 minutes', 'user'),
   ('99999999-9999-4999-8999-999999999999', 'legacy_profile_only_grant', now() - interval '10 minutes', now() - interval '5 minutes', 'user'),
-  ('77777777-7777-4777-8777-777777777777', 'fresh_profile', now(), now(), 'user'),
+  -- This profile was created after its migration cutoff; post defaults now()
+  -- are therefore strictly post-cutoff and must pass the publication guard.
+  ('77777777-7777-4777-8777-777777777777', 'fresh_profile', now(), now() - interval '1 second', 'user'),
   ('88888888-8888-4888-8888-888888888888', 'legacy_test_admin', now(), now(), 'admin');
 
 -- Seed A/B legacy posts and C's post-cutoff publication before the guard.
