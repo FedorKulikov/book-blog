@@ -297,8 +297,8 @@ $anonymous_with_consent$;
 
 reset role;
 
--- User B can still see A's profile only in their shared private conversation,
--- not A's posts or publication-related child/media rows.
+-- User B can see A's approved post because A explicitly granted publication
+-- consent. B's consent RPC remains scoped to B and cannot revoke A's consent.
 set local role authenticated;
 select pg_catalog.set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 do $conversation_boundary$
@@ -306,11 +306,33 @@ begin
   if (select count(*) from public.profiles where id='11111111-1111-4111-8111-111111111111') <> 1 then
     raise exception 'private chat participant lost access to the other chat profile';
   end if;
-  if (select count(*) from public.posts where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') <> 0 then
-    raise exception 'user B can read A post without being its owner or consented guest';
+  if (select count(*) from public.posts where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') <> 1 then
+    raise exception 'user B cannot read A post after A explicitly granted publication consent';
+  end if;
+  if exists (
+    select 1 from public.my_distribution_consents()
+     where revoked_at is null
+  ) then
+    raise exception 'user B can read another users consent history through the scoped RPC';
   end if;
 end;
 $conversation_boundary$;
+
+-- B can revoke only B's scopes. A's publication grant must remain active.
+select public.revoke_my_all_distribution_consents();
+reset role;
+set local role authenticated;
+select pg_catalog.set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+do $user_scoped_revoke$
+begin
+  if not exists (
+    select 1 from public.my_distribution_consents()
+     where scope='publication' and revoked_at is null
+  ) then
+    raise exception 'user B revoked or read user A consent instead of only their own scope';
+  end if;
+end;
+$user_scoped_revoke$;
 
 -- User B chooses "hide my materials". It must be one-time and must not create grants.
 select public.resolve_my_legacy_distribution_prompt('hide_existing');
