@@ -26,6 +26,8 @@ const baseInput: UpdateProfileInput = {
 function fakeSupabase(options: {
   consentRows?: unknown
   consentError?: unknown
+  notificationsMuted?: boolean
+  notificationsError?: unknown
   updateError?: { code?: string } | null
   profile?: typeof currentProfile
   profileError?: unknown
@@ -40,6 +42,12 @@ function fakeSupabase(options: {
         return {
           data: options.consentRows ?? [],
           error: options.consentError ?? null,
+        }
+      }
+      if (name === 'my_profile_notification_settings') {
+        return {
+          data: options.notificationsMuted ?? false,
+          error: options.notificationsError ?? null,
         }
       }
       throw new Error(`Unexpected RPC: ${name}`)
@@ -79,7 +87,7 @@ test('public profile changes return 422 without a profile_public grant', async (
 
   assert.equal(result.status, 422)
   assert.match('error' in result.body ? result.body.error : '', /согласие/i)
-  assert.equal(fake.rpcCalls.length, 1)
+  assert.deepEqual(fake.rpcCalls, ['my_profile_notification_settings', 'my_distribution_consents'])
   assert.equal(fake.updates.length, 0)
 })
 
@@ -114,7 +122,7 @@ test('private notification preference saves without checking profile consent', a
   )
 
   assert.deepEqual(result, { status: 200, body: { ok: true } })
-  assert.deepEqual(fake.rpcCalls, [])
+  assert.deepEqual(fake.rpcCalls, ['my_profile_notification_settings'])
   assert.deepEqual(fake.updates, [{ notifications_muted: true }])
 })
 
@@ -136,7 +144,7 @@ test('public profile change succeeds with the owner active profile_public grant'
   )
 
   assert.deepEqual(result, { status: 200, body: { ok: true } })
-  assert.deepEqual(fake.rpcCalls, ['my_distribution_consents'])
+  assert.deepEqual(fake.rpcCalls, ['my_profile_notification_settings', 'my_distribution_consents'])
   assert.deepEqual(fake.updates, [{
     username: 'profile_a_new',
     bio: 'New public bio',
@@ -154,6 +162,7 @@ test('consent lookup error fails closed before public profile update', async () 
 
   assert.equal(result.status, 503)
   assert.equal(fake.updates.length, 0)
+  assert.deepEqual(fake.rpcCalls, ['my_profile_notification_settings', 'my_distribution_consents'])
 })
 
 test('avatar URL from a different host or user folder is rejected', async () => {
@@ -178,7 +187,7 @@ test('avatar URL from a different host or user folder is rejected', async () => 
 
   assert.equal(result.status, 422)
   assert.equal(fake.updates.length, 0)
-  assert.equal(fake.rpcCalls.length, 0)
+  assert.deepEqual(fake.rpcCalls, ['my_profile_notification_settings'])
 })
 
 test('username conflict returns a validation error', async () => {
