@@ -11,6 +11,7 @@
 // это уже межзапросный кеш, и он бы сливал чужие приватные посты.
 import { cache } from 'react'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { attachPublicationAuthorDetails, type PublicationAuthorDetails } from '@/lib/publication-author-details'
 
 /* ------------------------------------------------------------------ */
 /* Публичные типы (их использует PostView и layout)                    */
@@ -29,10 +30,7 @@ export type PostBook = {
   cover_url: string | null
 }
 
-export type PostAuthor = {
-  username: string | null
-  avatar_url: string | null
-}
+export type PostAuthor = PublicationAuthorDetails
 
 export type PostDetail = {
   id: string
@@ -106,6 +104,7 @@ export const getPost = cache(async (id: string): Promise<PostDetail | null> => {
   // отдаёт числовые поля строками, а to-one связи иногда массивом.
   // Поэтому приводим к нашей ручной модели через unknown (без any).
   const row = data as unknown as RawPostRow
+  const [withAuthor] = await attachPublicationAuthorDetails(supabase, [row])
 
   return {
     id: row.id,
@@ -126,6 +125,6 @@ export const getPost = cache(async (id: string): Promise<PostDetail | null> => {
     ),
     // Связь books в posts — to-one; на всякий случай нормализуем массив.
     books: Array.isArray(row.books) ? (row.books[0] ?? null) : row.books,
-    profiles: Array.isArray(row.profiles) ? (row.profiles[0] ?? null) : row.profiles,
+    profiles: withAuthor?.profiles ?? null,
   }
 })
