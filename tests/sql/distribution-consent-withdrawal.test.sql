@@ -148,11 +148,18 @@ reset role;
 set local role authenticated;
 select pg_catalog.set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 do $owner_access$
+declare
+  v_profiles integer;
+  v_posts integer;
+  v_images integer;
 begin
-  if (select count(*) from public.profiles) <> 1
-     or (select count(*) from public.posts) <> 1
-     or (select count(*) from public.post_images) <> 1 then
-    raise exception 'owner lost access to their own hidden material';
+  select count(*) into v_profiles from public.profiles;
+  select count(*) into v_posts from public.posts;
+  select count(*) into v_images from public.post_images;
+
+  if v_profiles <> 1 or v_posts <> 1 or v_images <> 1 then
+    raise exception 'owner lost access to own hidden material: uid %, profiles %, posts %, images %',
+      auth.uid(), v_profiles, v_posts, v_images;
   end if;
 
   if (select has_approved_posts from public.my_legacy_distribution_prompt_state()) is not true
