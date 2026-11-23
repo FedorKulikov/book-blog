@@ -773,3 +773,16 @@ jobs:
         run: |
           psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/legacy-distribution-default-visibility.test.sql
 
+      - name: Apply service-role-only smoke consent inventory RPC twice
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261217_ops_smoke_consent_inventory.sql
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file supabase/migrations/20261217_ops_smoke_consent_inventory.sql
+
+      - name: Verify restricted smoke consent inventory RPC
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host 127.0.0.1 --port 5432 --username postgres --dbname personal_data_consents_test --set ON_ERROR_STOP=1 --file tests/sql/ops-smoke-consent-inventory.test.sql
+
