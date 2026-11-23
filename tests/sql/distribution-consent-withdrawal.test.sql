@@ -169,15 +169,13 @@ begin
     raise exception 'legacy grant did not activate both scopes and mark the prompt';
   end if;
   if not exists (
-    select 1 from private.personal_data_consents
-     where user_id = auth.uid()
-       and scope = 'profile_public'
+    select 1 from public.my_distribution_consents()
+     where scope = 'profile_public'
        and document_version = '1.1'
        and revoked_at is null
   ) or not exists (
-    select 1 from private.personal_data_consents
-     where user_id = auth.uid()
-       and scope = 'publication'
+    select 1 from public.my_distribution_consents()
+     where scope = 'publication'
        and document_version = '1.0'
        and revoked_at is null
   ) then
@@ -237,8 +235,8 @@ begin
   perform public.resolve_my_legacy_distribution_prompt('grant_existing');
 
   if exists (
-    select 1 from private.personal_data_consents
-     where user_id=auth.uid() and revoked_at is null
+    select 1 from public.my_distribution_consents()
+     where revoked_at is null
   ) then
     raise exception 'a second legacy prompt decision changed an already-handled choice';
   end if;
@@ -261,9 +259,8 @@ begin
     raise exception 'revocation removed the owners own data';
   end if;
   if exists (
-    select 1 from private.personal_data_consents
-     where user_id=auth.uid()
-       and scope in ('profile_public','publication')
+    select 1 from public.my_distribution_consents()
+     where scope in ('profile_public','publication')
        and revoked_at is null
   ) then
     raise exception 'revoke-all wrapper left an active distribution scope';
