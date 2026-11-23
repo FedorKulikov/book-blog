@@ -760,3 +760,15 @@ Still not browser-verified under a signed-in session: /profile, /profile/edit, a
 
 **Validation:** checked production FK delete rules and existing Storage ownership layout; TypeScript/CI execution is pending in the next stage. No production writes or deletes were run in this stage.
 
+## 2026-11-23 — Smoke account prefix unification and production dry-run workflow
+
+**Required:** include both `data-smoke-*` and `chat-smoke-*` fixtures in one explicit allow-list; print a complete production dry-run and prove cleanup safety before enabling deletion.
+
+**Implemented:** `scripts/lib/smoke-account-config.ts` is now the single source for the two email prefixes, TypeScript matching and generated test-account emails. Inventory includes Auth users, active/revoked consents, profiles, posts, books, reports, notifications, Storage, external news, conversations, messages, comments, likes, bookmarks, follows, tickets, ticket messages and post images. The pre-delete guard also blocks foreign comments/likes/bookmarks/reports/notifications/support replies, mixed-user conversations, foreign posts linked to smoke-created books, and notifications delivered to non-smoke users.
+
+**Cleanup behavior:** Storage is removed through the Storage API; books and authored external news are explicitly removed where FKs use `SET NULL`; deleting the exact matched Auth accounts cascades profile-owned content and the entire consent history, including revoked rows. All deletion errors are fatal. The client-write smoke now deletes the temporary Auth accounts in `finally` and blocks production execution because its test scenario records consent; consent scenarios remain in isolated PostgreSQL fixtures. Chat smoke cleanup errors are no longer swallowed.
+
+**Workflow:** `.github/workflows/chat-security-smoke.yml` no longer executes the production consent-write smoke. It requires `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` and `SUPABASE_ACCESS_TOKEN` without printing values, then runs only `scripts/cleanup-data-smoke-users.ts --dry-run` after chat smoke. No `--delete` action is enabled in this stage.
+
+**Validation:** production deletion has not been run. CI dry-run is pending PR execution; the first production inventory and cross-account guard result must be inspected before any deletion stage.
+
