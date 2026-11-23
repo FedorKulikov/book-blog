@@ -86,10 +86,16 @@ async function main() {
       manifestIds.add(entry.id)
     }
     const authUsersById = await getAuthUsersByIds(admin, manifest.accounts.map(entry => entry.id))
+    const currentByEmail = new Map(discoveredUsers.map(user => [user.email.toLowerCase(), user]))
     users = manifest.accounts.map(entry => {
       const current = authUsersById.get(entry.id.toLowerCase())
       if (!current) {
-        console.log('MANIFEST ACCOUNT ALREADY ABSENT — ' + entry.email + ' :: ' + entry.id)
+        const sameEmail = currentByEmail.get(entry.email.toLowerCase())
+        if (sameEmail && sameEmail.id.toLowerCase() !== entry.id.toLowerCase()) {
+          console.log('SAME EMAIL DIFFERENT AUTH ID — out of manifest scope: ' + sameEmail.email + ' :: ' + sameEmail.id)
+        } else {
+          console.log('MANIFEST ACCOUNT ALREADY ABSENT — ' + entry.email + ' :: ' + entry.id)
+        }
       } else if (current.email.toLowerCase() !== entry.email.toLowerCase()) {
         throw new Error('cleanup manifest Auth email mismatch for ID ' + entry.id + '; refusing deletion')
       }
