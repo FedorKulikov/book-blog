@@ -2,11 +2,17 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   appendOpenLibraryDescription,
+  canApplyOpenLibraryDescriptions,
   cleanOpenLibraryDescription,
+  getBookTitleMatchType,
   isEnglishAdditionToRussianAnnotation,
+  normalizeBookAuthor,
   selectBookDescriptionCandidates,
+  selectOpenLibraryWorkMatch,
   splitBookDescription,
   type BookForDescriptionEnrichment,
+  type OpenLibraryAuthorDocument,
+  type OpenLibrarySearchDocument,
 } from '../lib/book-description-enrichment'
 
 const validBook = (
@@ -39,6 +45,92 @@ test('cleans Open Library HTML and decodes text entities', () => {
     cleanOpenLibraryDescription('<p>Первая&nbsp;строка</p><p>Вторая &amp; третья</p>'),
     'Первая строка\n\nВторая & третья',
   )
+})
+
+test('matches normalized exact and contained titles, but not translated titles', () => {
+  assert.equal(getBookTitleMatchType('Преступление и наказание', 'ПРЕСТУПЛЕНИЕ И НАКАЗАНИЕ!'), 'exact')
+  assert.equal(getBookTitleMatchType('Тёмная башня: Стрелок', 'Тёмная башня. Стрелок — роман'), 'contained')
+  assert.equal(getBookTitleMatchType('Сияние', 'The Shining'), null)
+})
+
+test('normalizes author punctuation and ё without loosening author identity', () => {
+  assert.equal(normalizeBookAuthor('Фёдор Достоевский'), normalizeBookAuthor('Федор Достоевский'))
+  assert.notEqual(normalizeBookAuthor('Фёдор Достоевский'), normalizeBookAuthor('Лев Толстой'))
+})
+
+test('requires an exact catalog-author alias and matching Open Library author key', () => {
+  const book = validBook({
+    title: 'Преступление и наказание',
+    author: 'Фёдор Достоевский',
+    year: 1891,
+  })
+  const authors: OpenLibraryAuthorDocument[] = [{
+    key: '/authors/OL1A',
+    name: 'Fyodor Dostoevsky',
+    alternate_names: ['Федор Достоевский'],
+  }]
+  const documents: OpenLibrarySearchDocument[] = [{
+    key: '/works/OL123W',
+    title: 'Преступление и наказание: роман',
+    author_key: ['OL1A'],
+    author_name: ['Fyodor Dostoevsky'],
+    first_publish_year: 1866,
+  }]
+
+  const selection = selectOpenLibraryWorkMatch(book, authors, documents)
+  assert.equal(selection.status, 'matched')
+  if (selection.status !== 'matched') return
+  assert.equal(selection.titleMatch, 'contained')
+  assert.equal(selection.yearDifference, 25)
+  assert.equal(selection.document.key, '/works/OL123W')
+})
+
+test('does not accept a same-title work by another author', () => {
+  const book = validBook({ title: 'Оно', author: 'Стивен Кинг', year: 1986 })
+  const authors: OpenLibraryAuthorDocument[] = [{
+    key: '/authors/OL1A',
+    name: 'Stephen King',
+    alternate_names: ['Стивен Кинг'],
+  }]
+  const documents: OpenLibrarySearchDocument[] = [{
+    key: '/works/OL999W',
+    title: 'Оно',
+    author_key: ['OL2A'],
+    author_name: ['Another Author'],
+    first_publish_year: 1986,
+  }]
+
+  assert.deepEqual(
+    selectOpenLibraryWorkMatch(book, authors, documents),
+    { status: 'no_author_match' },
+  )
+})
+
+test('does not accept a title mismatch even when the author matches', () => {
+  const book = validBook({ title: 'Сияние', author: 'Стивен Кинг', year: 1977 })
+  const authors: OpenLibraryAuthorDocument[] = [{
+    key: '/authors/OL1A',
+    name: 'Stephen King',
+    alternate_names: ['Стивен Кинг'],
+  }]
+  const documents: OpenLibrarySearchDocument[] = [{
+    key: '/works/OL999W',
+    title: 'The Shining',
+    author_key: ['OL1A'],
+    author_name: ['Stephen King'],
+    first_publish_year: 1977,
+  }]
+
+  assert.deepEqual(
+    selectOpenLibraryWorkMatch(book, authors, documents),
+    { status: 'no_title_match' },
+  )
+})
+
+test('the apply safety threshold blocks fewer than five suitable descriptions', () => {
+  assert.equal(canApplyOpenLibraryDescriptions(0), false)
+  assert.equal(canApplyOpenLibraryDescriptions(4), false)
+  assert.equal(canApplyOpenLibraryDescriptions(5), true)
 })
 
 test('appends a substantial Open Library description without replacing catalog text', () => {
