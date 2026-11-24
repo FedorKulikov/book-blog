@@ -290,13 +290,19 @@ async function main(): Promise<void> {
     result[row.status] = (result[row.status] ?? 0) + 1
     return result
   }, {})
+  const descriptionsFound = report.filter(row => Boolean(row.workKey)).length
 
   console.log(JSON.stringify({
     mode: apply ? 'apply' : 'dry-run',
     totalCandidates: candidates.length,
+    descriptionsFound,
     updated,
-    remainingWithoutOpenLibraryDescription: candidates.length - updated,
+    withoutSuitableOpenLibraryDescription: candidates.length - descriptionsFound,
+    updatesNotSaved: apply ? descriptionsFound - updated : null,
     counts,
+    manualBooks: report
+      .filter(row => !row.workKey)
+      .map(row => ({ id: row.id, title: row.title, status: row.status })),
     report,
   }, null, 2))
 
