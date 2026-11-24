@@ -67,7 +67,8 @@ jobs:
             .github/workflows/apply-migrations.yml \
             .github/workflows/layero-one-time-promote.yml \
             .github/workflows/layero-deploy-main-once.yml \
-            .github/workflows/web-quality.yml
+            .github/workflows/web-quality.yml \
+            .github/workflows/enrich-book-descriptions.yml
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -98,6 +99,9 @@ jobs:
 
       - name: Book SEO rules tests
         run: npm run test:book-seo
+
+      - name: Open Library book-description backfill tests
+        run: npm run test:book-description-enrichment
 
       - name: Public profile consent tests
         run: npm run test:profile-public-consent
@@ -197,6 +201,8 @@ jobs:
             app/book/'[id]'/getBook.ts \
             app/book/'[id]'/bookSeo.ts \
             lib/open-library-book.ts \
+            lib/book-description-enrichment.ts \
+            scripts/enrich-book-descriptions.ts \
             app/search/page.tsx \
             app/components/NotificationBell.tsx \
             app/messages/'[id]'/page.tsx \
