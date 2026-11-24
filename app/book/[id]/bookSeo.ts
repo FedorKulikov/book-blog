@@ -1,6 +1,7 @@
 import { toPlainText } from '@/lib/text'
 
 export const MIN_BOOK_DESCRIPTION_LENGTH = 120
+export const MIN_INDEXABLE_BOOK_DESCRIPTION_LENGTH = 300
 export const MIN_SIMILAR_BOOKS = 3
 export const MAX_SIMILAR_BOOKS = 5
 
@@ -12,8 +13,17 @@ export type SimilarBook = {
   cover_url?: string | null
 }
 
+/** Existing catalog enrichment threshold used for the Open Library fallback. */
 export function hasBookDescription(description: string | null | undefined): boolean {
   return toPlainText(description ?? '').length >= MIN_BOOK_DESCRIPTION_LENGTH
+}
+
+export function hasAnyBookDescription(description: string | null | undefined): boolean {
+  return toPlainText(description ?? '').trim().length > 0
+}
+
+export function hasLongBookDescription(description: string | null | undefined): boolean {
+  return toPlainText(description ?? '').length >= MIN_INDEXABLE_BOOK_DESCRIPTION_LENGTH
 }
 
 function normalizeAuthor(author: string | null | undefined): string {
@@ -25,7 +35,7 @@ function normalizeAuthor(author: string | null | undefined): string {
     .toLocaleLowerCase('ru-RU')
 }
 
-/** Возвращаем только полноценный список из 3–5 книг того же автора. */
+/** Recommendations remain a reader aid and do not affect indexability. */
 export function getSimilarBooks(
   book: Pick<SimilarBook, 'id' | 'author'>,
   candidates: SimilarBook[],
@@ -46,12 +56,21 @@ export function getSimilarBooks(
     : []
 }
 
-/** Одно правило применяется и в metadata страницы, и в sitemap. */
+/**
+ * Index if there is some unique description and either:
+ * - a 300+ character description with a cover; or
+ * - at least one approved publication linked to this book.
+ * Similar-book and discussion UI blocks do not participate in this rule.
+ */
 export function isBookIndexable(
   description: string | null | undefined,
-  similarBooksCount: number,
+  coverUrl: string | null | undefined,
   approvedPostsCount: number,
 ): boolean {
-  if (!hasBookDescription(description)) return false
-  return similarBooksCount >= MIN_SIMILAR_BOOKS || approvedPostsCount > 0
+  if (!hasAnyBookDescription(description)) return false
+
+  return (
+    (hasLongBookDescription(description) && Boolean(coverUrl?.trim())) ||
+    approvedPostsCount > 0
+  )
 }

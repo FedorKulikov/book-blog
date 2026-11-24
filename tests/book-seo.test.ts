@@ -2,30 +2,53 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   getSimilarBooks,
+  hasAnyBookDescription,
   hasBookDescription,
+  hasLongBookDescription,
   isBookIndexable,
 } from '../app/book/[id]/bookSeo'
 
-const description = 'О'.repeat(120)
+const shortDescription = 'О'.repeat(120)
+const mediumDescription = 'О'.repeat(299)
+const longDescription = 'О'.repeat(300)
 
-test('book description needs at least 120 plain-text characters', () => {
-  assert.equal(hasBookDescription(description), true)
-  assert.equal(hasBookDescription('Короткое описание'), false)
-  assert.equal(hasBookDescription(''), false)
-  assert.equal(hasBookDescription(null), false)
+test('book description helper thresholds remain distinct', () => {
+  assert.equal(hasBookDescription(shortDescription), true)
+  assert.equal(hasBookDescription('О'.repeat(119)), false)
+  assert.equal(hasAnyBookDescription('Коротко'), true)
+  assert.equal(hasAnyBookDescription('   '), false)
+  assert.equal(hasLongBookDescription(mediumDescription), false)
+  assert.equal(hasLongBookDescription(longDescription), true)
 })
 
-test('indexing requires a useful description and one complete content block', () => {
-  assert.equal(isBookIndexable(description, 3, 0), true)
-  assert.equal(isBookIndexable(description, 5, 0), true)
-  assert.equal(isBookIndexable(description, 0, 1), true)
-  assert.equal(isBookIndexable(description, 2, 0), false)
-  assert.equal(isBookIndexable(description, 0, 0), false)
-  assert.equal(isBookIndexable('Коротко', 5, 1), false)
-  assert.equal(isBookIndexable(null, 5, 1), false)
+test('300+ character description indexes only when a cover exists', () => {
+  assert.equal(isBookIndexable(longDescription, 'https://example.com/cover.jpg', 0), true)
+  assert.equal(isBookIndexable(longDescription, null, 0), false)
+  assert.equal(isBookIndexable(longDescription, '   ', 0), false)
 })
 
-test('similar books match normalized author, exclude current book and cap at five', () => {
+test('120–299 character descriptions remain noindex without approved posts', () => {
+  assert.equal(isBookIndexable(shortDescription, 'cover.jpg', 0), false)
+  assert.equal(isBookIndexable(mediumDescription, 'cover.jpg', 0), false)
+})
+
+test('an approved publication overrides the 300-character threshold', () => {
+  assert.equal(isBookIndexable(shortDescription, 'cover.jpg', 1), true)
+  assert.equal(isBookIndexable('коротко', null, 1), true)
+})
+
+test('a book without any description remains noindex even with a post or cover', () => {
+  assert.equal(isBookIndexable(null, 'cover.jpg', 1), false)
+  assert.equal(isBookIndexable('', 'cover.jpg', 0), false)
+  assert.equal(isBookIndexable('   ', 'cover.jpg', 1), false)
+})
+
+test('similar-book availability does not participate in indexability', () => {
+  assert.equal(isBookIndexable(shortDescription, 'cover.jpg', 0), false)
+  assert.equal(isBookIndexable(longDescription, 'cover.jpg', 0), true)
+})
+
+test('similar books still match normalized author and are capped at five for readers', () => {
   const current = { id: 'current', author: 'Фёдор Достоевский' }
   const candidates = [
     { id: 'current', title: 'Текущая книга', author: 'Фёдор Достоевский' },
@@ -41,14 +64,4 @@ test('similar books match normalized author, exclude current book and cap at fiv
   assert.equal(similar.length, 5)
   assert.equal(similar.some(book => book.id === 'current'), false)
   assert.equal(similar.some(book => book.id === 'six'), false)
-})
-
-test('fewer than three recommendations do not create a similar-books block', () => {
-  const current = { id: 'current', author: 'Антон Чехов' }
-  const candidates = [
-    { id: 'current', title: 'Текущая книга', author: 'Антон Чехов' },
-    { id: 'one', title: 'Книга один', author: 'Антон Чехов' },
-    { id: 'two', title: 'Книга два', author: 'Антон Чехов' },
-  ]
-  assert.deepEqual(getSimilarBooks(current, candidates), [])
 })

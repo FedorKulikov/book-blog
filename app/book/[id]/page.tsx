@@ -30,16 +30,15 @@ export async function generateMetadata({
     return { title: 'Книга не найдена', robots: { index: false, follow: false } }
   }
 
-  const { book, posts, similarBooks } = data
-  const approvedPosts = posts.filter(post => post.status === 'approved')
+  const approvedPosts = data.posts.filter(post => post.status === 'approved')
   const isIndexable = isBookIndexable(
-    book.description,
-    similarBooks.length,
+    data.book.description,
+    data.book.cover_url,
     approvedPosts.length,
   )
 
-  const title = book.title.trim() || 'Книга'
-  const description = getPageDescription(book.description)
+  const title = data.book.title.trim() || 'Книга'
+  const description = getPageDescription(data.book.description)
   const images: { url: string; alt: string; width?: number; height?: number }[] = [
     { url: FALLBACK_OG_IMAGE, width: 1200, height: 630, alt: 'Хлеба и букв' },
   ]
@@ -47,13 +46,13 @@ export async function generateMetadata({
   return {
     title,
     description,
-    alternates: { canonical: '/book/' + book.id },
+    alternates: { canonical: '/book/' + data.book.id },
     robots: { index: isIndexable, follow: true },
     openGraph: {
       type: 'book',
       locale: 'ru_RU',
       siteName: 'Хлеба и букв',
-      url: '/book/' + book.id,
+      url: '/book/' + data.book.id,
       title,
       description,
       images,
@@ -78,12 +77,6 @@ export default async function BookPage({
   if (!data) notFound()
 
   const bookUrl = SITE_URL + '/book/' + data.book.id
-  const approvedPosts = data.posts.filter(post => post.status === 'approved')
-  const isIndexable = isBookIndexable(
-    data.book.description,
-    data.similarBooks.length,
-    approvedPosts.length,
-  )
   const description = toPlainText(data.book.description ?? '') || undefined
 
   return (
