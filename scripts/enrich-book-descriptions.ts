@@ -16,44 +16,63 @@
 import { createClient } from '@supabase/supabase-js'
 import {
   appendOpenLibraryDescription,
+  canApplyOpenLibraryDescriptions,
   cleanOpenLibraryDescription,
-  normalizeBookTitle,
   selectBookDescriptionCandidates,
+  selectOpenLibraryWorkMatch,
   type BookForDescriptionEnrichment,
+  type OpenLibraryAuthorDocument,
+  type OpenLibrarySearchDocument,
 } from '../lib/book-description-enrichment'
 
 const OPEN_LIBRARY_BASE = 'https://openlibrary.org'
 const OPEN_LIBRARY_TIMEOUT_MS = 8_000
 const OPEN_LIBRARY_DELAY_MS = 350
 const DESCRIPTION_PAGE_SIZE = 500
+const APPROVED_POST_PAGE_SIZE = 5000
 
-type SearchDocument = {
-  key?: string
-  title?: string
-  author_name?: string[]
-  first_publish_year?: number
-}
-
-type SearchResponse = { docs?: SearchDocument[] }
+type AuthorSearchResponse = { docs?: OpenLibraryAuthorDocument[] }
+type SearchResponse = { docs?: OpenLibrarySearchDocument[] }
 type WorkResponse = { description?: string | { value?: string } }
 
+type MatchMetadata = {
+  openLibraryTitle?: string
+  openLibraryAuthors?: string[]
+  openLibraryYear?: number | null
+  yearDifference?: number | null
+  titleMatch?: 'exact' | 'contained'
+  workKey?: string
+}
+
 type LookupResult =
-  | { status: 'found'; description: string; workKey: string }
-  | { status: 'no_exact_match' }
-  | { status: 'year_mismatch' }
-  | { status: 'no_work_key' }
-  | { status: 'no_description' }
-  | { status: 'description_too_short'; descriptionLength: number }
+  | ({ status: 'found'; description: string; workKey: string } & MatchMetadata)
+  | ({ status: 'description_too_short'; descriptionLength: number } & MatchMetadata)
+  | ({ status: 'no_author_match' | 'no_title_match' | 'no_work_key' | 'no_description' } & MatchMetadata)
   | { status: 'api_error'; detail: string }
 
 type ReportRow = {
   id: string
   title: string
+  author: string | null
   status: string
   oldLength: number
+  expectedYear: number | null
   newLength?: number
+  openLibraryTitle?: string
+  openLibraryAuthors?: string[]
+  openLibraryYear?: number | null
+  yearDifference?: number | null
+  titleMatch?: 'exact' | 'contained'
   workKey?: string
   detail?: string
+  bookUrl: string
+}
+
+type EnrichmentPlan = {
+  book: BookForDescriptionEnrichment
+  oldLength: number
+  lookup: LookupResult
+  mergedDescription: string | null
 }
 
 function log(message: string): void {
@@ -86,55 +105,110 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 async function lookupOpenLibraryDescription(
   book: BookForDescriptionEnrichment,
 ): Promise<LookupResult> {
-  const params = new URLSearchParams({
-    title: book.title,
-    fields: 'key,title,author_name,first_publish_year',
-    limit: '10',
+  if (!book.author?.trim()) return { status: 'no_author_match' }
+
+  const authorParams = new URLSearchParams({
+    q: book.author,
+    fields: 'key,name,alternate_names',
+    limit: '25',
   })
-  if (book.author?.trim()) params.set('author', book.author.trim())
+  const searchParams = new URLSearchParams({
+    title: book.title,
+    fields: 'key,title,author_key,author_name,first_publish_year',
+    limit: '50',
+  })
 
   try {
-    const search = await fetchJson<SearchResponse>(
-      OPEN_LIBRARY_BASE + '/search.json?' + params.toString(),
-    )
-    const exactMatches = (search?.docs ?? []).filter(document =>
-      typeof document.title === 'string' &&
-      normalizeBookTitle(document.title) === normalizeBookTitle(book.title),
-    )
+    const [authorSearch, search] = await Promise.all([
+      fetchJson<AuthorSearchResponse>(
+        OPEN_LIBRARY_BASE + '/search/authors.json?' + authorParams.toString(),
+      ),
+      fetchJson<SearchResponse>(
+        OPEN_LIBRARY_BASE + '/search.json?' + searchParams.toString(),
+      ),
+    ])
 
-    if (exactMatches.length === 0) return { status: 'no_exact_match' }
-
-    const expectedYear = book.year
-    const compatibleMatches = exactMatches.filter(document =>
-      !expectedYear ||
-      !document.first_publish_year ||
-      Math.abs(document.first_publish_year - expectedYear) <= 2,
+    const selection = selectOpenLibraryWorkMatch(
+      book,
+      authorSearch?.docs ?? [],
+      search?.docs ?? [],
     )
-    if (compatibleMatches.length === 0) return { status: 'year_mismatch' }
+    if (selection.status !== 'matched') return selection
 
-    const match = compatibleMatches[0]
-    const workKey = match?.key?.split('/').filter(Boolean).at(-1)
+    const workKey = selection.document.key?.split('/').filter(Boolean).at(-1)
+    const metadata: MatchMetadata = {
+      openLibraryTitle: selection.document.title,
+      openLibraryAuthors: selection.document.author_name ?? [],
+      openLibraryYear: selection.document.first_publish_year ?? null,
+      yearDifference: selection.yearDifference,
+      titleMatch: selection.titleMatch,
+      ...(workKey ? { workKey } : {}),
+    }
+
     if (!workKey || !/^OL\d+W$/.test(workKey)) {
-      return { status: 'no_work_key' }
+      return { status: 'no_work_key', ...metadata }
     }
 
     const work = await fetchJson<WorkResponse>(
       OPEN_LIBRARY_BASE + '/works/' + workKey + '.json',
     )
     const rawDescription = getDescriptionValue(work?.description)
-    if (!rawDescription.trim()) return { status: 'no_description' }
+    if (!rawDescription.trim()) {
+      return { status: 'no_description', ...metadata }
+    }
 
     const description = cleanOpenLibraryDescription(rawDescription)
     if (description.length < 300) {
-      return { status: 'description_too_short', descriptionLength: description.length }
+      return {
+        status: 'description_too_short',
+        descriptionLength: description.length,
+        ...metadata,
+      }
     }
 
-    return { status: 'found', description, workKey }
+    return { status: 'found', description, workKey, ...metadata }
   } catch (error) {
     return {
       status: 'api_error',
       detail: error instanceof Error ? error.message : 'unknown error',
     }
+  }
+}
+
+function toReportRow(plan: EnrichmentPlan): ReportRow {
+  const { book, oldLength, lookup, mergedDescription } = plan
+  return {
+    id: book.id,
+    title: book.title,
+    author: book.author,
+    status:
+      lookup.status === 'found' && !mergedDescription
+        ? 'description_not_appended'
+        : lookup.status === 'found'
+          ? 'ready'
+          : lookup.status,
+    oldLength,
+    expectedYear: book.year,
+    ...(lookup.status === 'api_error' ? { detail: lookup.detail } : {}),
+    ...('descriptionLength' in lookup ? { newLength: lookup.descriptionLength } : {}),
+    ...('openLibraryTitle' in lookup && lookup.openLibraryTitle
+      ? { openLibraryTitle: lookup.openLibraryTitle }
+      : {}),
+    ...('openLibraryAuthors' in lookup
+      ? { openLibraryAuthors: lookup.openLibraryAuthors }
+      : {}),
+    ...('openLibraryYear' in lookup
+      ? { openLibraryYear: lookup.openLibraryYear }
+      : {}),
+    ...('yearDifference' in lookup
+      ? { yearDifference: lookup.yearDifference }
+      : {}),
+    ...('titleMatch' in lookup ? { titleMatch: lookup.titleMatch } : {}),
+    ...('workKey' in lookup ? { workKey: lookup.workKey } : {}),
+    ...(mergedDescription && lookup.status === 'found'
+      ? { newLength: mergedDescription.length }
+      : {}),
+    bookUrl: 'https://bukleb.ru/book/' + book.id,
   }
 }
 
@@ -167,7 +241,7 @@ async function main(): Promise<void> {
         .select('book_id')
         .eq('status', 'approved')
         .not('book_id', 'is', null)
-        .limit(5000),
+        .limit(APPROVED_POST_PAGE_SIZE),
     ])
 
   if (booksError) throw new Error('books select failed: ' + booksError.message)
@@ -175,7 +249,7 @@ async function main(): Promise<void> {
   if ((books ?? []).length >= DESCRIPTION_PAGE_SIZE) {
     throw new Error('Book inventory reached safety limit; refusing partial backfill')
   }
-  if ((linkedPosts ?? []).length >= 5000) {
+  if ((linkedPosts ?? []).length >= APPROVED_POST_PAGE_SIZE) {
     throw new Error('Approved-post inventory reached safety limit; refusing partial backfill')
   }
 
@@ -192,117 +266,129 @@ async function main(): Promise<void> {
   log('mode=' + (apply ? 'apply' : 'dry-run'))
   log('short_description_candidates=' + candidates.length)
 
-  const report: ReportRow[] = []
-  let updated = 0
-
+  const plans: EnrichmentPlan[] = []
   for (const book of candidates) {
     const oldLength = book.description?.length ?? 0
     const lookup = await lookupOpenLibraryDescription(book)
+    const mergedDescription =
+      lookup.status === 'found'
+        ? appendOpenLibraryDescription(
+            book.description ?? '',
+            lookup.description,
+            lookup.workKey,
+          )
+        : null
 
-    if (lookup.status !== 'found') {
-      report.push({
-        id: book.id,
-        title: book.title,
-        status: lookup.status,
-        oldLength,
-        ...(lookup.status === 'api_error' ? { detail: lookup.detail } : {}),
-        ...(lookup.status === 'description_too_short'
-          ? { newLength: lookup.descriptionLength }
-          : {}),
-      })
-      log(book.title + ': ' + lookup.status)
-      await sleep(OPEN_LIBRARY_DELAY_MS)
-      continue
-    }
+    plans.push({ book, oldLength, lookup, mergedDescription })
+    log(book.title + ': ' + (
+      lookup.status === 'found'
+        ? (mergedDescription ? 'ready' : 'description_not_appended')
+        : lookup.status
+    ))
+    await sleep(OPEN_LIBRARY_DELAY_MS)
+  }
 
-    const original = book.description ?? ''
-    const mergedDescription = appendOpenLibraryDescription(
-      original,
-      lookup.description,
-      lookup.workKey,
+  const suitablePlans = plans.filter(plan =>
+    plan.lookup.status === 'found' && Boolean(plan.mergedDescription),
+  )
+  const descriptionsFound = suitablePlans.length
+  const applyBlocked = apply && !canApplyOpenLibraryDescriptions(descriptionsFound)
+
+  if (applyBlocked) {
+    log(
+      'apply_blocked: found ' + descriptionsFound +
+      ' suitable descriptions; at least 5 are required. No database updates were attempted.',
     )
-    if (!mergedDescription) {
-      report.push({
-        id: book.id,
-        title: book.title,
-        status: 'description_not_appended',
-        oldLength,
-        workKey: lookup.workKey,
-      })
-      await sleep(OPEN_LIBRARY_DELAY_MS)
-      continue
-    }
+  }
 
-    if (apply) {
+  const report = plans.map(toReportRow)
+  let updated = 0
+
+  if (apply && !applyBlocked) {
+    for (const plan of suitablePlans) {
+      if (plan.lookup.status !== 'found' || !plan.mergedDescription) continue
+
+      const original = plan.book.description ?? ''
       const { data: updatedRows, error: updateError } = await supabase
         .from('books')
-        .update({ description: mergedDescription })
-        .eq('id', book.id)
+        .update({ description: plan.mergedDescription })
+        .eq('id', plan.book.id)
         .eq('description', original)
         .select('id')
 
+      const row = report.find(item => item.id === plan.book.id)
       if (updateError) {
-        report.push({
-          id: book.id,
-          title: book.title,
-          status: 'update_error',
-          oldLength,
-          workKey: lookup.workKey,
-        })
-        log(book.title + ': update_error=' + updateError.message)
+        if (row) row.status = 'update_error'
+        log(plan.book.title + ': update_error=' + updateError.message)
       } else if ((updatedRows ?? []).length !== 1) {
-        report.push({
-          id: book.id,
-          title: book.title,
-          status: 'changed_concurrently',
-          oldLength,
-          workKey: lookup.workKey,
-        })
-        log(book.title + ': changed_concurrently; no overwrite')
+        if (row) row.status = 'changed_concurrently'
+        log(plan.book.title + ': changed_concurrently; no overwrite')
       } else {
         updated++
-        report.push({
-          id: book.id,
-          title: book.title,
-          status: 'updated',
-          oldLength,
-          newLength: mergedDescription.length,
-          workKey: lookup.workKey,
-        })
-        log(book.title + ': updated; chars=' + mergedDescription.length)
+        if (row) {
+          row.status = 'updated'
+          row.newLength = plan.mergedDescription.length
+        }
+        log(plan.book.title + ': updated; chars=' + plan.mergedDescription.length)
       }
-    } else {
-      report.push({
-        id: book.id,
-        title: book.title,
-        status: 'ready',
-        oldLength,
-        newLength: mergedDescription.length,
-        workKey: lookup.workKey,
-      })
-      log(book.title + ': ready; chars=' + mergedDescription.length)
     }
-
-    await sleep(OPEN_LIBRARY_DELAY_MS)
   }
 
   const counts = report.reduce<Record<string, number>>((result, row) => {
     result[row.status] = (result[row.status] ?? 0) + 1
     return result
   }, {})
-  const descriptionsFound = report.filter(row => Boolean(row.workKey)).length
+  const manualStatuses = new Set([
+    'no_author_match',
+    'no_title_match',
+    'no_work_key',
+    'no_description',
+    'description_too_short',
+    'description_not_appended',
+    'api_error',
+  ])
 
   console.log(JSON.stringify({
     mode: apply ? 'apply' : 'dry-run',
+    applyBlocked,
+    minimumDescriptionsToApply: 5,
     totalCandidates: candidates.length,
     descriptionsFound,
     updated,
     withoutSuitableOpenLibraryDescription: candidates.length - descriptionsFound,
     updatesNotSaved: apply ? descriptionsFound - updated : null,
+    yearDifferencesOverTwoYears: report.filter(row =>
+      typeof row.yearDifference === 'number' && row.yearDifference > 2,
+    ).length,
     counts,
+    matchedBooks: report
+      .filter(row => row.status === 'ready' || row.status === 'updated')
+      .map(row => ({
+        title: row.title,
+        bookUrl: row.bookUrl,
+        titleMatch: row.titleMatch,
+        openLibraryTitle: row.openLibraryTitle,
+        openLibraryAuthors: row.openLibraryAuthors,
+        expectedYear: row.expectedYear,
+        openLibraryYear: row.openLibraryYear,
+        yearDifference: row.yearDifference,
+        workKey: row.workKey,
+        newLength: row.newLength,
+      })),
     manualBooks: report
-      .filter(row => !row.workKey)
-      .map(row => ({ id: row.id, title: row.title, status: row.status })),
+      .filter(row => manualStatuses.has(row.status))
+      .map(row => ({
+        id: row.id,
+        title: row.title,
+        author: row.author,
+        year: row.expectedYear,
+        status: row.status,
+        bookUrl: row.bookUrl,
+        openLibraryTitle: row.openLibraryTitle,
+        openLibraryAuthors: row.openLibraryAuthors,
+        openLibraryYear: row.openLibraryYear,
+        yearDifference: row.yearDifference,
+      })),
     report,
   }, null, 2))
 
