@@ -132,6 +132,7 @@ export function selectOpenLibraryWorkMatch(
       .filter(Boolean),
   )
 
+  if (authorKeys.size > 1) return { status: 'no_author_match' }
   if (authorKeys.size === 0 && authorAliases.size === 0) {
     return { status: 'no_author_match' }
   }
