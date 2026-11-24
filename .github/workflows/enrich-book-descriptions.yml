@@ -1,0 +1,59 @@
+name: Enrich book descriptions from Open Library
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Записать найденные описания в public.books (false — только проверка)'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enrich-book-descriptions
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    name: Open Library → book descriptions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate existing Supabase credentials are available
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SUPABASE_URL:-}"
+          test -n "${SUPABASE_SERVICE_ROLE_KEY:-}"
+          echo "Existing Supabase credentials are configured."
+
+      - name: Preview Open Library matches (read-only)
+        if: ${{ inputs.apply != true }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/enrich-book-descriptions.ts
+
+      - name: Apply Open Library descriptions
+        if: ${{ inputs.apply == true }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/enrich-book-descriptions.ts --apply
