@@ -96,6 +96,9 @@ jobs:
       - name: Hashtag normalization tests
         run: npm run test:tags
 
+      - name: Book SEO rules tests
+        run: npm run test:book-seo
+
       - name: Public profile consent tests
         run: npm run test:profile-public-consent
 
@@ -191,6 +194,9 @@ jobs:
             app/books/BooksClient.tsx \
             app/books/add/AddBookForm.tsx \
             app/book/'[id]'/BookView.tsx \
+            app/book/'[id]'/getBook.ts \
+            app/book/'[id]'/bookSeo.ts \
+            lib/open-library-book.ts \
             app/search/page.tsx \
             app/components/NotificationBell.tsx \
             app/messages/'[id]'/page.tsx \

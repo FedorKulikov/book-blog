@@ -1,5 +1,5 @@
 // app/book/[id]/page.tsx
-// Server Component: данные книги попадают в HTML сразу (SEO), интерактив — в BookView.
+// Server Component: metadata and structured data share the same indexability rule.
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getBook } from './getBook'
@@ -7,10 +7,16 @@ import BookView from './BookView'
 import { truncate, toPlainText } from '@/lib/text'
 import { SITE_URL } from '@/lib/site'
 import JsonLd from '@/app/components/JsonLd'
+import { isBookIndexable } from './bookSeo'
 
 export const dynamic = 'force-dynamic'
 
 const FALLBACK_OG_IMAGE = '/og-default.jpg'
+
+function getPageDescription(description: string | null): string | undefined {
+  const plain = toPlainText(description ?? '')
+  return plain ? truncate(plain, 200) : undefined
+}
 
 export async function generateMetadata({
   params,
@@ -24,22 +30,16 @@ export async function generateMetadata({
     return { title: 'Книга не найдена', robots: { index: false, follow: false } }
   }
 
-  const { book, posts } = data
-  const publicPosts = posts.filter(post => post.status === 'approved')
-  const isIndexable = publicPosts.length > 0
-
-  const title = book.title.trim() || 'Книга'
-  const meta = [book.author, book.year].filter(Boolean).join(', ')
-
-  const description = truncate(
-    toPlainText(book.description ?? '') ||
-      `${meta ? `${meta}. ` : ''}Посты об этой книге в сообществе «Хлеба и букв»${
-        publicPosts.length > 0 ? `: ${publicPosts.length}` : ''
-      }.`,
-    200,
+  const { book, posts, similarBooks } = data
+  const approvedPosts = posts.filter(post => post.status === 'approved')
+  const isIndexable = isBookIndexable(
+    book.description,
+    similarBooks.length,
+    approvedPosts.length,
   )
 
-  // Book covers use short-lived signed URLs in the page UI; metadata stays stable.
+  const title = book.title.trim() || 'Книга'
+  const description = getPageDescription(book.description)
   const images: { url: string; alt: string; width?: number; height?: number }[] = [
     { url: FALLBACK_OG_IMAGE, width: 1200, height: 630, alt: 'Хлеба и букв' },
   ]
@@ -47,13 +47,13 @@ export async function generateMetadata({
   return {
     title,
     description,
-    alternates: { canonical: `/book/${book.id}` },
+    alternates: { canonical: '/book/' + book.id },
     robots: { index: isIndexable, follow: true },
     openGraph: {
       type: 'book',
       locale: 'ru_RU',
       siteName: 'Хлеба и букв',
-      url: `/book/${book.id}`,
+      url: '/book/' + book.id,
       title,
       description,
       images,
@@ -62,7 +62,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title,
       description,
-      images: images.map(img => img.url),
+      images: images.map(image => image.url),
     },
   }
 }
@@ -77,33 +77,69 @@ export default async function BookPage({
 
   if (!data) notFound()
 
-  const bookUrl = `${SITE_URL}/book/${data.book.id}`
-  const isIndexable = data.posts.some(post => post.status === 'approved')
+  const bookUrl = SITE_URL + '/book/' + data.book.id
+  const approvedPosts = data.posts.filter(post => post.status === 'approved')
+  const isIndexable = isBookIndexable(
+    data.book.description,
+    data.similarBooks.length,
+    approvedPosts.length,
+  )
+  const description = toPlainText(data.book.description ?? '') || undefined
 
   return (
     <>
-      {isIndexable && <JsonLd
+      <JsonLd
         data={{
           '@context': 'https://schema.org',
           '@type': 'Book',
-          '@id': `${bookUrl}#book`,
+          '@id': bookUrl + '#book',
           url: bookUrl,
           name: data.book.title,
           author: data.book.author
             ? { '@type': 'Person', name: data.book.author }
             : undefined,
           datePublished: data.book.year ? String(data.book.year) : undefined,
-          description: toPlainText(data.book.description ?? '') || undefined,
-          image: `${SITE_URL}/og-default.jpg`,
+          description,
+          genre: data.openLibrary.subjects.length
+            ? data.openLibrary.subjects.slice(0, 5)
+            : undefined,
+          image: SITE_URL + FALLBACK_OG_IMAGE,
           inLanguage: 'ru-RU',
-          workExample: {
-            '@type': 'CreativeWork',
-            name: `Публикации читателей о книге «${data.book.title}»`,
-            url: bookUrl,
-          },
         }}
-      />}
-      <BookView book={data.book} posts={data.posts} />
+      />
+      <JsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Главная',
+              item: SITE_URL,
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Каталог книг',
+              item: SITE_URL + '/books',
+            },
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: data.book.title,
+              item: bookUrl,
+            },
+          ],
+        }}
+      />
+      <BookView
+        book={data.book}
+        posts={data.posts}
+        similarBooks={data.similarBooks}
+        openLibrarySubjects={data.openLibrary.subjects}
+        descriptionSource={data.descriptionSource}
+      />
     </>
   )
 }
