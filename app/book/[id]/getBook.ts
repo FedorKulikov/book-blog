@@ -1,10 +1,18 @@
 // app/book/[id]/getBook.ts
-// Единственный источник данных для страницы книги: его вызывают и page.tsx,
-// и generateMetadata. cache() гарантирует один запрос в Supabase на запрос к сайту.
+// Единственный источник данных страницы книги для metadata и HTML.
 import { cache } from 'react'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import type { PostCardData } from '@/app/components/PostCard'
 import { POSTS_SELECT } from '@/app/posts/postsQuery'
+import {
+  getSimilarBooks,
+  hasBookDescription,
+  type SimilarBook,
+} from './bookSeo'
+import {
+  getOpenLibraryBookDetails,
+  type OpenLibraryBookDetails,
+} from '@/lib/open-library-book'
 
 export type BookRow = {
   id: string
@@ -16,7 +24,6 @@ export type BookRow = {
   views_count: number | null
 }
 
-/** Пост о книге: к PostCardData добавлены поля для статистики карточки книги. */
 export type BookPost = PostCardData & {
   user_id: string
   likes?: { count: number }[] | null
@@ -25,9 +32,11 @@ export type BookPost = PostCardData & {
 export type BookPageData = {
   book: BookRow
   posts: BookPost[]
+  similarBooks: SimilarBook[]
+  openLibrary: OpenLibraryBookDetails
+  descriptionSource: 'catalog' | 'open-library' | null
 }
 
-// Мусорные URL (/book/abc) отсекаем до запроса: Postgres упал бы на касте к uuid
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -35,7 +44,6 @@ export const getBook = cache(async (id: string): Promise<BookPageData | null> =>
   if (!UUID_RE.test(id)) return null
 
   const supabase = await createSupabaseServerClient()
-
   const { data: bookData, error: bookError } = await supabase
     .from('books')
     .select('id, title, author, year, description, cover_url, views_count')
@@ -49,8 +57,6 @@ export const getBook = cache(async (id: string): Promise<BookPageData | null> =>
   if (!bookData) return null
 
   const book = bookData as unknown as BookRow
-
-  // Клиент читает куки: автор увидит свои посты на модерации
   const { data: { user } } = await supabase.auth.getUser()
 
   let postsQuery = supabase
@@ -60,17 +66,57 @@ export const getBook = cache(async (id: string): Promise<BookPageData | null> =>
     .order('created_at', { ascending: false })
 
   postsQuery = user
-    ? postsQuery.or(`status.eq.approved,user_id.eq.${user.id}`)
+    ? postsQuery.or('status.eq.approved,user_id.eq.' + user.id)
     : postsQuery.eq('status', 'approved')
 
-  const { data: postsData, error: postsError } = await postsQuery
+  const [postsResult, candidatesResult, openLibrary] = await Promise.all([
+    postsQuery,
+    supabase
+      .from('books')
+      .select('id, title, author, year, cover_url')
+      .not('author', 'is', null)
+      .limit(500),
+    getOpenLibraryBookDetails(book.title, book.author, {
+      includeDescription: !hasBookDescription(book.description),
+    }),
+  ])
 
-  if (postsError) {
-    console.error('[getBook] posts select failed:', postsError.message)
+  if (postsResult.error) {
+    console.error('[getBook] posts select failed:', postsResult.error.message)
+  }
+  if (candidatesResult.error) {
+    console.error('[getBook] similar books select failed:', candidatesResult.error.message)
   }
 
+  const similarBooks = getSimilarBooks(
+    { id: book.id, author: book.author },
+    (candidatesResult.data ?? []) as SimilarBook[],
+  )
+
+  const useOpenLibraryDescription =
+    !hasBookDescription(book.description) &&
+    hasBookDescription(openLibrary.description)
+  const resolvedBook: BookRow = {
+    ...book,
+    description: useOpenLibraryDescription
+      ? openLibrary.description
+      : book.description,
+    year: book.year ?? openLibrary.year,
+  }
+
+  const descriptionSource = hasBookDescription(book.description)
+    ? 'catalog'
+    : useOpenLibraryDescription
+      ? 'open-library'
+      : book.description
+        ? 'catalog'
+        : null
+
   return {
-    book,
-    posts: (postsData ?? []) as unknown as BookPost[],
+    book: resolvedBook,
+    posts: (postsResult.data ?? []) as unknown as BookPost[],
+    similarBooks,
+    openLibrary,
+    descriptionSource,
   }
 })

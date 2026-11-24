@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 // чтобы при отсутствии переменной карта не начала указывать на localhost.
 // Регулярка убирает случайный слэш в конце значения.
 import { SITE_URL } from '@/lib/site'
+import { getSimilarBooks, hasBookDescription, isBookIndexable } from '@/app/book/[id]/bookSeo'
+import { getOpenLibraryBookDetails } from '@/lib/open-library-book'
 
 // Re-evaluate RLS-filtered entries after a consent grant or withdrawal.
 export const dynamic = 'force-dynamic'
@@ -96,44 +98,72 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error('[sitemap] posts fetch failed:', e)
   }
 
-  // Книги: в sitemap попадают только страницы с одобренными публикациями.
-  // Пустые карточки остаются доступны в каталоге, но не предлагаются поисковикам
-  // как самостоятельные результаты до появления содержательного обсуждения.
+  // Книги: применяется то же правило, что в metadata страницы.
+  // Open Library используется как fallback только для короткой/отсутствующей аннотации.
   let bookPages: MetadataRoute.Sitemap = []
   try {
-    const { data: linkedPosts, error: linkedPostsError } = await supabase
-      .from('posts')
-      .select('book_id, created_at')
-      .eq('status', 'approved')
-      .not('book_id', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(5000)
+    const [{ data: books, error: booksError }, { data: linkedPosts, error: linkedPostsError }] =
+      await Promise.all([
+        supabase
+          .from('books')
+          .select('id, title, author, year, description, created_at')
+          .limit(500),
+        supabase
+          .from('posts')
+          .select('book_id, created_at')
+          .eq('status', 'approved')
+          .not('book_id', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(5000),
+      ])
 
+    if (booksError) throw booksError
     if (linkedPostsError) throw linkedPostsError
 
+    const approvedPostCountByBook = new Map<string, number>()
     const latestPostByBook = new Map<string, string>()
     for (const post of linkedPosts ?? []) {
-      if (post.book_id && !latestPostByBook.has(post.book_id)) {
+      if (!post.book_id) continue
+      approvedPostCountByBook.set(
+        post.book_id,
+        (approvedPostCountByBook.get(post.book_id) ?? 0) + 1,
+      )
+      if (!latestPostByBook.has(post.book_id)) {
         latestPostByBook.set(post.book_id, post.created_at)
       }
     }
 
-    const bookIds = Array.from(latestPostByBook.keys()).slice(0, 500)
-    if (bookIds.length > 0) {
-      const { data: books, error: booksError } = await supabase
-        .from('books')
-        .select('id')
-        .in('id', bookIds)
+    const enrichedBooks = await Promise.all((books ?? []).map(async book => {
+      if (hasBookDescription(book.description)) return book
 
-      if (booksError) throw booksError
+      const openLibrary = await getOpenLibraryBookDetails(
+        book.title,
+        book.author,
+        { includeDescription: true },
+      )
+      return {
+        ...book,
+        description: openLibrary.description ?? book.description,
+      }
+    }))
 
-      bookPages = (books ?? []).map(book => ({
-        url: `${SITE_URL}/book/${book.id}`,
-        lastModified: new Date(latestPostByBook.get(book.id) ?? new Date()),
+    bookPages = enrichedBooks.flatMap(book => {
+      const similarBooks = getSimilarBooks(book, enrichedBooks)
+      const approvedPostsCount = approvedPostCountByBook.get(book.id) ?? 0
+
+      if (!isBookIndexable(book.description, similarBooks.length, approvedPostsCount)) {
+        return []
+      }
+
+      return [{
+        url: SITE_URL + '/book/' + book.id,
+        lastModified: new Date(
+          latestPostByBook.get(book.id) ?? book.created_at ?? new Date().toISOString(),
+        ),
         changeFrequency: 'monthly' as const,
         priority: 0.6,
-      }))
-    }
+      }]
+    })
   } catch (e) {
     console.error('[sitemap] books fetch failed:', e)
   }

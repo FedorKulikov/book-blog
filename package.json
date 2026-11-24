@@ -15,7 +15,8 @@
     "test:distribution-consent": "tsx --test tests/distribution-consent.test.ts",
     "test:profile-public-consent": "tsx --test tests/profile-public-consent.test.ts",
     "check:profile-selects": "node scripts/check-profile-selects.mjs",
-    "test:tags": "tsx --test tests/tag-utils.test.ts"
+    "test:tags": "tsx --test tests/tag-utils.test.ts",
+    "test:book-seo": "tsx --test tests/book-seo.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
