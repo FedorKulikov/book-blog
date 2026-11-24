@@ -21,6 +21,11 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/favicon.ico',
+  },
   title: {
     default: 'Хлеба и букв',
     template: '%s · Хлеба и букв',
