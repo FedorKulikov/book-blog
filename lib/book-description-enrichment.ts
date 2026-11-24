@@ -90,3 +90,102 @@ export function appendOpenLibraryDescription(
     cleaned,
   ].join('\n\n')
 }
+
+
+export type BookDescriptionSections = {
+  originalDescription: string
+  additionalDescription: string | null
+  sourceUrl: string | null
+}
+
+/**
+ * Separates the catalog annotation from the appended Open Library section for
+ * presentation only. The stored description is not modified, so SEO and
+ * indexability continue to use the complete original database value.
+ */
+export function splitBookDescription(
+  description: string | null,
+): BookDescriptionSections {
+  const storedDescription = description ?? ''
+  const markerIndex = storedDescription.indexOf(OPEN_LIBRARY_DESCRIPTION_MARKER)
+
+  if (markerIndex < 0) {
+    return {
+      originalDescription: storedDescription.trim(),
+      additionalDescription: null,
+      sourceUrl: null,
+    }
+  }
+
+  const lineStart = storedDescription.lastIndexOf('\n', markerIndex - 1) + 1
+  const lineEnd = storedDescription.indexOf('\n', markerIndex)
+  if (lineEnd < 0) {
+    return {
+      originalDescription: storedDescription.trim(),
+      additionalDescription: null,
+      sourceUrl: null,
+    }
+  }
+
+  const headerLine = storedDescription.slice(lineStart, lineEnd).trim()
+  if (!headerLine.startsWith(OPEN_LIBRARY_DESCRIPTION_MARKER)) {
+    return {
+      originalDescription: storedDescription.trim(),
+      additionalDescription: null,
+      sourceUrl: null,
+    }
+  }
+
+  const sourceMatch = headerLine.match(
+    /^Дополнение из Open Library\s+\(источник:\s*(https:\/\/openlibrary\.org\/works\/OL\d+W)\)$/,
+  )
+  const originalDescription = storedDescription
+    .slice(0, lineStart)
+    .trim()
+    .replace(/\s*---\s*$/, '')
+    .trim()
+  const additionalDescription = storedDescription.slice(lineEnd + 1).trim()
+
+  return {
+    originalDescription,
+    additionalDescription: additionalDescription || null,
+    sourceUrl: sourceMatch?.[1] ?? null,
+  }
+}
+
+function hasRussianScript(value: string): boolean {
+  const letters = value.match(/\p{L}/gu) ?? []
+  const cyrillicLetters = value.match(/\p{Script=Cyrillic}/gu) ?? []
+
+  return letters.length >= 20 && cyrillicLetters.length / letters.length >= 0.25
+}
+
+function hasEnglishWordPattern(value: string): boolean {
+  const words = value.toLocaleLowerCase('en').match(/[a-z]+(?:'[a-z]+)?/g) ?? []
+  if (words.length < 20) return false
+
+  const commonEnglishWords = new Set([
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'but', 'by',
+    'for', 'from', 'had', 'has', 'have', 'he', 'her', 'his', 'in',
+    'into', 'is', 'it', 'its', 'not', 'of', 'on', 'or', 'she', 'that',
+    'the', 'their', 'they', 'this', 'to', 'was', 'were', 'which', 'who',
+    'with',
+  ])
+  const commonWordCount = words.filter(word => commonEnglishWords.has(word)).length
+
+  return commonWordCount >= 4 && commonWordCount / words.length >= 0.04
+}
+
+/**
+ * A conservative script/word-pattern check used only for a reader-facing note.
+ * It never changes stored content or metadata.
+ */
+export function isEnglishAdditionToRussianAnnotation(
+  originalDescription: string,
+  additionalDescription: string,
+): boolean {
+  return (
+    hasRussianScript(originalDescription) &&
+    hasEnglishWordPattern(additionalDescription)
+  )
+}

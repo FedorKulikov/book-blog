@@ -16,6 +16,10 @@ import {
 } from '@/app/components/icons'
 import type { BookPost, BookRow } from './getBook'
 import type { SimilarBook } from './bookSeo'
+import {
+  isEnglishAdditionToRussianAnnotation,
+  splitBookDescription,
+} from '@/lib/book-description-enrichment'
 
 export default function BookView({
   book,
@@ -36,6 +40,15 @@ export default function BookView({
     0,
   )
   const viewsCount = posts.reduce((sum, post) => sum + (post.views_count ?? 0), 0)
+
+  const descriptionSections = splitBookDescription(book.description)
+  const isEnglishAddition = Boolean(
+    descriptionSections.additionalDescription &&
+    isEnglishAdditionToRussianAnnotation(
+      descriptionSections.originalDescription,
+      descriptionSections.additionalDescription,
+    ),
+  )
 
   const stats = [
     { Icon: BookOpen, value: posts.length, label: 'Постов' },
@@ -90,7 +103,7 @@ export default function BookView({
               О книге
             </h2>
             <p className="text-cream/80 leading-relaxed whitespace-pre-line">
-              {book.description?.trim() ||
+              {descriptionSections.originalDescription ||
                 'Описание книги не найдено ни в каталоге, ни в Open Library.'}
             </p>
             {descriptionSource === 'open-library' && (
@@ -98,6 +111,42 @@ export default function BookView({
             )}
             {descriptionSource === 'catalog' && (
               <p className="text-cream/40 text-xs mt-2">Аннотация из каталога книги</p>
+            )}
+            {descriptionSections.additionalDescription && (
+              <section
+                aria-labelledby="open-library-addition-heading"
+                className="mt-4 rounded-xl border border-cream/10 bg-cream/5 p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <h3
+                    id="open-library-addition-heading"
+                    className="text-sm font-semibold text-cream/90"
+                  >
+                    Дополнение
+                  </h3>
+                  {descriptionSections.sourceUrl && (
+                    <p className="text-cream/40 text-xs">
+                      Источник:{' '}
+                      <a
+                        href={descriptionSections.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline underline-offset-2 hover:text-cream/70"
+                      >
+                        Open Library
+                      </a>
+                    </p>
+                  )}
+                </div>
+                {isEnglishAddition && (
+                  <p className="text-cream/50 text-xs mb-2">
+                    Текст дополнения приведён на английском языке.
+                  </p>
+                )}
+                <p className="text-cream/80 leading-relaxed whitespace-pre-line">
+                  {descriptionSections.additionalDescription}
+                </p>
+              </section>
             )}
           </div>
 

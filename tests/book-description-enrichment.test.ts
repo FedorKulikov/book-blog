@@ -3,7 +3,9 @@ import test from 'node:test'
 import {
   appendOpenLibraryDescription,
   cleanOpenLibraryDescription,
+  isEnglishAdditionToRussianAnnotation,
   selectBookDescriptionCandidates,
+  splitBookDescription,
   type BookForDescriptionEnrichment,
 } from '../lib/book-description-enrichment'
 
@@ -63,4 +65,51 @@ test('does not append an Open Library section twice', () => {
 
   assert.ok(merged)
   assert.equal(appendOpenLibraryDescription(merged, imported, 'OL12345W'), null)
+})
+
+
+test('splits the stored Open Library section and validates its source link', () => {
+  const original = 'Русская аннотация из каталога.'
+  const additional = 'The story of the young man and his family is told in this book, with the main events and characters described in detail.'
+  const stored = [
+    original,
+    '---',
+    'Дополнение из Open Library (источник: https://openlibrary.org/works/OL12345W)',
+    additional,
+  ].join('\n\n')
+
+  const parsed = splitBookDescription(stored)
+  assert.equal(parsed.originalDescription, original)
+  assert.equal(parsed.additionalDescription, additional)
+  assert.equal(parsed.sourceUrl, 'https://openlibrary.org/works/OL12345W')
+  assert.equal(
+    isEnglishAdditionToRussianAnnotation(parsed.originalDescription, additional),
+    true,
+  )
+})
+
+test('does not mark a Russian addition or a non-Russian annotation as English', () => {
+  assert.equal(
+    isEnglishAdditionToRussianAnnotation(
+      'Русская аннотация из каталога. '.repeat(4),
+      'Русское дополнение из каталога. '.repeat(12),
+    ),
+    false,
+  )
+  assert.equal(
+    isEnglishAdditionToRussianAnnotation(
+      'An original English book description with enough common words. '.repeat(2),
+      'The additional description is also written in English and tells the story.',
+    ),
+    false,
+  )
+})
+
+test('keeps an unmarked catalog description intact', () => {
+  const original = 'Обычная каталожная аннотация без дополнения.'
+  assert.deepEqual(splitBookDescription(original), {
+    originalDescription: original,
+    additionalDescription: null,
+    sourceUrl: null,
+  })
 })
