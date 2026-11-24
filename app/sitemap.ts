@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 // чтобы при отсутствии переменной карта не начала указывать на localhost.
 // Регулярка убирает случайный слэш в конце значения.
 import { SITE_URL } from '@/lib/site'
-import { getSimilarBooks, hasBookDescription, isBookIndexable } from '@/app/book/[id]/bookSeo'
+import { hasBookDescription, isBookIndexable } from '@/app/book/[id]/bookSeo'
 import { getOpenLibraryBookDetails } from '@/lib/open-library-book'
 
 // Re-evaluate RLS-filtered entries after a consent grant or withdrawal.
@@ -106,7 +106,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       await Promise.all([
         supabase
           .from('books')
-          .select('id, title, author, year, description, created_at')
+          .select('id, title, author, year, description, cover_url, created_at')
           .limit(500),
         supabase
           .from('posts')
@@ -148,10 +148,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }))
 
     bookPages = enrichedBooks.flatMap(book => {
-      const similarBooks = getSimilarBooks(book, enrichedBooks)
       const approvedPostsCount = approvedPostCountByBook.get(book.id) ?? 0
 
-      if (!isBookIndexable(book.description, similarBooks.length, approvedPostsCount)) {
+      if (!isBookIndexable(book.description, book.cover_url, approvedPostsCount)) {
         return []
       }
 

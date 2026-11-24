@@ -30,11 +30,11 @@ export async function generateMetadata({
     return { title: 'Книга не найдена', robots: { index: false, follow: false } }
   }
 
-  const { book, posts, similarBooks } = data
+  const { book, posts } = data
   const approvedPosts = posts.filter(post => post.status === 'approved')
   const isIndexable = isBookIndexable(
     book.description,
-    similarBooks.length,
+    book.cover_url,
     approvedPosts.length,
   )
 
@@ -81,7 +81,7 @@ export default async function BookPage({
   const approvedPosts = data.posts.filter(post => post.status === 'approved')
   const isIndexable = isBookIndexable(
     data.book.description,
-    data.similarBooks.length,
+    data.book.cover_url,
     approvedPosts.length,
   )
   const description = toPlainText(data.book.description ?? '') || undefined
