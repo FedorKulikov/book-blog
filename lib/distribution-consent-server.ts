@@ -148,11 +148,19 @@ export async function createPostWithDistributionConsent(
 
   if (postError || !post) {
     if (postError?.code === '42501') {
-      const message = postError.message.toLowerCase()
-      if (message.includes('заблокирован') || message.includes('забанен') || message.includes('стоп-слов')) {
-        return { status: 422, body: { error: postError.message } }
+      const raw = (postError.message ?? '').trim()
+      // Триггеры базы сами объясняют отказ по-русски: «слишком часто»,
+      // «нужно отдельное согласие», «аккаунт заблокирован». Показываем
+      // их текст: общая формулировка скрывает настоящую причину.
+      if (/[а-яё]/i.test(raw)) {
+        return { status: 422, body: { error: raw } }
       }
       return { status: 422, body: { error: 'Публикация отклонена проверкой прав или согласия.' } }
+    }
+    if (postError?.code === '23514') {
+      // Проверки целостности: срок допустим только для конкурсов и событий,
+      // категория и ссылка должны соответствовать спискам.
+      return { status: 422, body: { error: 'Проверьте категорию, срок и ссылку: для этой категории такое сочетание недопустимо.' } }
     }
     if (postError?.code === '23503') {
       return { status: 422, body: { error: 'Одна из связанных записей больше недоступна. Обновите форму.' } }
